@@ -404,9 +404,10 @@ await step('Inventaire : scan inconnu refusé, écart appliqué au stock', async
   await page.fill('.scan-input', 'CODE-INCONNU');
   await page.press('.scan-input', 'Enter');
   expect((await page.locator('.flash').innerText()).includes('inconnu'), 'code inconnu signalé');
-  const row = page.locator('table.list tr', { hasText: 'Pied de micro perche' });
-  await row.locator('input').fill('18');
-  await page.click('button:has-text("Appliquer 1 écart")');
+  await page.locator('.inv-row', { hasText: 'Pied de micro perche' }).click();
+  await page.fill('.modal input[aria-label="Quantité comptée"]', '18');
+  await page.press('.modal input[aria-label="Quantité comptée"]', 'Enter');
+  await page.click('.inv-dock button:has-text("Appliquer 1 écart")');
   await page.click('.modal button:text-is("Appliquer")');
   await page.waitForSelector('text=Inventaire appliqué');
   await go('materiel');
@@ -1286,46 +1287,113 @@ await step('Checklist libre : import d’un bon PDF', async () => {
 
 const invScan = async (c) => { await page.fill('.scan-input', c); await page.press('.scan-input', 'Enter'); await page.waitForTimeout(300); return page.locator('.flash').first().innerText(); };
 
+const badge = (name) => page.locator('.inv-row', { hasText: name }).first().locator('.inv-badge').innerText();
 await step('Inventaire : kit compté d’un coup, annulation, comptage gardé au rechargement', async () => {
   await resetDemo();
   await go('inventaire');
   expect((await invScan('DEMO-KITPAR')).includes('Kit Pack ambiance 8 PAR LED'), 'kit reconnu');
-  const par = page.locator('table.list tr', { hasText: 'Projecteur PAR LED' });
-  expect(await par.locator('input').inputValue() === '8', 'contenu du kit compté (8 PAR)');
-  await page.click('button:text-is("Annuler le dernier kit")');
+  expect((await badge('Projecteur PAR LED')).startsWith('8'), 'contenu du kit compté (8 PAR)');
+  await page.click('.inv-dock button:text-is("Annuler le dernier kit")');
   await page.waitForTimeout(300);
-  const after = await par.locator('input').inputValue();
-  expect(after === '0' || after === '', `kit annulé (${after})`);
+  expect((await badge('Projecteur PAR LED')).startsWith('—'), 'kit annulé');
   await invScan('DEMO-PIED'); await invScan('DEMO-PIED');
   await page.reload(); await page.waitForTimeout(800);
-  expect(await page.locator('table.list tr', { hasText: 'Pied de micro perche' }).locator('input').inputValue() === '2', 'comptage gardé après rechargement');
+  expect((await badge('Pied de micro perche')).startsWith('2'), 'comptage gardé après rechargement');
+});
+
+await step('Inventaire : compté en plusieurs endroits (dépôt + camion), corriger, annuler le dernier', async () => {
+  await page.locator('.inv-row', { hasText: 'Pied de micro perche' }).click();
+  const m = page.locator('.modal');
+  expect((await m.innerText()).includes('Trouvés ici (en plus)'), 'déjà compté : on ajoute');
+  await m.locator('input[aria-label="Quantité comptée"]').fill('3');
+  expect((await m.locator('.inv-diff').innerText()).includes('Total 2 + 3 = 5'), 'total affiché');
+  await m.locator('button:text-is("Ajouter au comptage")').click();
+  await page.waitForTimeout(200);
+  expect((await badge('Pied de micro perche')).startsWith('5'), 'total 5');
+  await page.locator('.inv-row', { hasText: 'Pied de micro perche' }).click();
+  expect((await m.innerText()).includes('Déjà compté (1 + 1 + 3)'), 'les comptages par endroit sont gardés');
+  await m.locator('button:has-text("Annuler le dernier (−3)")').click();
+  await page.waitForTimeout(200);
+  expect((await m.innerText()).includes('Déjà compté (1 + 1)'), 'dernier comptage annulé');
+  await m.locator('button:text-is("Corriger le total")').click();
+  await m.locator('input[aria-label="Quantité comptée"]').fill('4');
+  await m.locator('button:text-is("Enregistrer")').click();
+  await page.waitForTimeout(200);
+  expect((await badge('Pied de micro perche')).startsWith('4'), 'total corrigé à 4');
+});
+
+await step('Inventaire : kit compté kit par kit (contenu coché, kit complet tout seul)', async () => {
+  await page.locator('.inv-seg, .seg').first().locator('button:text-is("Tout")').click();
+  await page.locator('.inv-row.st-kit', { hasText: 'Pack ambiance 8 PAR LED' }).click();
+  const m = page.locator('.modal');
+  await m.locator('button:text-is("Kit complet ✓")').click();
+  await page.waitForTimeout(200);
+  expect((await m.innerText()).includes('Kit n° 1 complet'), 'kit n° 1 compté');
+  // 2e kit : on coche chaque ligne, il se valide tout seul
+  for (const r of await m.locator('.inv-kitrow').all()) await r.click();
+  await page.waitForTimeout(200);
+  expect((await m.innerText()).includes('Kit n° 2 complet'), 'kit n° 2 validé automatiquement');
+  await m.locator('button:text-is("Annuler le dernier kit")').click();
+  await page.waitForTimeout(200);
+  await m.locator('button:text-is("Fermer")').click();
+  expect((await badge('Projecteur PAR LED')).startsWith('8'), '1 kit = 8 PAR comptés');
+});
+
+await step('Inventaire : unités en pastilles, scan limité à l’article, scan qui ouvre l’article', async () => {
+  // scan qui ouvre l'article (décoché « scan en continu »)
+  await page.locator('.inv-tools label', { hasText: 'Scan en continu' }).locator('input').uncheck();
+  await invScan('SN-ULXD-1001');
+  const m = page.locator('.modal');
+  await m.waitFor();
+  expect((await m.locator('.uchip.on').count()) === 1, 'unité scannée cochée');
+  await m.locator('input[aria-label="Scanner une unité"]').fill('DEMO-PIED');
+  await m.locator('input[aria-label="Scanner une unité"]').press('Enter');
+  expect((await m.locator('.flash').innerText()).includes('pas de cet article'), 'code d’un autre article refusé');
+  await m.locator('input[aria-label="Scanner une unité"]').fill('SN-ULXD-1001');
+  await m.locator('input[aria-label="Scanner une unité"]').press('Enter');
+  expect((await m.locator('.flash').innerText()).includes('pas comptée deux fois'), 'double scan ignoré');
+  await m.locator('button:text-is("Terminé")').click();
+  await page.locator('.inv-tools label', { hasText: 'Scan en continu' }).locator('input').check();
+  await page.locator('.inv-row', { hasText: 'Micro HF Shure' }).click();
+  await m.locator('.uchip').nth(1).click(); await m.locator('.uchip').nth(2).click();
+  await page.waitForTimeout(200);
+  expect((await m.innerText()).includes('3 / 6'), '3 unités vues sur 6');
+  await m.locator('button:text-is("Terminé")').click();
 });
 
 await step('Inventaire : fiche (ajout de stock, état d’une unité, où est-il ?), unité perdue retrouvée au scan', async () => {
-  await page.locator('table.list tr', { hasText: 'Amplificateur LA4X' }).locator('button:text-is("Fiche")').click();
+  // « Infos » : scanner pour tout voir, sans compter
+  await page.click('button:has-text("ℹ Infos")');
+  await invScan('SN-LA4X-1001');
   await page.waitForSelector('.modal');
-  expect((await page.locator('.modal').innerText()).includes('Où est cet article ?'), 'fiche ouverte');
+  expect((await page.locator('.modal').innerText()).includes('Où est cet article ?'), 'fiche ouverte par le scan Infos');
   await page.locator('.modal tr', { hasText: 'LA4X-1002' }).locator('button:has-text("Changer l")').click();
   await page.locator('.modal label', { hasText: 'Perdue' }).last().locator('input').check();
   await page.locator('.modal form button[type=submit]').last().click();
   await page.waitForTimeout(400);
   expect((await page.locator('.modal tr', { hasText: 'LA4X-1002' }).innerText()).includes('Perdue'), 'unité marquée perdue');
   await page.keyboard.press('Escape');
-  await go('inventaire');
+  await page.click('button:has-text("ℹ Infos")');
   expect((await invScan('SN-LA4X-1002')).includes('retrouvée et remise en stock'), 'unité perdue retrouvée au scan');
-  await page.locator('table.list tr', { hasText: 'Pied de micro perche' }).locator('button:text-is("Fiche")').click();
+  await page.locator('.inv-row', { hasText: 'Pied de micro perche' }).click();
+  await page.click('.modal button:text-is("+ Ajouter du stock")');
   await page.locator('.modal input[aria-label="Quantité à ajouter"]').fill('5');
-  await page.fill('.modal input[placeholder^="Note"]', 'achat Thomann');
+  await page.fill('.modal input[placeholder^="ex. achat"]', 'achat Thomann');
   await page.click('.modal button:text-is("Ajouter")');
   await page.waitForTimeout(400);
+  expect((await page.locator('.flash').first().innerText()).includes('+5 au stock'), 'stock ajouté');
+  await page.click('button:has-text("ℹ Infos")');
+  await invScan('DEMO-PIED');
+  await page.waitForSelector('.modal');
   expect((await page.locator('.modal').innerText()).includes('Ajout au stock — achat Thomann (+5)'), 'mouvement de stock daté');
   await page.keyboard.press('Escape');
+  await page.click('button:has-text("ℹ Infos")');
 });
 
 await step('Inventaire : unités non vues → en réparation, visibles en maintenance', async () => {
   await go('inventaire');
   await invScan('SN-ULXD-1001'); await invScan('SN-ULXD-1002'); await invScan('SN-ULXD-1003');
-  await page.click('button:has-text("écart")');
+  await page.click('.inv-dock button:has-text("Appliquer")');
   await page.waitForSelector('.modal');
   const sel = page.locator('.modal select[aria-label="Unité ULXD-1004"]');
   await sel.selectOption('repair');
@@ -1336,6 +1404,33 @@ await step('Inventaire : unités non vues → en réparation, visibles en mainte
   await go('maintenance');
   const flagged = await page.locator('.card', { hasText: 'Unités signalées' }).innerText();
   expect(flagged.includes('ULXD-1004') && flagged.includes('En réparation'), 'unité en réparation listée');
+});
+
+await step('Inventaire : écarts envoyés article par article, nouvel article créé sur place', async () => {
+  await go('inventaire');
+  await page.locator('.inv-row', { hasText: 'Pied de micro perche' }).click();
+  await page.fill('.modal input[aria-label="Quantité comptée"]', '40');
+  await page.press('.modal input[aria-label="Quantité comptée"]', 'Enter');
+  await page.locator('.inv-row', { hasText: 'Projecteur PAR LED' }).click();
+  if (await page.locator('.modal button:text-is("Corriger le total")').count()) await page.click('.modal button:text-is("Corriger le total")');
+  await page.fill('.modal input[aria-label="Quantité comptée"]', '1');
+  await page.press('.modal input[aria-label="Quantité comptée"]', 'Enter');
+  await page.click('.inv-dock button:has-text("Appliquer")');
+  await page.locator('.modal input[aria-label^="Corriger Projecteur PAR LED"]').uncheck();
+  await page.click('.modal button:text-is("Appliquer")');
+  await page.waitForSelector('text=Inventaire appliqué');
+  expect((await badge('Pied de micro perche')).startsWith('—'), 'article envoyé : sorti du comptage');
+  expect((await badge('Projecteur PAR LED')).startsWith('1'), 'article décoché : reste à recompter');
+  // nouvel article : « déjà au parc ? » puis création avec code automatique
+  await page.click('.inv-dock button:text-is("+ Nouvel article")');
+  await page.fill('.modal input[placeholder^="ex. Shure"]', 'Pied de micro');
+  expect((await page.locator('.modal .inv-dupes').innerText()).includes('ajouter du stock'), 'doublon possible proposé');
+  await page.fill('.modal input[placeholder^="ex. Shure"]', 'Enrouleur 25 m');
+  await page.locator('.modal .field', { hasText: 'Quantité trouvée' }).locator('input').fill('6');
+  await page.click('.modal button:text-is("Créer")');
+  await page.waitForTimeout(300);
+  expect(/créé \([A-Z]+-[A-Z]+-\d{4}\)/.test(await page.locator('.inv-tools .flash').innerText()), 'code automatique attribué');
+  expect((await badge('Enrouleur 25 m')).startsWith('6'), 'compté à sa quantité');
 });
 
 await ctx.close();
@@ -1513,7 +1608,7 @@ await step('Élément hors inventaire : créé depuis un article, ajouté avec l
   await page.waitForTimeout(200);
   expect((await page.locator('table.list').innerText()).includes('Dock USB-C'), 'visible avec le filtre');
   await go('inventaire');
-  expect(await page.locator('table.list tr', { hasText: 'Chargeur 65 W' }).count() === 0, 'absent de l’inventaire');
+  expect(await page.locator('.inv-row', { hasText: 'Chargeur 65 W' }).count() === 0, 'absent de l’inventaire');
   // ajouté à un projet : ses éléments suivent, sans dispo ni manque
   await openProject('Mariage Dupont-Lemaire');
   await tab('Équipement');

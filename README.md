@@ -155,8 +155,16 @@ passe au statut « Envoyé ».
 **Entrepôt (repris de FABRI.live)** : checklist de sortie puis de retour par sous-projet, scan à la douchette ou à la caméra
 (ZXing intégré, fonctionne sur iPhone et hors ligne), unités sérialisées, « ajouter en plus », codes fabricant associés,
 unités à réparer / en réparation, bilan du retour et déclaration des pertes avec historique daté. **Checklists libres**
-importées d'un bon PDF, Word, HTML (export Rentman) ou de texte collé. **Inventaire** au scan avec kits, unités non vues,
-mouvements de stock datés, fiche article (« où est cet article ? »).
+importées d'un bon PDF, Word, HTML (export Rentman) ou de texte collé. **Inventaire** repris de l'Inventaire FABRI.live :
+- liste par catégorie avec la progression, vues Tout / À compter / Écarts ;
+- comptage d'un article en plusieurs endroits (5 au dépôt + 3 dans le camion), « Conforme », « Corriger le total » ;
+- unités à numéro de série en pastilles, avec un scan limité à l'article ;
+- kits comptés kit par kit (le kit se valide tout seul quand tout y est) ;
+- « chaque scan compte 1 » ou bien le scan ouvre l'article pour taper la quantité ;
+- scan « Infos » pour tout voir sans rien compter ;
+- écarts appliqués article par article, unités non vues déclarées perdues ou en réparation ;
+- nouvel article créé sur place, avec les doublons possibles proposés ;
+- mouvements de stock datés et fiche article (« où est cet article ? »).
 
 **Codes du matériel** : chaque nouvel article reçoit un code `F-S-0010` (lettre du dépôt de base, lettre de la catégorie —
 S son, V vidéo, L lumière, IT informatique, R rigging, K kit… —, numéro unique jamais réutilisé). Chaque unité à numéro de série
