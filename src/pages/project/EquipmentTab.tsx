@@ -96,6 +96,20 @@ function RoomEquipment({ d, sp }: { d: ProjectData; sp: Subproject }) {
                               {l.parentLineId && <span className="muted">↳ </span>}
                               {eq ? <Link to={'/materiel/' + eq.id}>{l.name}</Link> : <input value={l.name} onChange={(e) => updLine(l, { name: e.target.value })} />}
                               {perPiece && <span className="badge" style={{ marginLeft: 6 }}>vente</span>}
+                            {eq && avail !== null && avail < l.qty && !l.optional && (eq.alternatives || []).map((altId) => {
+                              const alt = eqMap.get(altId);
+                              if (!alt || alt.archived) return null;
+                              const altAvail = availableQty(alt, av.equipment, av.res, b0, b1, undefined, d.depot);
+                              const n = Math.min(l.qty - Math.max(0, avail), altAvail);
+                              return n > 0 ? (
+                                <div key={altId}>
+                                  <button className="secondary small alt-btn" title={`${altAvail} disponible(s)`} onClick={async () => {
+                                    await updLine(l, { qty: l.qty - n });
+                                    await addEquipmentToSub(sp, av.equipment, lines, { [altId]: n }, l.groupId, l.discount);
+                                  }}>↔ Remplacer {n} par {alt.name}</button>
+                                </div>
+                              ) : null;
+                            })}
                             </td>
                             <td className="n">{avail === null ? '—' : <span className={'avail ' + (avail >= l.qty || l.optional ? 'ok' : 'ko')}>{avail}</span>}</td>
                             <td><NumInput className="w-price" value={l.unitPrice} onChange={(n) => updLine(l, { unitPrice: n })} /></td>
@@ -213,7 +227,7 @@ function EquipmentPicker({ sp, groupId, depot, discount, equipment, res, existin
   const catName = new Map(cats.map((c) => [c.id, c.name]));
   const [bStart, bEnd] = lineBlock({ groupId }, sp);
   const groupName = sp.groups?.find((g) => g.id === groupId)?.name;
-  const list = equipment.filter((e) => [e.name, e.code, e.barcode, e.categoryId && catName.get(e.categoryId)].join(' ').toLowerCase().includes(q.toLowerCase()));
+  const list = equipment.filter((e) => !e.archived && [e.name, e.code, e.barcode, e.categoryId && catName.get(e.categoryId)].join(' ').toLowerCase().includes(q.toLowerCase()));
   const count = Object.values(qty).reduce((a, b) => a + (b || 0), 0);
 
   return (
@@ -237,7 +251,7 @@ function EquipmentPicker({ sp, groupId, depot, discount, equipment, res, existin
                 const avail = availableQty(e, equipment, res, bStart, bEnd, undefined, depot);
                 return (
                   <tr key={e.id}>
-                    <td>{e.name} {e.isKit && <span className="badge">Kit</span>} {e.kind === 'vente' && <span className="badge">vente</span>} <span className="muted">{e.code}</span>
+                    <td>{e.photo && <img src={e.photo} alt="" className="thumb" />}{e.name} {e.isKit && <span className="badge">Kit</span>} {e.kind === 'vente' && <span className="badge">vente</span>} <span className="muted">{e.code}</span>
                       {e.accessories?.length ? <div className="muted" style={{ fontSize: 11 }}>+ accessoires automatiques</div> : null}</td>
                     <td className="n"><span className={'avail ' + (avail - (qty[e.id] || 0) >= 0 ? 'ok' : 'ko')}>{avail}</span></td>
                     <td className="n">{money(e.dailyPrice)}{e.kind === 'vente' ? '' : '/j'}</td>

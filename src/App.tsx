@@ -14,6 +14,8 @@ import ImportPage from './pages/Import';
 import Maintenance from './pages/Maintenance';
 import Reports from './pages/Reports';
 import Subrentals, { SubrentalDetail } from './pages/Subrentals';
+import Inventory from './pages/Inventory';
+import Labels from './pages/Labels';
 import Templates from './pages/Templates';
 import Transfers from './pages/Transfers';
 import Warehouse, { WarehouseScan } from './pages/Warehouse';
@@ -93,6 +95,8 @@ export default function App() {
           <Route path="/maintenance" element={<Maintenance />} />
           <Route path="/transferts" element={<Transfers />} />
           <Route path="/modeles" element={<Templates />} />
+          <Route path="/etiquettes" element={<Labels />} />
+          <Route path="/inventaire" element={<Inventory />} />
           <Route path="/import" element={<ImportPage />} />
           <Route path="/parametres" element={<SettingsPage />} />
           <Route path="*" element={<p>Page introuvable.</p>} />

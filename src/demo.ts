@@ -106,6 +106,9 @@ async function seedAll() {
   await item('distro', 'Énergie', 'Armoire de distribution 63 A', 3, 45, { weight: 28, location: 'Rack E3', inspectionMonths: 12, replacementValue: 1800 });
   // Son
   await item('x12', 'Son', 'Enceinte L-Acoustics X12', 8, 45, { weight: 20, replacementValue: 3200, location: 'Rack S1', inspectionMonths: 12, accessories: [{ equipmentId: eq.nl4, qty: 1, free: true }] });
+  await item('dxr', 'Son', 'Enceinte Yamaha DXR12 (remplacement)', 4, 30, { weight: 19, replacementValue: 900, location: 'Rack S5' });
+  await db.equipment.update(eq.x12, { alternatives: [eq.dxr] });
+  await item('mg', 'Son', 'Console analogique Mackie (ancienne)', 1, 20, { archived: true });
   await item('sub', 'Son', 'Caisson SB18', 4, 60, { weight: 52, replacementValue: 4100, location: 'Rack S2', accessories: [{ equipmentId: eq.nl4, qty: 1, free: true }] });
   await item('ampli', 'Son', 'Amplificateur LA4X', 3, 70, { weight: 13, replacementValue: 5500, location: 'Rack S3', inspectionMonths: 12, trackSerials: true });
   await item('cl5', 'Son', 'Console Yamaha CL5', 1, 250, { weight: 36, replacementValue: 22000, location: 'Flight F1', trackSerials: true, inspectionMonths: 12 });

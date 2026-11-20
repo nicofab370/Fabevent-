@@ -197,3 +197,6 @@ tr.missing td { background: color-mix(in srgb, var(--danger) 10%, transparent); 
 textarea.code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; min-height: 260px; white-space: pre; tab-size: 2; }
 @media (max-width: 1200px) { .tpl-layout { grid-template-columns: 1fr; } .tpl-side { position: static; } }
 @media (max-width: 700px) { .tpl-side { grid-template-columns: 1fr; } }
+
+.thumb { width: 28px; height: 28px; object-fit: cover; border-radius: 4px; vertical-align: middle; margin-right: 8px; }
+.alt-btn { margin-top: 4px; font-size: 11px; }

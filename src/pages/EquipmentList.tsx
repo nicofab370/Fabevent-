@@ -5,6 +5,7 @@ import { Empty, Field, Modal, NumInput, PageHead, useSettings } from '../compone
 import { db } from '../db';
 import type { Equipment } from '../types';
 import { useAvailability } from '../data';
+import { resizeImage } from '../image';
 import { availableQty, money, save, stockIn, toLocalInput } from '../utils';
 
 type Draft = Omit<Equipment, 'id' | 'createdAt' | 'updatedAt'> & Partial<Equipment>;
@@ -119,6 +120,26 @@ export function EquipmentForm({ initial, onDone }: { initial?: Draft; onDone: ()
             onClick={() => set('accessories', [...(e.accessories || []), { equipmentId: all.find((o) => o.id !== e.id)?.id || '', qty: 1, free: true }])}>+ Accessoire</button>
         </div>
       </div>
+      <div className="field full">
+        <span>Articles de remplacement (proposés en cas de manque)</span>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          {(e.alternatives || []).map((id) => (
+            <span key={id} className="badge">{all.find((a) => a.id === id)?.name || '?'} <button type="button" className="ghost small" onClick={() => set('alternatives', (e.alternatives || []).filter((x) => x !== id))}>✕</button></span>
+          ))}
+          <select value="" style={{ width: 'auto' }} onChange={(x) => x.target.value && set('alternatives', [...(e.alternatives || []), x.target.value])}>
+            <option value="">+ Ajouter…</option>
+            {all.filter((a) => a.id !== e.id && !a.archived && !(e.alternatives || []).includes(a.id)).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+        </div>
+      </div>
+      <Field label="Photo">
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {e.photo && <img src={e.photo} alt="" style={{ height: 48, borderRadius: 6 }} />}
+          <input type="file" accept="image/*" onChange={async (x) => { const f = x.target.files?.[0]; if (f) set('photo', await resizeImage(f)); }} />
+          {e.photo && <button type="button" className="ghost small" onClick={() => set('photo', undefined)}>Retirer</button>}
+        </div>
+      </Field>
+      <Field label=" "><label className="check-row"><input type="checkbox" checked={!!e.archived} onChange={(x) => set('archived', x.target.checked)} /> Archivé (n'est plus proposé dans les projets)</label></Field>
       <Field label="Notes" full><textarea value={e.notes || ''} onChange={(x) => set('notes', x.target.value)} /></Field>
       <div className="form-actions">
         <button type="button" className="secondary" onClick={onDone}>Annuler</button>
@@ -141,13 +162,17 @@ export default function EquipmentList() {
   const [to, setTo] = useState(toLocalInput(new Date(now.getTime() + 86400000)));
 
   const catName = new Map(cats.map((c) => [c.id, c.name]));
+  const [showArchived, setShowArchived] = useState(false);
   const filtered = equipment.filter((e) =>
+    !!e.archived === showArchived &&
     (!cat || e.categoryId === cat) &&
     [e.name, e.code, e.barcode].join(' ').toLowerCase().includes(q.toLowerCase()));
 
   return (
     <>
       <PageHead title="Matériel">
+        <button className="secondary" onClick={() => nav('/etiquettes')}>Étiquettes QR</button>
+        <button className="secondary" onClick={() => nav('/inventaire')}>Inventaire</button>
         <button onClick={() => setCreating(true)}>+ Nouvel article</button>
       </PageHead>
       <div className="card">
@@ -163,6 +188,7 @@ export default function EquipmentList() {
               {depots.map((dp) => <option key={dp.id} value={dp.id}>{dp.name}</option>)}
             </select>
           )}
+          <label className="check-row"><input type="checkbox" checked={showArchived} onChange={(x) => setShowArchived(x.target.checked)} /> Archivés</label>
           <span className="muted" style={{ alignSelf: 'center' }}>Dispo du</span>
           <input type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} />
           <span className="muted" style={{ alignSelf: 'center' }}>au</span>
@@ -177,7 +203,7 @@ export default function EquipmentList() {
                   const av = availableQty(e, equipment, res, from, to, undefined, depot || undefined);
                   return (
                     <tr key={e.id} className="click" onClick={() => nav('/materiel/' + e.id)}>
-                      <td><strong>{e.name}</strong> {e.isKit && <span className="badge">Kit</span>} {e.kind === 'vente' && <span className="badge">vente</span>} {e.trackSerials && <span className="badge">n° série</span>}</td>
+                      <td>{e.photo && <img src={e.photo} alt="" className="thumb" />}<strong>{e.name}</strong> {e.isKit && <span className="badge">Kit</span>} {e.kind === 'vente' && <span className="badge">vente</span>} {e.trackSerials && <span className="badge">n° série</span>}</td>
                       <td>{e.code}</td>
                       <td>{e.categoryId ? catName.get(e.categoryId) : ''}</td>
                       <td className="n" title={e._stock ? depots.map((dp) => `${dp.name} : ${e._stock?.[dp.id] || 0}`).join('\n') : undefined}>{e.isKit ? '—' : depot ? stockIn(e, depot) : e.quantity}</td>

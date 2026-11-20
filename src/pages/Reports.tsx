@@ -53,7 +53,7 @@ export default function Reports() {
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 15);
   const maxEq = Math.max(1, ...top.map((t) => t.revenue));
-  const unused = equipment.filter((e) => !e.isKit && e.kind !== 'vente' && !stats.has(e.id));
+  const unused = equipment.filter((e) => !e.isKit && !e.archived && e.kind !== 'vente' && !stats.has(e.id));
 
   return (
     <>
@@ -66,6 +66,7 @@ export default function Reports() {
         <div className="stat"><b>{money(yearTotal)}</b><span>chiffre d'affaires facturé HT</span></div>
         <div className="stat"><b>{counted.length}</b><span>pièces émises</span></div>
         <div className="stat"><b>{unused.length}</b><span>articles jamais loués cette année</span></div>
+        <div className="stat"><b>{money(equipment.filter((e) => !e.archived && !e.isKit).reduce((a, e) => a + (e.replacementValue || 0) * e.quantity, 0))}</b><span>valeur de remplacement du parc</span></div>
       </div>
       <div className="grid">
         <div className="card">

@@ -103,6 +103,12 @@ export interface Equipment extends Base {
   stock?: Record<ID, number>;
   /** calculé, jamais enregistré : quantité par dépôt */
   _stock?: Record<ID, number>;
+  /** articles de remplacement proposés en cas de manque */
+  alternatives?: ID[];
+  /** archivé : masqué des listes et des choix, l'historique est conservé */
+  archived?: boolean;
+  /** photo (image réduite) */
+  photo?: string;
   kind?: EquipmentKind;
   trackSerials?: boolean;
   accessories?: Accessory[];
