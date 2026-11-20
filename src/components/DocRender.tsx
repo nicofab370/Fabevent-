@@ -146,7 +146,7 @@ function Rooms({ doc, st }: { doc: Doc; st: DocStyle }) {
         return (
           <section key={i}>
             <h2>{sp.name}</h2>
-            <div className="muted">{fmtDate(sp.start)} → {fmtDate(sp.end)}{sp.venue && ` · ${sp.venue}`}</div>
+            <div className="muted">{fmtDate(sp.start)} → {fmtDate(sp.end)}{sp.venue && ` · ${sp.venue}`}{sp.address && ` (${sp.address})`}</div>
             {st.showPeriods && sp.periods && sp.periods.length > 0 && (
               <>
                 <h3>{tr(doc, 'schedule')}</h3>

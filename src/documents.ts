@@ -3,6 +3,7 @@ import type { Doc, DocSnapshot, DocType, Lang, ProjectStatus, Settings, Snapshot
 import { VAT_MENTIONS_I18N } from './i18n';
 import { DEFAULT_VAT_MENTIONS, structuredCommunication } from './payment';
 import { INVOICE_TYPES, VENUE_INFO_LABELS, type VenueInfo } from './types';
+import { deptOf, ownAddress, placeAddress, placeName, projectPerson, spotOf } from './places';
 import { crewAmount, crewWindow, daysBetween, factorFor, lineDays, lineTotal, round2, save, sortPeriods } from './utils';
 
 const PREFIX: Record<DocType, 'D' | 'F' | 'AV' | 'BS' | 'FR' | 'RP'> = {
@@ -56,6 +57,7 @@ export async function buildSnapshot(projectId: string, type: DocType, only?: { i
   const isQuote = type === 'devis';
   const isPacking = type === 'bon_sortie' || type === 'feuille_route';
 
+  const venueC = project.venueId ? await db.contacts.get(project.venueId) : undefined;
   const snapSubs: SnapshotSub[] = subs
     .filter((sp) => sp.status !== 'annule' && (!only?.include || only.include.includes(sp.id)) && !only?.exclude?.includes(sp.id))
     .map((sp) => {
@@ -111,7 +113,10 @@ export async function buildSnapshot(projectId: string, type: DocType, only?: { i
         vh.filter((v) => v.billable).reduce((a, v) => a + v.price, 0),
       );
       const periods = sp.periods?.length ? sortPeriods(sp.periods).map(({ name, kind, start, end }) => ({ name, kind, start, end })) : undefined;
-      return { name: sp.name, venue: sp.venue || project.venue, start: sp.prepStart || sp.start, end: sp.returnEnd || sp.end, periods, equipment: eq, crew: cr, vehicles: vh, subtotal };
+      // salle installée dans un endroit du lieu : nom de l'endroit, et son adresse si elle diffère
+      const spot = spotOf(venueC, sp.spotId);
+      const address = spot && ownAddress(spot) ? placeAddress(venueC, spot) : undefined;
+      return { name: sp.name, venue: spot ? placeName(venueC, spot) : sp.venue || project.venue, address, start: sp.prepStart || sp.start, end: sp.returnEnd || sp.end, periods, equipment: eq, crew: cr, vehicles: vh, subtotal };
     });
 
   const costs = await db.costs.where({ projectId }).toArray();
@@ -144,7 +149,9 @@ export async function buildSnapshot(projectId: string, type: DocType, only?: { i
     issuedAt: issued.toISOString(),
     validUntil: isQuote ? new Date(issued.getTime() + s.quoteValidityDays * 86400000).toISOString() : undefined,
     dueDate: INVOICE_TYPES.includes(type) ? new Date(issued.getTime() + (client?.paymentDays ?? s.paymentDays) * 86400000).toISOString() : undefined,
-    venueNotes: isPacking ? await venueNotesFor(project.venueId) : undefined,
+    venueNotes: isPacking ? await venueNotesFor(project.venueId, [project.spotId, ...subs.map((x) => x.spotId)].filter((x): x is string => !!x)) : undefined,
+    department: deptOf(client, project.departmentId),
+    contactEmail: projectPerson(client, project)?.email || deptOf(client, project.departmentId)?.email,
     notes: (() => { const n = (project.noteList || []).filter((x) => x.on.includes(type) && x.text.trim()).map(({ title, text }) => ({ title, text })); return n.length ? n : undefined; })(),
     deposit: project.deposit?.amount && project.deposit.status !== 'aucune' && (isQuote || type === 'facture' || type === 'bon_sortie') ? project.deposit : undefined,
     terms: s.terms?.trim() && (isQuote || (s.termsOnInvoices && (type === 'facture' || type === 'acompte'))) ? s.terms : undefined,
@@ -261,10 +268,17 @@ export async function setStatusDeep(projectId: string, status: ProjectStatus, on
 }
 
 /** Infos pratiques et commentaires « feuille de route » du lieu, pour les documents de terrain. */
-async function venueNotesFor(venueId?: string): Promise<{ label: string; text: string }[] | undefined> {
+async function venueNotesFor(venueId: string | undefined, spotIds: string[]): Promise<{ label: string; text: string }[] | undefined> {
   const v = venueId ? await db.contacts.get(venueId) : undefined;
   if (!v) return undefined;
-  const out = (Object.keys(VENUE_INFO_LABELS) as (keyof VenueInfo)[]).filter((k) => v.venueInfo?.[k]).map((k) => ({ label: VENUE_INFO_LABELS[k], text: v.venueInfo![k]! }));
+  const keys = Object.keys(VENUE_INFO_LABELS) as (keyof VenueInfo)[];
+  const out = keys.filter((k) => v.venueInfo?.[k]).map((k) => ({ label: VENUE_INFO_LABELS[k], text: v.venueInfo![k]! }));
+  // infos propres aux endroits utilisés par le projet (endroit principal et endroits des salles)
+  for (const sp of v.spots || []) {
+    if (!spotIds.includes(sp.id)) continue;
+    if (ownAddress(sp)) out.push({ label: `${sp.name} — adresse`, text: placeAddress(v, sp) });
+    for (const k of keys) if (sp.info?.[k]) out.push({ label: `${sp.name} — ${VENUE_INFO_LABELS[k]}`, text: sp.info[k]! });
+  }
   for (const c of v.comments || []) if (c.onRoadmap) out.push({ label: c.important ? '⚠ Remarque' : 'Remarque', text: c.text });
   return out.length ? out : undefined;
 }

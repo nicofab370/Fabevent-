@@ -95,6 +95,12 @@ export class FabDB extends Dexie {
     this.version(6).stores({
       appointments: 'id, start',
     });
+    // interlocuteurs identifiés (services du client) : on numérote les fiches existantes
+    this.version(7).stores({}).upgrade(async (tx) => {
+      await tx.table('contacts').toCollection().modify((c: Contact) => {
+        if (c.persons?.some((p) => !p.id)) c.persons = c.persons.map((p) => (p.id ? p : { ...p, id: Math.random().toString(36).slice(2, 10) + Date.now().toString(36) }));
+      });
+    });
   }
 }
 

@@ -86,7 +86,18 @@ async function seedAll() {
     await db.contacts.put(c as never);
     return c.id;
   };
-  const cNamur = await contact('client', 'Ville de Namur (démo)', { city: 'Namur', postalCode: '5000', address: 'Hôtel de Ville', email: 'evenements@exemple.be', vatNumber: 'BE0000000196', peppolId: '0208:0000000196', persons: [{ name: 'Julie Martin', role: 'Service événements', phone: '+32 81 00 00 01' }, { name: 'Marc Lambert', role: 'Régie technique' }], discounts: { equipment: 10, total: 5 } });
+  const cNamur = await contact('client', 'Ville de Namur (démo)', { city: 'Namur', postalCode: '5000', address: 'Hôtel de Ville', email: 'evenements@exemple.be', vatNumber: 'BE0000000196', peppolId: '0208:0000000196', persons: [
+      { id: 'pers-julie', departmentId: 'dep-evt', name: 'Julie Martin', role: 'Cheffe de service', phone: '+32 81 00 00 01', email: 'julie.martin@exemple.be' },
+      { id: 'pers-marc', departmentId: 'dep-evt', name: 'Marc Lambert', role: 'Régie technique', phone: '+32 81 00 00 02' },
+      { id: 'pers-anne', departmentId: 'dep-culture', name: 'Anne Collin', role: 'Programmatrice', email: 'anne.collin@exemple.be' },
+      { id: 'pers-luc', departmentId: 'dep-culture', name: 'Luc Henrard', role: 'Assistant' },
+      { id: 'pers-compta', name: 'Service comptabilité', email: 'factures@exemple.be' },
+    ],
+    departments: [
+      { id: 'dep-evt', name: 'Événements', email: 'evenements@exemple.be', phone: '+32 81 00 00 00' },
+      { id: 'dep-culture', name: 'Culture', email: 'culture@exemple.be', address: 'Rue Rogier 9', postalCode: '5000', city: 'Namur' },
+    ],
+    discounts: { equipment: 10, total: 5 } });
   const cFestival = await contact('client', 'Festival des Lumières ASBL (démo)', { city: 'Liège', postalCode: '4020', email: 'prod@exemple.be', peppolId: '0208:0000000295', persons: [{ name: 'Sophie Renard', role: 'Directrice de production' }] });
   const cHotel = await contact('client', 'Hôtel Le Château (démo)', { city: 'Spa', postalCode: '4900', email: 'seminaires@exemple.be', persons: [{ name: 'Thomas Leclercq', role: 'Responsable séminaires' }] });
   const cAgence = await contact('client', 'Agence EventPro (démo)', { city: 'Bruxelles', postalCode: '1000', email: 'projets@exemple.be', vatNumber: 'BE0000000394', peppolId: '0208:0000000394', persons: [{ name: 'Nadia Benali', role: 'Chef de projet' }] });
@@ -394,6 +405,21 @@ async function seedAll() {
     noteList: [{ id: uid(), title: 'Accès et parking', text: 'Déchargement par la cour arrière, badge à retirer à l\'accueil.', on: ['devis', 'bon_sortie', 'feuille_route'] }],
   });
   await db.projects.update(pFest, { deposit: { amount: 1500, status: 'demandee' }, custom: { 'cf-repas': true, 'cf-acces': 'Entrée nord, quai 2', 'cf-proba': 'Forte' } });
+  // Services du client : le Marché de Noël est suivi par Julie (Événements), le Salon par Marc
+  for (const p of await db.projects.where({ clientId: cNamur }).toArray()) {
+    const pid = p.contactPerson === 'Julie Martin' ? 'pers-julie' : p.contactPerson === 'Marc Lambert' ? 'pers-marc' : undefined;
+    if (pid) await db.projects.update(p.id, { contactPersonId: pid, departmentId: 'dep-evt' });
+  }
+  // Endroits de la Boverie : chaque scène a son accès et son adresse
+  await db.contacts.update(cBoverie, { spots: [
+    { id: 'spot-gs', name: 'Grande scène', address: 'Quai de la Boverie (entrée nord)', postalCode: '4020', city: 'Liège', info: { access: 'Camions par le quai, portail N2' } },
+    { id: 'spot-ac', name: 'Scène acoustique', address: 'Rue du Parc 2', postalCode: '4020', city: 'Liège', info: { power: 'Coffret 32 A près du kiosque' } },
+    { id: 'spot-loges', name: 'Loges artistes' },
+  ] });
+  for (const sp of await db.subprojects.where({ projectId: pFest }).toArray()) {
+    const spotId = sp.name === 'Grande scène' ? 'spot-gs' : sp.name === 'Scène acoustique' ? 'spot-ac' : undefined;
+    if (spotId) await db.subprojects.update(sp.id, { spotId, venue: `Parc de la Boverie (démo) — ${sp.name}` });
+  }
   // Base des lieux : infos pratiques et commentaires laissés au fil des projets
   const cChateau = await contact('lieu', 'Hôtel Le Château (démo)', { city: 'Spa', postalCode: '4900', address: 'Avenue des Thermes 1', phone: '+32 87 00 00 00' });
   await db.projects.update(pConf, { venueId: cChateau, venue: 'Hôtel Le Château (démo)' });

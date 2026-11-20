@@ -46,7 +46,7 @@ export default function DocumentView() {
     const c = doc.snapshot.client;
     const subject = encodeURIComponent(`${title} — ${doc.snapshot.project.name}`);
     const body = encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint notre ${DOC_LABELS[doc.type].toLowerCase()} ${doc.number} pour « ${doc.snapshot.project.name} ».\n\nCordialement,\n${doc.snapshot.company.name}`);
-    location.href = `mailto:${c?.email || ''}?subject=${subject}&body=${body}`;
+    location.href = `mailto:${doc.snapshot.contactEmail || doc.snapshot.department?.email || c?.email || ''}?subject=${subject}&body=${body}`;
   };
 
   return (

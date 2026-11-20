@@ -876,6 +876,85 @@ await step('Lieux : commentaire ajouté depuis un projet, alerte et feuille de r
   expect(!(await page.locator('.doc').innerText()).includes('plaques de roulage'), 'pas sur le devis');
 });
 
+console.log('\n  — services clients et endroits —');
+await step('Client : recherche d’une personne, services et interlocuteurs', async () => {
+  await resetDemo();
+  await go('contacts');
+  await page.fill('.toolbar input', 'Anne');
+  await page.waitForTimeout(200);
+  const row = await page.locator('table.list tbody tr').first().innerText();
+  expect(row.includes('Ville de Namur') && row.includes('Anne Collin (Culture)'), 'personne trouvée avec son service');
+  await page.locator('table.list tbody tr').first().click();
+  const editor = page.locator('.people-editor');
+  expect((await editor.locator('.dept-box').count()) === 2, 'deux services');
+  await editor.locator('.dept-box', { has: page.locator('input[value="Culture"]') }).locator('button:has-text("+ Personne")').click();
+  await editor.locator('.dept-box', { has: page.locator('input[value="Culture"]') }).locator('.person-row').last().locator('input').first().fill('Sarah Lenoir');
+  await page.click('.modal button[type=submit]');
+  await page.waitForTimeout(300);
+  await openProject('Marché de Noël');
+  const picker = page.locator('select[aria-label="Interlocuteur"]');
+  expect((await picker.locator('option:checked').innerText()).includes('Julie Martin'), 'interlocuteur du projet');
+  expect((await picker.locator('optgroup[label="Service Culture"] option').allInnerTexts()).some((t) => t.includes('Sarah Lenoir')), 'nouvelle personne dans le service');
+});
+
+await step('Projet : choisir une personne d’un autre service, devis à l’adresse du service', async () => {
+  await openProject('Marché de Noël');
+  const picker = page.locator('select[aria-label="Interlocuteur"]');
+  await picker.selectOption({ label: 'Anne Collin (Programmatrice)' });
+  await page.waitForTimeout(400);
+  expect((await page.locator('.card', { has: page.locator('h2:text-is("Client")') }).innerText()).includes('Culture'), 'service affiché');
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Devis")');
+  await page.waitForSelector('.doc');
+  const doc = await page.locator('.doc').innerText();
+  expect(doc.includes('Culture') && doc.includes('Rue Rogier 9') && doc.includes('Anne Collin'), 'service, adresse du service et interlocuteur sur le devis');
+});
+
+await step('Projet : ajout rapide d’un interlocuteur dans un nouveau service', async () => {
+  await openProject('Marché de Noël');
+  await page.locator('.card', { hasText: 'Service / interlocuteur' }).locator('button[title="Nouvel interlocuteur ou nouveau service"]').click();
+  await page.locator('.modal .field', { hasText: 'Service' }).first().locator('select').selectOption('__new');
+  await page.locator('.modal .field', { hasText: 'Nom du nouveau service' }).locator('input').fill('Sports');
+  await page.locator('.modal .field', { hasText: 'Nom de la personne' }).locator('input').fill('Paul Noël');
+  await page.click('.modal button[type=submit]');
+  await page.waitForTimeout(500);
+  const picker = page.locator('select[aria-label="Interlocuteur"]');
+  expect((await picker.locator('option:checked').innerText()).includes('Paul Noël'), 'nouvel interlocuteur choisi');
+  expect((await picker.locator('optgroup[label="Service Sports"]').count()) === 1, 'nouveau service créé');
+});
+
+await step('Lieu : plusieurs endroits avec leur adresse, choisis par projet et par salle', async () => {
+  await go('lieux');
+  await page.locator('tr', { hasText: 'Parc de la Boverie' }).click();
+  await page.waitForSelector('.spots');
+  expect((await page.locator('.spots tbody tr').count()) === 3, 'trois endroits');
+  await page.fill('.spots input[name=spot]', 'Village food-trucks');
+  await page.click('.spots button:has-text("+ Endroit")');
+  await page.waitForTimeout(300);
+  expect((await page.locator('.spots tbody tr').count()) === 4, 'endroit ajouté');
+  await openProject('Festival des Lumières');
+  await page.locator('select[aria-label="Endroit"]').selectOption({ label: 'Grande scène — Quai de la Boverie (entrée nord), 4020, Liège' });
+  await page.waitForTimeout(300);
+  expect((await page.locator('.card', { hasText: 'Lieu de la prestation' }).innerText()).includes('Quai de la Boverie (entrée nord)'), 'adresse de l’endroit sur le projet');
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Feuille de route")');
+  await page.waitForSelector('.doc');
+  const fr = await page.locator('.doc').innerText();
+  expect(fr.includes('Scène acoustique') && fr.includes('Rue du Parc 2'), 'adresse de l’endroit de la salle');
+  expect(fr.includes('Coffret 32 A près du kiosque') && fr.includes('portail N2'), 'infos pratiques des endroits');
+});
+
+await step('Salle : changer d’endroit dans la fenêtre de la salle', async () => {
+  await openProject('Festival des Lumières');
+  await tab('Planning');
+  const room = page.locator('.card', { has: page.locator('h2', { hasText: 'Scène acoustique' }) });
+  await room.locator('button:has-text("Modifier les horaires")').click();
+  await page.locator('select[aria-label="Endroit de la salle"]').selectOption({ label: 'Loges artistes' });
+  await page.click('.modal button[type=submit]');
+  await page.waitForTimeout(300);
+  expect((await room.innerText()).includes('Loges artistes'), 'endroit de la salle mis à jour');
+});
+
 await ctx.close();
 
 await step('Aucune erreur dans la console du navigateur', async () => {

@@ -7,6 +7,7 @@ import { FIRM, PERIOD_LABELS, STATUS_LABELS } from '../../types';
 import { shiftBetween, shiftDate, shiftProject, type Shift } from '../../projectOps';
 import { blockPeriod, deleteSubproject, fmtDate, fmtRange, nowIso, patch, save, sortPeriods, syncPeriods, toLocalInput, uid, usageDays } from '../../utils';
 import type { ProjectData } from './shared';
+import { ownAddress, placeAddress, placeName, spotOf } from '../../places';
 
 /** Onglet Planning : toutes les salles et tous leurs créneaux. */
 export default function PlanningTab({ d, onEditSub }: { d: ProjectData; onEditSub: (sp: Partial<Subproject>) => void }) {
@@ -105,6 +106,7 @@ export function SubprojectModal({ sp, project, onClose }: { sp: Partial<Subproje
   const periods = d.periods || [];
   const setPeriods = (ps: Period[]) => setD({ ...d, periods: ps });
   const others = useLiveQuery(() => db.subprojects.where({ projectId: project.id }).toArray(), [project.id]) || [];
+  const venueC = useLiveQuery(() => (project.venueId ? db.contacts.get(project.venueId) : undefined), [project.venueId]);
   const sources = others.filter((o) => o.id !== d.id && o.periods?.length);
 
   /**
@@ -162,7 +164,19 @@ export function SubprojectModal({ sp, project, onClose }: { sp: Partial<Subproje
         onClose();
       }}>
         <Field label="Nom (salle, zone…) *"><input required autoFocus value={d.name || ''} onChange={(e) => set('name', e.target.value)} placeholder="ex. Salle 1, Plénière, Scène extérieure" /></Field>
-        <Field label="Lieu"><input value={d.venue || ''} onChange={(e) => set('venue', e.target.value)} placeholder={project.venue} /></Field>
+        {venueC?.spots?.length ? (
+          <Field label={`Endroit dans ${venueC.company}`}>
+            <select aria-label="Endroit de la salle" value={d.spotId || ''} onChange={(e) => {
+              const spot = spotOf(venueC, e.target.value);
+              setD({ ...d, spotId: spot?.id, venue: spot ? placeName(venueC, spot) : undefined });
+            }}>
+              <option value="">Comme le projet</option>
+              {venueC.spots.map((x) => <option key={x.id} value={x.id}>{x.name}{ownAddress(x) ? ` — ${placeAddress(venueC, x)}` : ''}</option>)}
+            </select>
+          </Field>
+        ) : (
+          <Field label="Lieu"><input value={d.venue || ''} onChange={(e) => set('venue', e.target.value)} placeholder={project.venue} /></Field>
+        )}
         <Field label="Statut">
           <select value={d.status} onChange={(e) => set('status', e.target.value as ProjectStatus)}>
             {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}

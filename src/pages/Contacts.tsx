@@ -4,11 +4,12 @@ import { useState } from 'react';
 import { Empty, Field, Modal, PageHead, NumInput, useSettings } from '../components/ui';
 import { settingsMoments } from '../invoicing';
 import { db } from '../db';
-import type { Contact, ContactPerson, ContactType } from '../types';
+import type { Contact, ContactPerson, ContactType, Department } from '../types';
+import { deptOf, withPersonIds } from '../places';
 import { CONTACT_TYPES, LANG_LABELS, VAT_REGIME_LABELS, type Lang, type VatRegime } from '../types';
 import { CsvButton, CustomFieldsEditor, exportCsv, TagInput, Tags } from '../components/extra';
 import { suggestRegime } from '../payment';
-import { save } from '../utils';
+import { save, uid } from '../utils';
 
 type Draft = Partial<Contact> & { type: ContactType; company: string };
 
@@ -18,7 +19,7 @@ export function ContactForm({ initial, onDone }: { initial?: Draft; onDone: (c?:
   const set = (k: keyof Contact, v: string) => setC({ ...c, [k]: v });
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onDone(await save(db.contacts, c as Contact));
+    onDone(await save(db.contacts, withPersonIds(c) as Contact));
   };
   return (
     <form className="form" onSubmit={submit}>
@@ -58,22 +59,7 @@ export function ContactForm({ initial, onDone }: { initial?: Draft; onDone: (c?:
           </Field>
         </>
       )}
-      <div className="field full">
-        <span>Interlocuteurs</span>
-        {(c.persons || []).map((x, i) => {
-          const upd = (k: keyof ContactPerson, v: string) => setC({ ...c, persons: (c.persons || []).map((y, j) => (j === i ? { ...y, [k]: v } : y)) });
-          return (
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr auto', gap: 6, marginBottom: 6 }}>
-              <input placeholder="Nom" value={x.name} onChange={(e) => upd('name', e.target.value)} />
-              <input placeholder="Fonction" value={x.role || ''} onChange={(e) => upd('role', e.target.value)} />
-              <input placeholder="Email" value={x.email || ''} onChange={(e) => upd('email', e.target.value)} />
-              <input placeholder="Téléphone" value={x.phone || ''} onChange={(e) => upd('phone', e.target.value)} />
-              <button type="button" className="ghost" onClick={() => setC({ ...c, persons: (c.persons || []).filter((_, j) => j !== i) })} aria-label="Retirer">✕</button>
-            </div>
-          );
-        })}
-        <div><button type="button" className="secondary small" onClick={() => setC({ ...c, persons: [...(c.persons || []), { name: '' }] })}>+ Interlocuteur</button></div>
-      </div>
+      {c.type !== 'lieu' && <PeopleEditor c={c} setC={setC} />}
       <Field label="Langue des documents">
         <select value={c.language || 'fr'} onChange={(e) => setC({ ...c, language: e.target.value === 'fr' ? undefined : e.target.value as Lang })}>
           {Object.entries(LANG_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
@@ -114,7 +100,16 @@ export default function Contacts() {
   const filtered = contacts.filter((c) =>
     (!type || c.type === type) &&
     (!tag || c.tags?.includes(tag)) &&
-    [c.company, c.firstName, c.lastName, c.email, c.city, ...(c.tags || [])].join(' ').toLowerCase().includes(q.toLowerCase()));
+    [c.company, c.firstName, c.lastName, c.email, c.city, ...(c.tags || []), ...(c.persons || []).flatMap((p) => [p.name, p.email, p.phone]), ...(c.departments || []).map((d) => d.name)]
+      .join(' ').toLowerCase().includes(q.toLowerCase()));
+  // personne trouvée par la recherche : on l'indique sous la société
+  const matchOf = (c: Contact) => {
+    if (!q.trim() || c.company.toLowerCase().includes(q.toLowerCase())) return '';
+    const p = (c.persons || []).find((x) => [x.name, x.email, x.phone].join(' ').toLowerCase().includes(q.toLowerCase()));
+    if (p) return `→ ${p.name}${deptOf(c, p.departmentId) ? ` (${deptOf(c, p.departmentId)!.name})` : ''}`;
+    const d = (c.departments || []).find((x) => x.name.toLowerCase().includes(q.toLowerCase()));
+    return d ? `→ service ${d.name}` : '';
+  };
   const csv = () => exportCsv('contacts.csv', ['Société / nom', 'Type', 'Prénom', 'Nom', 'Email', 'Téléphone', 'Adresse', 'CP', 'Ville', 'Pays', 'N° TVA', 'Peppol', 'Étiquettes'],
     filtered.map((c) => [c.company, CONTACT_TYPES[c.type], c.firstName, c.lastName, c.email, c.phone, c.address, c.postalCode, c.city, c.country, c.vatNumber, c.peppolId, (c.tags || []).join(', ')]));
 
@@ -145,9 +140,9 @@ export default function Contacts() {
               <tbody>
                 {filtered.map((c) => (
                   <tr key={c.id} className="click" onClick={() => (c.type === 'lieu' ? nav('/lieux/' + c.id) : setEdit(c))}>
-                    <td><strong>{c.company}</strong> <Tags tags={c.tags} /></td>
+                    <td><strong>{c.company}</strong> <Tags tags={c.tags} />{matchOf(c) && <div className="muted" style={{ fontSize: 12 }}>{matchOf(c)}</div>}</td>
                     <td><span className="badge">{CONTACT_TYPES[c.type]}</span></td>
-                    <td>{[c.firstName, c.lastName].filter(Boolean).join(' ')}{c.persons?.length ? <span className="muted"> +{c.persons.length} interlocuteur(s)</span> : null}</td>
+                    <td>{[c.firstName, c.lastName].filter(Boolean).join(' ')}{c.persons?.length ? <span className="muted"> +{c.persons.length} interlocuteur(s)</span> : null}{c.departments?.length ? <span className="muted"> · {c.departments.length} service(s)</span> : null}</td>
                     <td>{c.email}</td>
                     <td>{c.phone}</td>
                     <td>{c.city}</td>
@@ -159,7 +154,7 @@ export default function Contacts() {
         )}
       </div>
       {edit && (
-        <Modal title={edit.id ? 'Modifier le contact' : 'Nouveau contact'} onClose={() => setEdit(null)}>
+        <Modal title={edit.id ? 'Modifier le contact' : 'Nouveau contact'} onClose={() => setEdit(null)} wide>
           <ContactForm initial={edit} onDone={() => setEdit(null)} />
           {edit.id && (
             <div style={{ marginTop: 12 }}>
@@ -171,5 +166,66 @@ export default function Contacts() {
         </Modal>
       )}
     </>
+  );
+}
+
+/**
+ * Services et interlocuteurs d'une société : chaque service a ses coordonnées (qui remplacent celles
+ * de la société sur les documents) et ses personnes ; une personne peut changer de service.
+ */
+function PeopleEditor({ c, setC }: { c: Draft; setC: (c: Draft) => void }) {
+  const persons = c.persons || [];
+  const depts = c.departments || [];
+  const setPersons = (ps: ContactPerson[]) => setC({ ...c, persons: ps });
+  const updP = (i: number, k: keyof ContactPerson, v: string) => setPersons(persons.map((y, j) => (j === i ? { ...y, [k]: v || undefined } : y)));
+  const updD = (id: string, k: keyof Department, v: string) => setC({ ...c, departments: depts.map((d) => (d.id === id ? { ...d, [k]: v || undefined } : d)) });
+  const row = (x: ContactPerson, i: number) => (
+    <div key={x.id || i} className="person-row" style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1.2fr 1fr auto auto', gap: 6, marginBottom: 6 }}>
+      <input placeholder="Nom" value={x.name} onChange={(e) => updP(i, 'name', e.target.value)} />
+      <input placeholder="Fonction" value={x.role || ''} onChange={(e) => updP(i, 'role', e.target.value)} />
+      <input placeholder="Email" value={x.email || ''} onChange={(e) => updP(i, 'email', e.target.value)} />
+      <input placeholder="Téléphone" value={x.phone || ''} onChange={(e) => updP(i, 'phone', e.target.value)} />
+      {depts.length > 0 ? (
+        <select title="Service" value={x.departmentId || ''} onChange={(e) => updP(i, 'departmentId', e.target.value)} style={{ width: 'auto' }}>
+          <option value="">Sans service</option>
+          {depts.map((d) => <option key={d.id} value={d.id}>{d.name || 'Service'}</option>)}
+        </select>
+      ) : <span />}
+      <button type="button" className="ghost" onClick={() => setPersons(persons.filter((_, j) => j !== i))} aria-label="Retirer l'interlocuteur">✕</button>
+    </div>
+  );
+  const addPerson = (departmentId?: string) => setPersons([...persons, { id: uid(), name: '', departmentId }]);
+  const loose = persons.map((x, i) => [x, i] as const).filter(([x]) => !x.departmentId || !depts.some((d) => d.id === x.departmentId));
+  return (
+    <div className="field full people-editor">
+      <span>Services et interlocuteurs</span>
+      <p className="muted" style={{ margin: '0 0 6px' }}>
+        Plusieurs services d'une même société peuvent te contacter : crée un service (Communication, RH…), puis ses personnes.
+        Sur un projet, tu choisiras directement la personne ou le service.
+      </p>
+      {loose.map(([x, i]) => row(x, i))}
+      {depts.map((d) => (
+        <div key={d.id} className="dept-box" style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 8, margin: '8px 0' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.2fr 1fr auto', gap: 6, marginBottom: 6 }}>
+            <input placeholder="Nom du service" value={d.name} onChange={(e) => updD(d.id, 'name', e.target.value)} style={{ fontWeight: 600 }} />
+            <input placeholder="Email du service (factures…)" value={d.email || ''} onChange={(e) => updD(d.id, 'email', e.target.value)} />
+            <input placeholder="Téléphone" value={d.phone || ''} onChange={(e) => updD(d.id, 'phone', e.target.value)} />
+            <button type="button" className="ghost" aria-label="Supprimer le service" title="Supprimer le service (ses personnes restent, sans service)"
+              onClick={() => setC({ ...c, departments: depts.filter((x) => x.id !== d.id), persons: persons.map((x) => (x.departmentId === d.id ? { ...x, departmentId: undefined } : x)) })}>✕</button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 6, marginBottom: 6 }}>
+            <input placeholder="Adresse du service (si différente de la société)" value={d.address || ''} onChange={(e) => updD(d.id, 'address', e.target.value)} />
+            <input placeholder="Code postal" value={d.postalCode || ''} onChange={(e) => updD(d.id, 'postalCode', e.target.value)} />
+            <input placeholder="Ville" value={d.city || ''} onChange={(e) => updD(d.id, 'city', e.target.value)} />
+          </div>
+          {persons.map((x, i) => [x, i] as const).filter(([x]) => x.departmentId === d.id).map(([x, i]) => row(x, i))}
+          <button type="button" className="secondary small" onClick={() => addPerson(d.id)}>+ Personne dans {d.name || 'ce service'}</button>
+        </div>
+      ))}
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button type="button" className="secondary small" onClick={() => addPerson()}>+ Interlocuteur</button>
+        <button type="button" className="secondary small" onClick={() => setC({ ...c, departments: [...depts, { id: uid(), name: '' }] })}>+ Service</button>
+      </div>
+    </div>
   );
 }

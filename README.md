@@ -107,6 +107,15 @@ et des commentaires datés, ajoutés depuis la fiche du lieu ou depuis un projet
 marqué *important* (alerte sur tous les projets de ce lieu) ou *sur la feuille de route* (imprimé, avec les infos pratiques,
 sur la feuille de route et le bon de sortie). Recherche dans les commentaires, historique des projets du lieu, export CSV.
 
+**Endroits d'un lieu** : un lieu peut regrouper plusieurs endroits (bâtiments, scènes, salles d'un hôtel…), chacun avec
+sa propre adresse et ses infos pratiques. On choisit l'endroit pour tout le projet (adresse, itinéraire et distance suivent)
+ou salle par salle ; la feuille de route indique l'adresse de chaque salle.
+
+**Services et interlocuteurs des clients** : une société peut avoir plusieurs services (Communication, Culture…), chacun avec
+ses coordonnées (adresse de facturation, email) et ses personnes. Sur un projet, un seul menu propose les personnes rangées
+par service, ou un service sans personne précise ; « + » ajoute une personne (et au besoin son service) sans quitter le projet.
+Le devis et la facture reprennent le service, son adresse et l'interlocuteur ; la recherche des contacts trouve aussi les personnes.
+
 **Démo** : Paramètres → « Ouvrir la base de démo » crée une base séparée avec des clients, du matériel, une équipe et 8 projets fictifs (réinitialisable).
 
 **Données** : import CSV (exports Rentman), plusieurs bases, sauvegarde et restauration.

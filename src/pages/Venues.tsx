@@ -1,10 +1,10 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Empty, Field, Modal, PageHead, StatusBadge } from '../components/ui';
 import { CsvButton, exportCsv } from '../components/extra';
 import { db } from '../db';
-import type { Contact, Project, VenueComment, VenueInfo } from '../types';
+import type { Contact, Project, VenueComment, VenueInfo, VenueSpot } from '../types';
 import { VENUE_INFO_LABELS } from '../types';
 import { fmtDate, fmtRange, nowIso, patch, uid } from '../utils';
 import { ContactForm } from './Contacts';
@@ -35,7 +35,8 @@ export default function Venues() {
   const projects = useLiveQuery(() => db.projects.toArray(), []) || [];
   const [q, setQ] = useState('');
   const [creating, setCreating] = useState(false);
-  const list = venues.filter((v) => [v.company, v.city, v.address, ...(v.comments || []).map((c) => c.text), ...Object.values(v.venueInfo || {})]
+  const list = venues.filter((v) => [v.company, v.city, v.address, ...(v.comments || []).map((c) => c.text), ...Object.values(v.venueInfo || {}),
+    ...(v.spots || []).flatMap((x) => [x.name, x.address, x.city])]
     .join(' ').toLowerCase().includes(q.toLowerCase()));
   const csv = () => exportCsv('lieux.csv', ['Lieu', 'Adresse', 'Code postal', 'Ville', 'Téléphone', ...Object.values(VENUE_INFO_LABELS), 'Projets', 'Commentaires'],
     list.map((v) => [v.company, v.address, v.postalCode, v.city, v.phone, ...(Object.keys(VENUE_INFO_LABELS) as (keyof VenueInfo)[]).map((k) => v.venueInfo?.[k]),
@@ -65,7 +66,7 @@ export default function Venues() {
                   return (
                     <tr key={v.id} className="click" onClick={() => nav('/lieux/' + v.id)}>
                       <td><strong>{v.company}</strong>{alerts > 0 && <span className="badge st-annule" style={{ marginLeft: 6 }}>⚠ {alerts}</span>}</td>
-                      <td>{v.city}</td>
+                      <td>{v.city}{v.spots?.length ? <div className="muted" style={{ fontSize: 12 }}>{v.spots.length} endroit(s) : {v.spots.map((x) => x.name).join(', ')}</div> : null}</td>
                       <td className="n">{ps.length}</td>
                       <td>{ps[0] ? `${ps[0].name} · ${fmtDate(ps[0].start)}` : <span className="muted">—</span>}</td>
                       <td className="muted">{last ? `${fmtDate(last.at)} — ${last.text.length > 70 ? last.text.slice(0, 70) + '…' : last.text}` : '—'}
@@ -121,6 +122,7 @@ export function VenueDetail() {
           <VenueComments venue={venue} projects={projects} />
         </div>
       </div>
+      <SpotsEditor venue={venue} />
       <div className="card">
         <h2>Projets dans ce lieu ({ps.length})</h2>
         {ps.length === 0 ? <Empty>Aucun projet pour l'instant.</Empty> : (
@@ -206,6 +208,83 @@ export function VenueComments({ venue, projects, projectId }: { venue: Contact; 
           <div style={{ whiteSpace: 'pre-wrap' }}>{c.text}</div>
         </div>
       ))}
+    </div>
+  );
+}
+
+/** Champ enregistré à la sortie. */
+function Lazy({ value, onSave, placeholder, area, style }: { value?: string; onSave: (v: string) => void; placeholder?: string; area?: boolean; style?: React.CSSProperties }) {
+  const [v, setV] = useState(value || '');
+  useEffect(() => setV(value || ''), [value]);
+  const props = { value: v, placeholder, style, onChange: (e: { target: { value: string } }) => setV(e.target.value), onBlur: () => v !== (value || '') && onSave(v.trim()) };
+  return area ? <textarea {...props} style={{ minHeight: 44, ...style }} /> : <input {...props} />;
+}
+
+/**
+ * Endroits d'un lieu : bâtiments, scènes, salles, entrées… Chacun peut avoir sa propre adresse
+ * (sinon celle du lieu) et ses infos pratiques. On les choisit ensuite sur le projet et sur chaque salle.
+ */
+function SpotsEditor({ venue }: { venue: Contact }) {
+  const spots = venue.spots || [];
+  const [open, setOpen] = useState<string | null>(null);
+  const set = async (fn: (xs: VenueSpot[]) => VenueSpot[]) => {
+    const fresh = await db.contacts.get(venue.id);
+    const next = fn(fresh?.spots || []);
+    await patch(db.contacts, venue.id, { spots: next.length ? next : undefined });
+  };
+  const upd = (id: string, c: Partial<VenueSpot>) => set((xs) => xs.map((x) => (x.id === id ? { ...x, ...c } : x)));
+  const keys = Object.keys(VENUE_INFO_LABELS) as (keyof VenueInfo)[];
+  return (
+    <div className="card spots">
+      <h2>Endroits ({spots.length})</h2>
+      <p className="muted" style={{ marginTop: 0 }}>
+        Plusieurs endroits dans un même lieu (bâtiments d'un campus, scènes d'un festival, salles d'un hôtel…), chacun avec son adresse
+        s'il en a une différente. Sur un projet, tu choisis l'endroit pour tout le projet ou salle par salle.
+      </p>
+      {spots.length > 0 && (
+        <div className="table-wrap">
+          <table className="list">
+            <thead><tr><th>Endroit</th><th>Adresse (vide = celle du lieu)</th><th>Code postal</th><th>Ville</th><th /></tr></thead>
+            <tbody>
+              {spots.map((sp) => (
+                <Fragment key={sp.id}>
+                  <tr>
+                    <td><Lazy value={sp.name} onSave={(name) => name && upd(sp.id, { name })} placeholder="Nom" /></td>
+                    <td><Lazy value={sp.address} onSave={(address) => upd(sp.id, { address: address || undefined })} placeholder={venue.address || 'Adresse'} /></td>
+                    <td><Lazy value={sp.postalCode} onSave={(postalCode) => upd(sp.id, { postalCode: postalCode || undefined })} placeholder={venue.postalCode} style={{ width: 90 }} /></td>
+                    <td><Lazy value={sp.city} onSave={(city) => upd(sp.id, { city: city || undefined })} placeholder={venue.city} /></td>
+                    <td className="nowrap">
+                      <button className="ghost small" onClick={() => setOpen(open === sp.id ? null : sp.id)}>Infos pratiques{sp.info && Object.keys(sp.info).length ? ' ●' : ''}</button>
+                      <button className="ghost small" aria-label="Supprimer l'endroit" onClick={() => confirm(`Supprimer l'endroit « ${sp.name} » ?`) && set((xs) => xs.filter((x) => x.id !== sp.id))}>✕</button>
+                    </td>
+                  </tr>
+                  {open === sp.id && (
+                    <tr><td colSpan={5}>
+                      <div className="form">
+                        {keys.map((k) => (
+                          <Field key={k} label={`${VENUE_INFO_LABELS[k]} — ${sp.name}`}>
+                            <Lazy area value={sp.info?.[k]} onSave={(v) => upd(sp.id, { info: { ...sp.info, [k]: v || undefined } })} />
+                          </Field>
+                        ))}
+                      </div>
+                    </td></tr>
+                  )}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <form style={{ display: 'flex', gap: 6, marginTop: 8 }} onSubmit={async (e) => {
+        e.preventDefault();
+        const input = e.currentTarget.elements.namedItem('spot') as HTMLInputElement;
+        if (!input.value.trim()) return;
+        await set((xs) => [...xs, { id: uid(), name: input.value.trim() }]);
+        input.value = '';
+      }}>
+        <input name="spot" placeholder="Nouvel endroit (ex. Bâtiment B, Scène acoustique, Salle Mosane)" />
+        <button type="submit" className="secondary small" style={{ whiteSpace: 'nowrap' }}>+ Endroit</button>
+      </form>
     </div>
   );
 }
