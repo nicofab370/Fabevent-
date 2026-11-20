@@ -2,7 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Link, useNavigate } from 'react-router-dom';
 import { Empty, PageHead, StatusBadge } from '../components/ui';
 import { db } from '../db';
-import { DOC_LABELS, DOC_STATUS_LABELS } from '../types';
+import { DOC_LABELS, DOC_STATUS_LABELS, INVOICE_TYPES } from '../types';
 import { useAvailability } from '../data';
 import { fmtDate, fmtRange, inspectionsDue, money, toLocalInput } from '../utils';
 
@@ -90,7 +90,7 @@ export default function Dashboard() {
               <tbody>
                 {docs.map((d) => (
                   <tr key={d.id} className="click" onClick={() => nav('/documents/' + d.id)}>
-                    <td>{DOC_LABELS[d.type]} <strong>{d.number}</strong> v{d.version}<div className="muted">{pMap.get(d.projectId)?.name}</div></td>
+                    <td>{DOC_LABELS[d.type]} <strong>{d.number}</strong>{INVOICE_TYPES.includes(d.type) ? '' : ` v${d.version}`}<div className="muted">{pMap.get(d.projectId)?.name}</div></td>
                     <td className="n">{d.snapshot.hidePrices ? '' : money(d.snapshot.totalTTC)}</td>
                     <td><span className="badge">{DOC_STATUS_LABELS[d.status]}</span><div className="muted" style={{ fontSize: 11 }}>{fmtDate(d.createdAt, false)}</div></td>
                   </tr>

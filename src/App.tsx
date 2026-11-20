@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { currentWorkspace } from './db';
+import { DEMO_WORKSPACE } from './demo';
 import Accounting from './pages/Accounting';
 import Calendar from './pages/Calendar';
 import Contacts from './pages/Contacts';
@@ -53,6 +54,7 @@ export default function App() {
       <aside className={'sidebar' + (menu ? ' open' : '')}>
         <div className="brand">Fab<span>Event</span></div>
         <div className="ws">Base : {currentWorkspace()}</div>
+        {currentWorkspace() === DEMO_WORKSPACE && <NavLink to="/parametres" className="demo-badge">Données fictives de démo</NavLink>}
         <nav>
           {NAV.map(([to, label, icon]) => (
             <NavLink key={to} to={to} end={to === '/'}>

@@ -44,6 +44,8 @@ npm run build     # version de production dans dist/ (hébergeable sur n'importe
 - Toutes les factures d'une période en un seul PDF, journal des ventes en CSV.
 - Chiffre d'affaires par mois, meilleurs clients, matériel le plus rentable et taux d'utilisation.
 
+**Démo** : Paramètres → « Ouvrir la base de démo » crée une base séparée avec des clients, du matériel, une équipe et 8 projets fictifs (réinitialisable).
+
 **Données** : import CSV (exports Rentman), plusieurs bases, sauvegarde et restauration.
 
 ## Feuille de route

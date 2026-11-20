@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Field, PageHead, useSettings } from '../components/ui';
 import { currentWorkspace, db, listWorkspaces, switchWorkspace, TABLES } from '../db';
+import { DEMO_WORKSPACE, seedDemo } from '../demo';
 import type { Settings } from '../types';
 import { download } from '../utils';
 
@@ -122,6 +123,27 @@ export default function SettingsPage() {
             Restaurer une sauvegarde
             <input type="file" accept="application/json,.json" hidden onChange={(e) => e.target.files?.[0] && restore(e.target.files[0])} />
           </label>
+        </div>
+      </div>
+
+      <div className="card">
+        <h2>Base de démonstration</h2>
+        <p className="muted">
+          Une base séparée remplie de clients, de matériel, d'une équipe et de projets fictifs (dates calculées à partir d'aujourd'hui)
+          pour tester toutes les fonctions sans toucher à tes vraies données.
+        </p>
+        <div className="toolbar">
+          {currentWorkspace() === DEMO_WORKSPACE ? (
+            <>
+              <button onClick={async () => {
+                if (!confirm('Effacer la base de démo et recréer les données fictives ?')) return;
+                await seedDemo(); location.hash = '#/'; location.reload();
+              }}>Réinitialiser les données de démo</button>
+              <button className="secondary" onClick={() => switchWorkspace('principal')}>Revenir à ma base principale</button>
+            </>
+          ) : (
+            <button onClick={() => switchWorkspace(DEMO_WORKSPACE)}>Ouvrir la base de démo</button>
+          )}
         </div>
       </div>
 
