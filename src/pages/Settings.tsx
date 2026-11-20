@@ -5,6 +5,8 @@ import { DEMO_WORKSPACE, seedDemo } from '../demo';
 import type { InvoiceMoment, Settings } from '../types';
 import { MOMENT_TRIGGERS, VAT_REGIME_LABELS } from '../types';
 import { SyncPanel } from '../components/SyncPanel';
+import { CodesPanel } from '../components/CodesPanel';
+import { cleanLetter, depotLetter } from '../codegen';
 import { settingsMoments } from '../invoicing';
 import { DEFAULT_VAT_MENTIONS } from '../payment';
 import { download, uid } from '../utils';
@@ -107,6 +109,7 @@ export default function SettingsPage() {
           return (
             <div key={dp.id} className="depot-row">
               <input value={dp.name} onChange={(e) => upd({ name: e.target.value })} placeholder="Nom" />
+              <input value={dp.letter || ''} maxLength={3} onChange={(e) => upd({ letter: cleanLetter(e.target.value) || undefined })} placeholder="Lettre" title="Lettre des codes du matériel de ce dépôt (F-S-0010)" aria-label={`Lettre du dépôt ${dp.name}`} style={{ width: 70 }} />
               <input value={dp.street || ''} onChange={(e) => upd({ street: e.target.value })} placeholder="Rue et numéro" />
               <input value={dp.postalCode || ''} onChange={(e) => upd({ postalCode: e.target.value })} placeholder="CP" />
               <input value={dp.city || ''} onChange={(e) => upd({ city: e.target.value })} placeholder="Ville" />
@@ -117,9 +120,27 @@ export default function SettingsPage() {
           );
         })}
         <button type="button" className="secondary small" onClick={() => {
-          const list = s.depots?.length ? s.depots : [{ id: uid(), name: 'Dépôt principal', street: s.company.street, postalCode: s.company.postalCode, city: s.company.city, country: s.company.country }];
-          setS({ ...s, depots: [...list, { id: uid(), name: `Dépôt ${list.length + 1}` }] });
+          const list = s.depots?.length ? s.depots : [{ id: uid(), name: 'Dépôt principal', letter: s.codeLetter || 'F', street: s.company.street, postalCode: s.company.postalCode, city: s.company.city, country: s.company.country }];
+          const taken = list.map((d) => d.letter);
+          const name = prompt('Nom du nouveau dépôt :', `Dépôt ${list.length + 1}`)?.trim();
+          if (!name) return;
+          let letter = '';
+          while (!letter) {
+            const a = prompt(`Lettre de « ${name} » dans les codes du matériel (ex. F-S-0010 pour le dépôt F) :`, cleanLetter(name).slice(0, 1));
+            if (a === null) return;
+            letter = cleanLetter(a);
+            if (taken.includes(letter)) { alert(`La lettre ${letter} est déjà utilisée par un autre dépôt.`); letter = ''; }
+          }
+          setS({ ...s, depots: [...list, { id: uid(), name, letter }] });
         }}>+ Dépôt</button>
+        {!(s.depots?.length) && (
+          <label className="check-row" style={{ marginTop: 8 }}>Lettre des codes du matériel (F-S-0010)
+            <input value={s.codeLetter ?? 'F'} maxLength={3} onChange={(e) => setS({ ...s, codeLetter: cleanLetter(e.target.value) || undefined })} style={{ width: 70 }} aria-label="Lettre du dépôt" />
+          </label>
+        )}
+
+        <h2 style={{ marginTop: 20 }}>Codes du matériel</h2>
+        <CodesPanel letterOf={(id) => depotLetter(s, id)} />
 
         <h2 style={{ marginTop: 20 }}>Champs personnalisés</h2>
         <p className="muted" style={{ marginTop: 0 }}>Informations en plus sur les projets, contacts ou articles (ex. « Repas fourni », « Accès PMR »). Utilisables dans les documents : {'{{champ.nom_du_champ}}'}.</p>

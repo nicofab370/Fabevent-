@@ -139,6 +139,11 @@ unités à réparer / en réparation, bilan du retour et déclaration des pertes
 importées d'un bon PDF, Word, HTML (export Rentman) ou de texte collé. **Inventaire** au scan avec kits, unités non vues,
 mouvements de stock datés, fiche article (« où est cet article ? »).
 
+**Codes du matériel** : chaque nouvel article reçoit un code `F-S-0010` (lettre du dépôt de base, lettre de la catégorie —
+S son, V vidéo, L lumière, IT informatique, R rigging, K kit… —, numéro unique jamais réutilisé). Chaque unité à numéro de série
+reçoit `F-S-0010-03` (au-delà de 99 unités : 0A, 0B… FF). La lettre est demandée à la création d'un dépôt ; les lettres des
+catégories et la génération des codes manquants sont dans Paramètres.
+
 **Synchronisation automatique** entre appareils via `server/sync.php` sur l'hébergement (connexion des pages internes
 FABRI.live), hors ligne d'abord, numéros de facture sans doublon : voir [docs/deploiement-fabri.md](docs/deploiement-fabri.md).
 

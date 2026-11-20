@@ -1,5 +1,6 @@
 import Papa from 'papaparse';
 import { useState } from 'react';
+import { suggestCategoryLetter } from '../codegen';
 import { Field, PageHead } from '../components/ui';
 import { db, nextNumber } from '../db';
 import type { ContactType, ProjectStatus } from '../types';
@@ -121,7 +122,7 @@ export default function ImportPage() {
           categoryId = catByName.get(catName.toLowerCase());
           if (!categoryId) {
             categoryId = uid();
-            await db.categories.put({ id: categoryId, name: catName, createdAt: t, updatedAt: t });
+            await db.categories.put({ id: categoryId, name: catName, letter: suggestCategoryLetter(catName, (await db.categories.toArray()).map((c) => c.letter || '')), createdAt: t, updatedAt: t });
             catByName.set(catName.toLowerCase(), categoryId);
           }
         }

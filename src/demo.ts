@@ -9,6 +9,7 @@ import type { ContactType, Equipment, PeriodKind, ProjectStatus } from './types'
 import { nowIso, syncPeriods, toLocalInput, uid } from './utils';
 import { tripKm, vehiclePrice } from './geo';
 import { copyProject } from './projectOps';
+import { articleCode, unitSuffix } from './codegen';
 
 export const DEMO_WORKSPACE = 'demo';
 
@@ -74,8 +75,8 @@ async function seedAll() {
     // les prestations : 30 % à la commande, le solde après ; les autres types : une facture après
     projectTypes: DEFAULT_PROJECT_TYPES.map((t) => (t.name === 'Prestation' ? { ...t, moments: ['m_acompte', 'm_solde'] } : t)),
     depots: [
-      { id: DEPOT_LIEGE, name: 'Dépôt Liège', street: 'Rue de l\'Exemple 12', postalCode: '4000', city: 'Liège', country: 'BE' },
-      { id: DEPOT_NAMUR, name: 'Dépôt Namur', street: 'Rue du Dépôt 5', postalCode: '5000', city: 'Namur', country: 'BE' },
+      { id: DEPOT_LIEGE, letter: 'F', name: 'Dépôt Liège', street: 'Rue de l\'Exemple 12', postalCode: '4000', city: 'Liège', country: 'BE' },
+      { id: DEPOT_NAMUR, letter: 'N', name: 'Dépôt Namur', street: 'Rue du Dépôt 5', postalCode: '5000', city: 'Namur', country: 'BE' },
     ],
     footer: 'Données fictives — base de démonstration FabEvent.',
   });
@@ -112,14 +113,20 @@ async function seedAll() {
 
   /* ---------- Catégories et matériel ---------- */
   const cats: Record<string, string> = {};
+  const LETTERS: Record<string, string> = { Son: 'S', Lumière: 'L', Vidéo: 'V', Structure: 'R', Câblage: 'C', Énergie: 'E', Consommables: 'CO' };
   for (const name of ['Son', 'Lumière', 'Vidéo', 'Structure', 'Câblage', 'Énergie', 'Consommables']) {
-    const c = { ...base(), name };
+    const c = { ...base(), name, letter: LETTERS[name] };
     await db.categories.put(c);
     cats[name] = c.id;
   }
   const eq: Record<string, string> = {};
+  const eqCode: Record<string, string> = {};
+  let num = 1;
+  // codes F-S-0001… (dépôt F = Liège) ; l'ancienne étiquette DEMO-… reste lisible au scan
   const item = async (key: string, cat: string, name: string, quantity: number, dailyPrice: number, extra: Partial<Equipment> = {}) => {
-    const e: Equipment = { ...base(), name, categoryId: cats[cat], quantity, dailyPrice, isKit: false, kitItems: [], code: key.toUpperCase(), barcode: 'DEMO-' + key.toUpperCase(), ...extra };
+    const code = articleCode('F', extra.isKit ? 'K' : LETTERS[cat], num++);
+    const e: Equipment = { ...base(), name, categoryId: cats[cat], quantity, dailyPrice, isKit: false, kitItems: [], code, barcode: 'DEMO-' + key.toUpperCase(), ...extra };
+    eqCode[key] = e.code || code;
     await db.equipment.put(e);
     eq[key] = e.id;
     return e.id;
@@ -179,7 +186,7 @@ async function seedAll() {
   for (const [key, n, prefix] of serials) {
     for (let i = 1; i <= n; i++) {
       const serial = `${prefix}-${String(1000 + i)}`;
-      await db.units.put({ ...base(), equipmentId: eq[key], serial, barcode: 'SN-' + serial, status: 'ok', depotId: key === 'qu16' && i === 2 ? DEPOT_NAMUR : DEPOT_LIEGE, lastInspection: dayOnly(-300 - i * 10) });
+      await db.units.put({ ...base(), equipmentId: eq[key], serial, barcode: `${eqCode[key]}-${unitSuffix(i)}`, extraCodes: ['SN-' + serial], status: 'ok', depotId: key === 'qu16' && i === 2 ? DEPOT_NAMUR : DEPOT_LIEGE, lastInspection: dayOnly(-300 - i * 10) });
     }
   }
   // Une lyre en réparation, un contrôle bientôt dû

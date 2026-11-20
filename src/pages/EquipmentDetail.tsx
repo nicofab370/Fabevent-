@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Empty, Field, Modal, PageHead, StatusBadge } from '../components/ui';
 import { useAvailability } from '../data';
+import { nextUnitCode } from '../codegen';
 import { db } from '../db';
 import type { SerialUnit } from '../types';
 import { availableQty, fmtDate, fmtRange, inspectionsDue, money, save, toLocalInput } from '../utils';
@@ -102,7 +103,7 @@ export default function EquipmentDetail() {
         <div className="card">
           <div className="page-head" style={{ marginBottom: 8 }}>
             <h2 style={{ margin: 0 }}>Unités ({units.length})</h2>
-            <button className="small" onClick={() => setUnitEdit({ equipmentId: eq.id, serial: '', status: 'ok' })}>+ Unité</button>
+            <button className="small" onClick={() => setUnitEdit({ equipmentId: eq.id, serial: '', barcode: nextUnitCode(eq, av.units.filter((u) => u.equipmentId === eq.id)), status: 'ok' })}>+ Unité</button>
           </div>
           {units.length === 0 ? <Empty>Ajoute chaque unité avec son numéro de série et son code-barres.</Empty> : (
             <table className="list">
@@ -192,9 +193,15 @@ export default function EquipmentDetail() {
       {inspect && <InspectionModal equipmentId={eq.id} unitId={inspect.unitId} onClose={() => setInspect(null)} />}
       {unitEdit && (
         <Modal title={unitEdit.id ? 'Modifier l\'unité' : 'Nouvelle unité'} onClose={() => setUnitEdit(null)}>
-          <form className="form" onSubmit={async (e) => { e.preventDefault(); await save(db.units, unitEdit as SerialUnit); setUnitEdit(null); }}>
-            <Field label="N° de série *"><input required autoFocus value={unitEdit.serial || ''} onChange={(e) => setUnitEdit({ ...unitEdit, serial: e.target.value })} /></Field>
-            <Field label="Code-barres / QR"><input value={unitEdit.barcode || ''} onChange={(e) => setUnitEdit({ ...unitEdit, barcode: e.target.value })} /></Field>
+          <form className="form" onSubmit={async (e) => {
+            e.preventDefault();
+            // sans n° du fabricant, l'unité est désignée par son code (F-S-0010-03)
+            const code = unitEdit.barcode?.trim() || nextUnitCode(eq, av.units.filter((u) => u.equipmentId === eq.id));
+            await save(db.units, { ...unitEdit, barcode: code, serial: unitEdit.serial?.trim() || code } as SerialUnit);
+            setUnitEdit(null);
+          }}>
+            <Field label="Code de l'unité (étiquette)"><input value={unitEdit.barcode || ''} onChange={(e) => setUnitEdit({ ...unitEdit, barcode: e.target.value })} aria-label="Code de l'unité" /></Field>
+            <Field label="N° de série du fabricant"><input autoFocus value={unitEdit.serial || ''} onChange={(e) => setUnitEdit({ ...unitEdit, serial: e.target.value })} placeholder="facultatif" /></Field>
             <Field label="État">
               <select value={unitEdit.status} onChange={(e) => setUnitEdit({ ...unitEdit, status: e.target.value as SerialUnit['status'] })}>
                 {Object.entries(UNIT_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}

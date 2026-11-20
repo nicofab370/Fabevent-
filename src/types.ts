@@ -144,6 +144,8 @@ export interface ContactPerson {
 
 export interface Category extends Base {
   name: string;
+  /** lettre(s) dans les codes du matériel : S son, V vidéo, L lumière, IT informatique, R rigging… */
+  letter?: string;
 }
 
 export interface KitItem {
@@ -163,6 +165,8 @@ export type EquipmentKind = 'location' | 'vente';
 export interface Depot {
   id: ID;
   name: string;
+  /** lettre des codes du matériel basé dans ce dépôt (F-S-0010) */
+  letter?: string;
   street?: string;
   postalCode?: string;
   city?: string;
@@ -215,6 +219,8 @@ export interface Equipment extends Base {
   isKit: boolean;
   kitItems: KitItem[];
   barcode?: string;
+  /** dépôt de base (première lettre du code) */
+  homeDepotId?: ID;
   /** codes en plus (code-barres du fabricant, ancienne étiquette…) qui désignent aussi l'article */
   extraCodes?: string[];
   /** mouvements de stock (ajout, inventaire, perte…), le plus récent en dernier */
@@ -798,6 +804,8 @@ export interface Settings {
   appUrl: string;
   counters: Record<string, number>;
   projectTypes?: { name: string; color: string; moments?: ID[] }[];
+  /** lettre des codes du matériel quand aucun dépôt n'est déclaré (F par défaut) */
+  codeLetter?: string;
   /** moments de facturation (au plus 3 par projet) */
   invoiceMoments?: InvoiceMoment[];
   /** assurance matériel par défaut (% du prix de location, 0 = aucune) */
