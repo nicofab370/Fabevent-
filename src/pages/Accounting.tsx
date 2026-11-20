@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Empty, PageHead } from '../components/ui';
 import { OverdueInvoices } from './Overdue';
+import { ToInvoice } from './ToInvoice';
 import { db } from '../db';
 import type { Doc } from '../types';
 import { DOC_CSS, DocRender } from '../components/DocRender';
@@ -73,6 +74,7 @@ export default function Accounting() {
         Pour ton comptable (Billy.tech) : « Toutes les factures en PDF » regroupe factures, acomptes et avoirs de la période
         dans un seul PDF (une pièce par page). Le journal CSV sert de récapitulatif. Pour l'envoi Peppol, ouvre la facture → « Peppol (XML) ».
       </div>
+      <ToInvoice />
       <OverdueInvoices />
       <div className="stats">
         <div className="stat"><b>{list.length}</b><span>pièces (factures, acomptes, avoirs)</span></div>

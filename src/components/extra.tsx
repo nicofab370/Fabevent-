@@ -39,6 +39,11 @@ export function CustomFieldsEditor({ entity, value = {}, onChange }: { entity: C
             <label className="check-row"><input type="checkbox" checked={!!value[f.id]} onChange={(e) => set(f.id, e.target.checked)} /> Oui</label>
           ) : f.type === 'nombre' ? (
             <input type="number" step="any" value={value[f.id] as number ?? ''} onChange={(e) => set(f.id, e.target.value === '' ? undefined : parseFloat(e.target.value))} />
+          ) : f.type === 'liste' ? (
+            <select value={(value[f.id] as string) || ''} onChange={(e) => set(f.id, e.target.value || undefined)}>
+              <option value="">—</option>
+              {(f.choices || []).map((c) => <option key={c}>{c}</option>)}
+            </select>
           ) : f.type === 'date' ? (
             <input type="date" value={(value[f.id] as string) || ''} onChange={(e) => set(f.id, e.target.value || undefined)} />
           ) : (

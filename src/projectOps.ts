@@ -90,7 +90,7 @@ export async function copyProject(projectId: string, o: CopyOptions = {}): Promi
   ]);
   const np = await save(db.projects, {
     ...src, id: undefined, createdAt: undefined, number: await nextNumber('P'), name: o.name ?? src.name + ' (copie)',
-    status: o.status ?? 'demande', isTemplate: o.isTemplate || undefined, start: shiftDate(src.start, sh)!, end: shiftDate(src.end, sh)!,
+    status: o.status ?? 'brouillon', isTemplate: o.isTemplate || undefined, start: shiftDate(src.start, sh)!, end: shiftDate(src.end, sh)!,
     tasks: src.tasks?.map((t) => ({ ...t, id: uid(), done: false, due: shiftDate(t.due, sh) })),
   });
   for (const sp of subs) {

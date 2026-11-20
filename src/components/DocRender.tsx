@@ -96,13 +96,29 @@ export function buildDocHtml(doc: Doc): string {
       : isPacking ? r(<div className="sign"><div>{tr(doc, 'preparedBy')}</div><div>{tr(doc, 'checkedBy')}</div></div>) : '',
     'bloc.paiement': paymentBlock(doc),
     'bloc.mention_tva': s.vatMention ? `<p class="mention">${esc(s.vatMention)}</p>` : '',
+    'bloc.notes': s.notes?.length ? r(
+      <section className="notes">
+        {s.notes.map((n, i) => <div key={i}><h3>{n.title || tr(doc, 'notes')}</h3><p style={{ whiteSpace: 'pre-wrap', marginTop: 0 }}>{n.text}</p></div>)}
+      </section>,
+    ) : '',
+    'bloc.caution': s.deposit?.amount ? r(
+      <p className="deposit"><strong>{tr(doc, 'securityDeposit')} : {money(s.deposit.amount)}</strong>
+        {s.deposit.status === 'payee' ? ` — ${tr(doc, 'depositPaid')}` : s.deposit.status === 'remboursee' ? ` — ${tr(doc, 'depositRefunded')}` : ''}</p>,
+    ) : '',
+    'bloc.conditions': s.terms ? r(
+      <section className="terms"><h2>{tr(doc, 'terms')}</h2><div style={{ whiteSpace: 'pre-wrap', fontSize: '0.85em' }}>{s.terms}</div></section>,
+    ) : '',
   };
+  // gabarits personnalisés plus anciens : on place les nouveaux blocs à un endroit raisonnable
+  if (!h.layout.includes('bloc.notes')) blocks['bloc.salles'] = blocks['bloc.notes'] + blocks['bloc.salles'];
+  if (!h.layout.includes('bloc.caution')) blocks['bloc.totaux'] += blocks['bloc.caution'];
   // la mention de TVA suit les totaux, sauf si le gabarit la place lui-même
   if (!h.layout.includes('bloc.mention_tva')) blocks['bloc.totaux'] += blocks['bloc.mention_tva'];
   blocks['bloc.entete'] = fillTemplate(h.header, doc, blocks);
   blocks['bloc.pied'] = isRoadmap || !s.footer && h.footer === DEFAULT_HTML.footer ? '' : fillTemplate(h.footer, doc, blocks);
   const css = h.css.trim() ? `<style>${h.css.replace(/<\/style/gi, '')}</style>` : '';
-  return stripScripts(css + fillTemplate(h.layout, doc, blocks));
+  const tail = h.layout.includes('bloc.conditions') ? '' : blocks['bloc.conditions'];
+  return stripScripts(css + fillTemplate(h.layout, doc, blocks) + tail);
 }
 
 /** Bloc des salles : horaires, matériel, personnel, transport, sous-totaux. */
@@ -161,7 +177,9 @@ function Rooms({ doc, st }: { doc: Doc; st: DocStyle }) {
                         {isPacking && <td><span className="check" /></td>}
                         {isPacking && <td><span className="check" /></td>}
                         <td className="n">{l.qty}</td>
-                        <td>{l.name}{st.showCode && l.code && <span className="muted"> ({l.code})</span>}{l.optional && ` — ${tr(doc, 'option')}`}</td>
+                        <td>{l.name}{st.showCode && l.code && <span className="muted"> ({l.code})</span>}{l.optional && ` — ${tr(doc, 'option')}`}
+                          {l.periods && <div className="muted" style={{ fontSize: '0.85em' }}>{l.periods}</div>}
+                          {l.remark && <div className="muted" style={{ fontSize: '0.85em' }}>{l.remark}</div>}</td>
                         {showPrices && <>
                           <td className="n">{money(l.unitPrice)}</td>
                           {st.showFactor && <td className="n">{l.unit === 'pièce' ? tr(doc, 'sale') : `${l.factor} (${l.days} ${tr(doc, 'days')})`}</td>}

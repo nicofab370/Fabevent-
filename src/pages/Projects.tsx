@@ -8,7 +8,7 @@ import type { Project, ProjectStatus } from '../types';
 import { STATUS_LABELS } from '../types';
 import { fmtRange, save, toLocalInput } from '../utils';
 import { ContactForm } from './Contacts';
-import { CsvButton, exportCsv, Tags } from '../components/extra';
+import { CsvButton, customText, exportCsv, Tags } from '../components/extra';
 
 type Draft = Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'number'> & Partial<Project>;
 
@@ -17,7 +17,7 @@ export function ProjectForm({ initial, onDone }: { initial?: Draft; onDone: (p?:
   today.setHours(8, 0, 0, 0);
   const end = new Date(today);
   end.setHours(23, 0);
-  const [p, setP] = useState<Draft>(initial || { name: '', status: 'demande', start: toLocalInput(today), end: toLocalInput(end), discount: 0 });
+  const [p, setP] = useState<Draft>(initial || { name: '', status: 'brouillon', start: toLocalInput(today), end: toLocalInput(end), discount: 0 });
   const [newClient, setNewClient] = useState(false);
   const settings = useSettings();
   const types = settings.projectTypes?.length ? settings.projectTypes : DEFAULT_PROJECT_TYPES;
@@ -104,11 +104,14 @@ export default function Projects() {
   const cMap = new Map(contacts.map((c) => [c.id, c.company]));
   const templates = projects.filter((p) => p.isTemplate);
   const [tag, setTag] = useState('');
+  const listFields = (useSettings().customFields || []).filter((f) => f.entity === 'projet' && f.inList);
+  const [fieldFilter, setFieldFilter] = useState<Record<string, string>>({});
   const allTags = Array.from(new Set(projects.flatMap((p) => p.tags || []))).sort();
   const filtered = projects.filter((p) =>
     !!p.isTemplate === showTemplates &&
     (!status || p.status === status) &&
     (!tag || p.tags?.includes(tag)) &&
+    listFields.every((f) => !fieldFilter[f.id] || customText(f, p.custom?.[f.id]) === fieldFilter[f.id]) &&
     [p.number, p.name, p.venue, p.clientId && cMap.get(p.clientId), ...(p.tags || [])].join(' ').toLowerCase().includes(q.toLowerCase()));
   const csv = () => exportCsv('projets.csv', ['Numéro', 'Projet', 'Type', 'Client', 'Début', 'Fin', 'Lieu', 'Statut', 'Référence client', 'Étiquettes'],
     filtered.map((p) => [p.number, p.name, p.typeName, p.clientId ? cMap.get(p.clientId) : '', p.start.replace('T', ' '), p.end.replace('T', ' '), p.venue, STATUS_LABELS[p.status], p.externalRef, (p.tags || []).join(', ')]));
@@ -129,6 +132,15 @@ export default function Projects() {
             <option value="">Tous statuts</option>
             {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
+          {listFields.map((f) => {
+            const values = f.type === 'liste' ? f.choices || [] : Array.from(new Set(projects.map((p) => customText(f, p.custom?.[f.id])).filter(Boolean))).sort();
+            return values.length ? (
+              <select key={f.id} value={fieldFilter[f.id] || ''} onChange={(e) => setFieldFilter({ ...fieldFilter, [f.id]: e.target.value })} title={f.label}>
+                <option value="">{f.label} : tous</option>
+                {values.map((v) => <option key={v} value={v}>{v}</option>)}
+              </select>
+            ) : null;
+          })}
           {allTags.length > 0 && (
             <select value={tag} onChange={(e) => setTag(e.target.value)}>
               <option value="">Toutes étiquettes</option>
@@ -139,7 +151,7 @@ export default function Projects() {
         {filtered.length === 0 ? <Empty>{showTemplates ? 'Aucun modèle.' : 'Aucun projet.'}</Empty> : (
           <div className="table-wrap">
             <table className="list">
-              <thead><tr><th>N°</th><th>Projet</th><th>Type</th><th>Client</th><th>Dates</th><th>Lieu</th><th>Statut</th></tr></thead>
+              <thead><tr><th>N°</th><th>Projet</th><th>Type</th><th>Client</th><th>Dates</th><th>Lieu</th>{listFields.map((f) => <th key={f.id}>{f.label}</th>)}<th>Statut</th></tr></thead>
               <tbody>
                 {filtered.map((p) => (
                   <tr key={p.id} className="click" onClick={() => nav('/projets/' + p.id)}>
@@ -149,6 +161,7 @@ export default function Projects() {
                     <td>{p.clientId && cMap.get(p.clientId)}</td>
                     <td>{fmtRange(p.start, p.end)}</td>
                     <td>{p.venue}</td>
+                    {listFields.map((f) => <td key={f.id}>{customText(f, p.custom?.[f.id])}</td>)}
                     <td><StatusBadge status={p.status} /></td>
                   </tr>
                 ))}
@@ -181,7 +194,7 @@ function FromTemplateModal({ templates, onClose }: { templates: Project[]; onClo
       <form className="form" onSubmit={async (e) => {
         e.preventDefault();
         if (!tpl) return;
-        const p = await copyProject(tpl.id, { name: name.trim() || tpl.name, status: 'demande', shift: shiftBetween(tpl.start, start) });
+        const p = await copyProject(tpl.id, { name: name.trim() || tpl.name, status: 'brouillon', shift: shiftBetween(tpl.start, start) });
         const client = clients.find((c) => c.id === clientId);
         if (client) await save(db.projects, { ...p, clientId: client.id, vatRegime: client.vatRegime, discount: client.discounts?.total || p.discount });
         onClose();

@@ -119,7 +119,7 @@ export const DEFAULT_DOC_STYLE: DocStyle = {
   showSubtotals: true, showPeriods: true, hideZero: false, hideEquipmentDetail: false, showSignature: true,
 };
 
-export const DEFAULT_PROJECT_TYPES = [
+export const DEFAULT_PROJECT_TYPES: { name: string; color: string; moments?: string[] }[] = [
   { name: 'Prestation', color: '#2563eb' },
   { name: 'Location sèche', color: '#16a34a' },
   { name: 'Vente', color: '#9333ea' },

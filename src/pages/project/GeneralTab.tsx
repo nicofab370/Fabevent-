@@ -4,8 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { Empty, Field, Modal } from '../../components/ui';
 import { DEFAULT_PROJECT_TYPES, db } from '../../db';
 import { createDocument } from '../../documents';
-import type { DocType, Project, ProjectStatus, Task, VatRegime } from '../../types';
-import { LANG_LABELS, STATUS_LABELS, VAT_REGIME_LABELS, type Lang } from '../../types';
+import type { DocType, Project, ProjectNote, ProjectStatus, Task, VatRegime } from '../../types';
+import { CONFIRMED, LANG_LABELS, STATUS_LABELS, VAT_REGIME_LABELS, type Lang } from '../../types';
 import { CustomFieldsEditor, TagInput } from '../../components/extra';
 import { blockPeriod, fmtDate, fmtRange, patch, save, sortPeriods, uid, usageDays } from '../../utils';
 import { ContactForm } from '../Contacts';
@@ -43,7 +43,7 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
   const eqLines = lines.filter((l) => l.equipmentId && !l.optional);
   const steps: { label: string; state: 'done' | 'warn' | 'todo' }[] = [
     { label: 'Devis créé', state: quote ? 'done' : 'todo' },
-    { label: 'Devis accepté', state: accepted || ['confirme', 'en_cours', 'termine'].includes(project.status) ? 'done' : 'todo' },
+    { label: 'Devis accepté', state: accepted || CONFIRMED.includes(project.status) ? 'done' : 'todo' },
     { label: conflicts.length ? `Matériel : ${conflicts.length} manque(s)` : 'Matériel disponible', state: !eqLines.length ? 'todo' : conflicts.length ? 'warn' : 'done' },
     { label: projectCrew.some((c) => !c.personId) ? `Équipe : ${projectCrew.filter((c) => !c.personId).length} poste(s) à pourvoir` : 'Équipe complète', state: !projectCrew.length ? 'todo' : projectCrew.some((c) => !c.personId) ? 'warn' : 'done' },
     { label: 'Transport planifié', state: projectVas.length ? 'done' : 'todo' },
@@ -215,6 +215,7 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
           <h2>Notes</h2>
           <Notes project={project} />
           <p className="muted" style={{ marginBottom: 0 }}>Visibles sur la feuille de route et le bon de sortie.</p>
+          <NoteList project={project} />
         </div>
         <Files projectId={project.id} />
       </div>
@@ -235,6 +236,44 @@ function Notes({ project }: { project: Project }) {
   const [v, setV] = useState(project.notes || '');
   useEffect(() => setV(project.notes || ''), [project.notes]);
   return <textarea style={{ minHeight: 140 }} value={v} onChange={(e) => setV(e.target.value)} onBlur={() => v !== (project.notes || '') && patch(db.projects, project.id, { notes: v || undefined })} placeholder="Accès, contraintes du lieu, contacts sur place…" />;
+}
+
+const NOTE_DOCS: [DocType, string][] = [['devis', 'Devis'], ['facture', 'Facture'], ['bon_sortie', 'Bon de sortie'], ['feuille_route', 'Feuille de route']];
+
+/** Notes supplémentaires, chacune imprimée sur les documents choisis (ou interne si aucun). */
+function NoteList({ project }: { project: Project }) {
+  const list = project.noteList || [];
+  const set = (noteList: ProjectNote[]) => patch(db.projects, project.id, { noteList: noteList.length ? noteList : undefined });
+  return (
+    <div style={{ marginTop: 12 }}>
+      {list.map((n, i) => {
+        const upd = (c: Partial<ProjectNote>) => set(list.map((x, j) => (j === i ? { ...x, ...c } : x)));
+        return (
+          <div key={n.id} className="note-item" style={{ borderTop: '1px solid var(--line)', paddingTop: 8, marginTop: 8 }}>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <LazyInput value={n.title} onSave={(title) => upd({ title })} placeholder="Titre (ex. Accès au site)" />
+              <button className="ghost" onClick={() => set(list.filter((_, j) => j !== i))} aria-label="Supprimer la note">✕</button>
+            </div>
+            <LazyText value={n.text} onSave={(text) => upd({ text })} />
+            <div className="muted" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 12 }}>
+              Imprimer sur :
+              {NOTE_DOCS.map(([t, label]) => (
+                <label key={t} className="check-row"><input type="checkbox" checked={n.on.includes(t)} onChange={(e) => upd({ on: e.target.checked ? [...n.on, t] : n.on.filter((x) => x !== t) })} /> {label}</label>
+              ))}
+              {!n.on.length && <em>note interne</em>}
+            </div>
+          </div>
+        );
+      })}
+      <button className="secondary small" style={{ marginTop: 8 }} onClick={() => set([...list, { id: uid(), title: '', text: '', on: ['devis'] }])}>+ Note pour les documents</button>
+    </div>
+  );
+}
+
+function LazyText({ value, onSave }: { value?: string; onSave: (v: string) => void }) {
+  const [v, setV] = useState(value || '');
+  useEffect(() => setV(value || ''), [value]);
+  return <textarea style={{ minHeight: 60, marginTop: 6 }} value={v} onChange={(e) => setV(e.target.value)} onBlur={() => v !== (value || '') && onSave(v)} placeholder="Texte de la note" />;
 }
 
 function Tasks({ project }: { project: Project }) {

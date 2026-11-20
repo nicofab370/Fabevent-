@@ -3,9 +3,9 @@ import { useState } from 'react';
 import { Empty, Field, Modal, StatusBadge } from '../../components/ui';
 import { db } from '../../db';
 import type { Period, PeriodKind, Project, ProjectStatus, Subproject } from '../../types';
-import { PERIOD_LABELS, STATUS_LABELS } from '../../types';
+import { FIRM, PERIOD_LABELS, STATUS_LABELS } from '../../types';
 import { shiftBetween, shiftDate, shiftProject, type Shift } from '../../projectOps';
-import { blockPeriod, deleteSubproject, fmtDate, fmtRange, nowIso, save, sortPeriods, syncPeriods, toLocalInput, uid, usageDays } from '../../utils';
+import { blockPeriod, deleteSubproject, fmtDate, fmtRange, nowIso, patch, save, sortPeriods, syncPeriods, toLocalInput, uid, usageDays } from '../../utils';
 import type { ProjectData } from './shared';
 
 /** Onglet Planning : toutes les salles et tous leurs créneaux. */
@@ -34,6 +34,14 @@ export default function PlanningTab({ d, onEditSub }: { d: ProjectData; onEditSu
                 <div className="muted">{sp.venue || project.venue} · matériel bloqué {fmtRange(b0, b1)} · {usageDays(sp)} j facturé(s)</div>
               </div>
               <div className="actions">
+                <label className="check-row" title="L'entrepôt voit cette salle et peut commencer à préparer le matériel">
+                  <input type="checkbox" checked={!!sp.readyToPack} onChange={(e) => patch(db.subprojects, sp.id, { readyToPack: e.target.checked })} /> Prête pour la préparation
+                </label>
+                {!FIRM.includes(sp.status) && sp.status !== 'annule' && (
+                  <label className="check-row" title="Le matériel de cette salle passe en réservation ferme, prioritaire sur les autres options">
+                    <input type="checkbox" checked={!!sp.reserve} onChange={(e) => patch(db.subprojects, sp.id, { reserve: e.target.checked })} /> Réserver le matériel
+                  </label>
+                )}
                 <button className="secondary small" onClick={() => duplicateSub(d, sp, onEditSub)}>Dupliquer</button>
                 <button className="small" onClick={() => onEditSub(sp)}>Modifier les horaires</button>
               </div>

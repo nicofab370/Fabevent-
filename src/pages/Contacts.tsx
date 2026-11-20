@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
 import { Empty, Field, Modal, PageHead, NumInput, useSettings } from '../components/ui';
+import { settingsMoments } from '../invoicing';
 import { db } from '../db';
 import type { Contact, ContactPerson, ContactType } from '../types';
 import { CONTACT_TYPES, LANG_LABELS, VAT_REGIME_LABELS, type Lang, type VatRegime } from '../types';
@@ -77,6 +78,19 @@ export function ContactForm({ initial, onDone }: { initial?: Draft; onDone: (c?:
           {Object.entries(LANG_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
       </Field>
+      {c.type === 'client' && (
+        <>
+          <Field label={`Délai de paiement (jours, défaut ${settings.paymentDays})`}>
+            <input type="number" min={0} value={c.paymentDays ?? ''} placeholder={String(settings.paymentDays)} onChange={(e) => setC({ ...c, paymentDays: e.target.value === '' ? undefined : parseInt(e.target.value) || 0 })} />
+          </Field>
+          <Field label="Moments de facturation par défaut">
+            <select multiple size={Math.min(3, settingsMoments(settings).length)} style={{ height: 'auto' }} value={c.moments || []} title="Ctrl + clic pour en choisir plusieurs (3 au plus)"
+              onChange={(e) => { const moments = [...e.target.selectedOptions].map((o) => o.value).slice(0, 3); setC({ ...c, moments: moments.length ? moments : undefined }); }}>
+              {settingsMoments(settings).map((m) => <option key={m.id} value={m.id}>{m.name} ({m.percent} %)</option>)}
+            </select>
+          </Field>
+        </>
+      )}
       <Field label="Étiquettes"><TagInput value={c.tags} onChange={(tags) => setC({ ...c, tags })} /></Field>
       <CustomFieldsEditor entity="contact" value={c.custom} onChange={(custom) => setC({ ...c, custom })} />
       <Field label="Notes" full><textarea value={c.notes || ''} onChange={(e) => set('notes', e.target.value)} /></Field>

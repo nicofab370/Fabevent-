@@ -1,3 +1,4 @@
+import { CONFIRMED } from '../types';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -37,7 +38,7 @@ export default function Reports() {
   const stats = new Map<string, { revenue: number; unitDays: number }>();
   for (const l of lines) {
     const sp = subMap.get(l.subprojectId);
-    if (!sp || !l.equipmentId || l.optional || !['confirme', 'en_cours', 'termine'].includes(sp.status) || sp.start.slice(0, 4) !== y) continue;
+    if (!sp || !l.equipmentId || l.optional || !CONFIRMED.includes(sp.status) || sp.start.slice(0, 4) !== y) continue;
     const days = lineDays(l, sp);
     const eq = equipment.find((e) => e.id === l.equipmentId);
     const cur = stats.get(l.equipmentId) || { revenue: 0, unitDays: 0 };
