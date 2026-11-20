@@ -77,7 +77,7 @@ export async function buildSnapshot(projectId: string, type: DocType): Promise<D
           name: vMap.get(v.vehicleId)?.name || 'Véhicule',
           plate: vMap.get(v.vehicleId)?.plate,
           driver: v.driverId ? pMap.get(v.driverId)?.name : undefined,
-          start: v.start, end: v.end, price: v.price, billable: v.billable,
+          start: v.start, end: v.end, price: v.price, billable: v.billable, km: v.km || undefined, trips: v.km ? v.trips : undefined,
         }));
       const subtotal = round2(
         eq.filter((l) => !l.optional).reduce((a, l) => a + l.total, 0) +

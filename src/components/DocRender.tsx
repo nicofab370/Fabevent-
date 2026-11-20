@@ -150,7 +150,7 @@ export function DocRender({ doc }: { doc: Doc }) {
                 <tbody>
                   {sp.vehicles.filter((v) => !showPrices || v.billable).map((v, j) => (
                     <tr key={j}>
-                      <td>{v.name}{v.plate && ` (${v.plate})`}</td>
+                      <td>{v.name}{v.plate && ` (${v.plate})`}{v.km ? <span className="muted"> — {v.trips ? `${v.trips} A/R, ` : ''}{v.km} km</span> : null}</td>
                       {!showPrices && <td>{v.driver || '—'}</td>}
                       <td>{fmtDate(v.start)} → {fmtDate(v.end)}</td>
                       {showPrices && <td className="n">{money(v.price)}</td>}

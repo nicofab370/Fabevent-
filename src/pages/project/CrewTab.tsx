@@ -4,6 +4,7 @@ import type { CrewAssignment, Person, Subproject, VehicleAssignment } from '../.
 import { RESERVING } from '../../types';
 import { blockPeriod, buildIcs, daysBetween, download, fmtRange, money, overlaps, round2, save, sortPeriods } from '../../utils';
 import { personIssue, type ProjectData } from './shared';
+import { perKmFor, tripKm, vehiclePrice } from '../../geo';
 
 /** Onglet Équipe & transport : postes et véhicules par salle et par créneau, puis affectation. */
 export default function CrewTab({ d }: { d: ProjectData }) {
@@ -73,6 +74,12 @@ function RoomCrew({ d, sp, pMap }: { d: ProjectData; sp: Subproject; pMap: Map<s
   const subMap = new Map(d.av.subs.map((s) => [s.id, s]));
   const updCrew = (c: CrewAssignment, patch: Partial<CrewAssignment>) => save(db.crew, { ...c, ...patch });
   const updVa = (v: VehicleAssignment, patch: Partial<VehicleAssignment>) => save(db.vehicleAssignments, { ...v, ...patch });
+  const vMap = new Map(d.vehicles.map((x) => [x.id, x]));
+  /** modification qui change le prix : on le recalcule (forfait × jours + km × €/km) */
+  const updVaPriced = (v: VehicleAssignment, patch: Partial<VehicleAssignment>) => {
+    const next = { ...v, ...patch };
+    return save(db.vehicleAssignments, { ...next, price: vehiclePrice(next, vMap.get(next.vehicleId), d.settings) });
+  };
   const vehicleBusy = (v: VehicleAssignment) => d.vas.some((o) => o.id !== v.id && o.vehicleId === v.vehicleId &&
     RESERVING.includes(subMap.get(o.subprojectId)?.status || 'annule') && overlaps(o.start, o.end, v.start, v.end));
   const slot = (periodId: string | undefined) => {
@@ -145,25 +152,31 @@ function RoomCrew({ d, sp, pMap }: { d: ProjectData; sp: Subproject; pMap: Map<s
             {vas.length > 0 && (
               <div className="table-wrap">
                 <table className="list">
-                  <thead><tr><th>Véhicule</th>{periods.length > 0 && <th>Créneau</th>}<th>Chauffeur</th><th>Début</th><th>Fin</th><th>Prix HT</th><th>Facturé</th><th /></tr></thead>
+                  <thead><tr><th>Véhicule</th>{periods.length > 0 && <th>Créneau</th>}<th>Chauffeur</th><th>Début</th><th>Fin</th><th title="Allers-retours">A/R</th><th>Km</th><th>€/km</th><th>Prix HT</th><th>Facturé</th><th /></tr></thead>
                   <tbody>
                     {vas.map((v) => (
                       <tr key={v.id}>
                         <td>
-                          <select value={v.vehicleId} onChange={(e) => updVa(v, { vehicleId: e.target.value })}>
+                          <select value={v.vehicleId} onChange={(e) => updVaPriced(v, { vehicleId: e.target.value, perKm: undefined })}>
                             {d.vehicles.map((x) => <option key={x.id} value={x.id}>{x.name}{x.plate ? ` (${x.plate})` : ''}</option>)}
                           </select>
                           {vehicleBusy(v) && <div className="avail ko">Déjà réservé ailleurs</div>}
                         </td>
-                        {periods.length > 0 && <td><PeriodSelect value={v.periodId} onChange={(p) => updVa(v, slot(p))} /></td>}
+                        {periods.length > 0 && <td><PeriodSelect value={v.periodId} onChange={(p) => updVaPriced(v, slot(p))} /></td>}
                         <td>
                           <select value={v.driverId || ''} onChange={(e) => updVa(v, { driverId: e.target.value || undefined })}>
                             <option value="">—</option>
                             {d.people.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
                           </select>
                         </td>
-                        <td><input type="datetime-local" value={v.start} onChange={(e) => updVa(v, { start: e.target.value, periodId: undefined })} /></td>
-                        <td><input type="datetime-local" value={v.end} onChange={(e) => updVa(v, { end: e.target.value, periodId: undefined })} /></td>
+                        <td><input type="datetime-local" value={v.start} onChange={(e) => updVaPriced(v, { start: e.target.value, periodId: undefined })} /></td>
+                        <td><input type="datetime-local" value={v.end} onChange={(e) => updVaPriced(v, { end: e.target.value, periodId: undefined })} /></td>
+                        <td><NumInput className="w-qty" step="1" min={0} value={v.trips ?? d.settings.defaultTrips ?? 2} onChange={(n) => updVaPriced(v, { trips: n, ...(v.kmManual ? {} : { km: tripKm(d.project.distanceKm, n) }) })} /></td>
+                        <td>
+                          <NumInput className="w-qty" min={0} value={v.km ?? 0} onChange={(n) => updVaPriced(v, { km: n, kmManual: true })} />
+                          {v.kmManual && <button className="ghost small" title="Recalculer depuis la distance du projet" onClick={() => updVaPriced(v, { kmManual: false, km: tripKm(d.project.distanceKm, v.trips ?? d.settings.defaultTrips ?? 2) })}>↺</button>}
+                        </td>
+                        <td><NumInput className="w-qty" min={0} value={perKmFor(v, vMap.get(v.vehicleId), d.settings)} onChange={(n) => updVaPriced(v, { perKm: n })} /></td>
                         <td><NumInput className="w-price" value={v.price} onChange={(n) => updVa(v, { price: n })} /></td>
                         <td><input type="checkbox" checked={v.billable} onChange={(e) => updVa(v, { billable: e.target.checked })} /></td>
                         <td><button className="ghost" onClick={() => db.vehicleAssignments.delete(v.id)} aria-label="Retirer">✕</button></td>
@@ -175,7 +188,9 @@ function RoomCrew({ d, sp, pMap }: { d: ProjectData; sp: Subproject; pMap: Map<s
             )}
             <button className="small" style={{ marginTop: 8 }} onClick={() => {
               const veh = d.vehicles[0];
-              save(db.vehicleAssignments, { projectId: sp.projectId, subprojectId: sp.id, vehicleId: veh.id, ...slot(undefined), price: round2(veh.dailyPrice * daysBetween(bStart, bEnd)), billable: true });
+              const trips = d.settings.defaultTrips ?? 2;
+              const va = { projectId: sp.projectId, subprojectId: sp.id, vehicleId: veh.id, ...slot(undefined), trips, km: tripKm(d.project.distanceKm, trips), billable: true };
+              save(db.vehicleAssignments, { ...va, price: vehiclePrice(va, veh, d.settings) });
             }}>+ Véhicule</button>
           </>
         )}

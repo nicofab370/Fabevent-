@@ -109,6 +109,8 @@ export const defaultSettings: Settings = {
   factorExtraPerDay: 0.5,
   quoteValidityDays: 30,
   paymentDays: 30,
+  pricePerKm: 1,
+  defaultTrips: 2,
   footer: 'Conditions générales de location disponibles sur demande.',
   appUrl: '',
   counters: {},

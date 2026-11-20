@@ -108,6 +108,9 @@ export interface Project extends Base {
   externalRef?: string;
   /** lieu de prestation (contact de type « lieu ») */
   venueId?: ID;
+  /** distance aller dépôt → lieu (km) et temps de trajet (min) */
+  distanceKm?: number;
+  travelMinutes?: number;
   tasks?: Task[];
   notes?: string;
 }
@@ -311,6 +314,8 @@ export interface Vehicle extends Base {
   seats?: number;
   payload?: number;
   dailyPrice: number;
+  /** prix facturé au km (sinon celui des paramètres) */
+  pricePerKm?: number;
   notes?: string;
 }
 
@@ -321,6 +326,14 @@ export interface VehicleAssignment extends Base {
   periodId?: ID;
   start: string;
   end: string;
+  /** nombre d'allers-retours (ex. 2 = livraison + reprise) */
+  trips?: number;
+  /** km facturés ; recalculés depuis la distance du projet tant que kmManual n'est pas coché */
+  km?: number;
+  kmManual?: boolean;
+  /** prix au km appliqué (sinon celui du véhicule ou des paramètres) */
+  perKm?: number;
+  /** prix total HT = forfait journalier × jours + km × prix au km (modifiable) */
   price: number;
   billable: boolean;
   driverId?: ID;
@@ -368,7 +381,7 @@ export interface SnapshotSub {
   end: string;
   equipment: SnapshotLine[];
   crew: { function: string; person?: string; phone?: string; start: string; end: string; days: number; rate: number; total: number; billable: boolean }[];
-  vehicles: { name: string; plate?: string; driver?: string; start: string; end: string; price: number; billable: boolean }[];
+  vehicles: { name: string; plate?: string; driver?: string; start: string; end: string; price: number; billable: boolean; km?: number; trips?: number }[];
   subtotal: number;
 }
 
@@ -437,6 +450,10 @@ export interface Settings {
   factorExtraPerDay: number;
   quoteValidityDays: number;
   paymentDays: number;
+  /** prix au km par défaut pour le transport */
+  pricePerKm?: number;
+  /** allers-retours par défaut (livraison + reprise = 2) */
+  defaultTrips?: number;
   footer: string;
   appUrl: string;
   counters: Record<string, number>;

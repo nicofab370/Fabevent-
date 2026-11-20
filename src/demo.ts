@@ -6,6 +6,7 @@ import { db, defaultSettings, DEFAULT_PROJECT_TYPES, suppressLog, TABLES } from 
 import { createDocument } from './documents';
 import type { ContactType, Equipment, PeriodKind, ProjectStatus } from './types';
 import { nowIso, syncPeriods, toLocalInput, uid } from './utils';
+import { tripKm, vehiclePrice } from './geo';
 
 export const DEMO_WORKSPACE = 'demo';
 
@@ -48,6 +49,8 @@ async function seedAll() {
       peppolId: '0208:0000000097',
     },
     vatRate: 21,
+    pricePerKm: 1.1,
+    defaultTrips: 2,
     projectTypes: DEFAULT_PROJECT_TYPES,
     footer: 'Données fictives — base de démonstration FabEvent.',
   });
@@ -154,14 +157,14 @@ async function seedAll() {
   const pTom = await person('Tom Simon (démo)', 'Roadie / chauffeur', 220, 160, true);
   await db.unavailability.put({ ...base(), personId: pEmma, start: at(12, 0), end: at(16, 23, 59), reason: 'Congés' });
 
-  const vehicle = async (name: string, plate: string, payload: number, dailyPrice: number) => {
-    const v = { ...base(), name, plate, payload, dailyPrice, seats: 3 };
+  const vehicle = async (name: string, plate: string, payload: number, dailyPrice: number, pricePerKm?: number) => {
+    const v = { ...base(), name, plate, payload, dailyPrice, pricePerKm, seats: 3 };
     await db.vehicles.put(v);
     return v.id;
   };
-  const vCamion = await vehicle('Camion 20 m³ hayon', '1-ABC-000', 1200, 180);
-  const vFourgon = await vehicle('Fourgon 12 m³', '1-DEF-000', 900, 110);
-  await vehicle('Utilitaire léger', '1-GHI-000', 600, 70);
+  const vCamion = await vehicle('Camion 20 m³ hayon', '1-ABC-000', 1200, 120, 1.6);
+  const vFourgon = await vehicle('Fourgon 12 m³', '1-DEF-000', 900, 70);
+  await vehicle('Utilitaire léger', '1-GHI-000', 600, 40, 0.8);
 
   /* ---------- Projets ---------- */
   let counter = 0;
@@ -177,7 +180,7 @@ async function seedAll() {
     crew?: [string, string | undefined, number, number?, string?][];
     vehicles?: [string, string | undefined][];
   };
-  type Extra = { discount?: number; contactPerson?: string; notes?: string; typeName?: string; externalRef?: string; venueId?: string; tasks?: [string, boolean, number?][] };
+  type Extra = { distanceKm?: number; discount?: number; contactPerson?: string; notes?: string; typeName?: string; externalRef?: string; venueId?: string; tasks?: [string, boolean, number?][] };
   const project = async (name: string, clientId: string, status: ProjectStatus, venue: string, defs: SubDef[], extra: Extra = {}) => {
     // les horaires détaillés donnent les dates de la salle
     const subs = defs.map((d) => {
@@ -192,6 +195,7 @@ async function seedAll() {
       start: starts[0], end: ends[ends.length - 1], discount: extra.discount || 0, contactPerson: extra.contactPerson, notes: extra.notes,
       typeName: extra.typeName || 'Prestation', color: DEFAULT_PROJECT_TYPES.find((t) => t.name === (extra.typeName || 'Prestation'))?.color,
       externalRef: extra.externalRef, venueId: extra.venueId,
+      distanceKm: extra.distanceKm, travelMinutes: extra.distanceKm ? Math.round(extra.distanceKm / 75 * 60) + 10 : undefined,
       tasks: extra.tasks?.map(([text, done, dueIn]) => ({ id: uid(), text, done, due: dueIn !== undefined ? dayOnly(dueIn) : undefined })),
     };
     await db.projects.put(p);
@@ -217,7 +221,8 @@ async function seedAll() {
       }
       for (const [vehicleId, driverId] of s.vehicles || []) {
         const v = (await db.vehicles.get(vehicleId))!;
-        await db.vehicleAssignments.put({ ...base(), projectId: p.id, subprojectId: sp.id, vehicleId, driverId, start: s.prepStart || s.start, end: s.returnEnd || s.end, price: v.dailyPrice, billable: true });
+        const va = { projectId: p.id, subprojectId: sp.id, vehicleId, driverId, start: s.prepStart || s.start, end: s.returnEnd || s.end, trips: 2, km: tripKm(extra.distanceKm, 2), billable: true };
+        await db.vehicleAssignments.put({ ...base(), ...va, price: vehiclePrice(va, v, { ...defaultSettings, pricePerKm: 1.1 }) });
       }
     }
     return p.id;
@@ -229,7 +234,7 @@ async function seedAll() {
     { name: 'Soirée', start: at(-19, 14), end: at(-19, 23, 59), prepStart: at(-21, 9), returnEnd: at(-18, 12),
       lines: [['x12', 6], ['sub', 2], ['ampli', 2], ['cl5', 1], ['hf', 4], ['lyre', 6], ['par', 16], ['grandma', 1], ['gaffer', 4], ['piles', 2]],
       crew: [['Régisseur son', pLucas, 380], ['Éclairagiste', pEmma, 360], ['Roadie', pTom, 220, 160]], vehicles: [[vCamion, pTom]] },
-  ], { contactPerson: 'Nadia Benali', discount: 5, externalRef: 'BC-2026-0412', venueId: cPalais });
+  ], { contactPerson: 'Nadia Benali', discount: 5, externalRef: 'BC-2026-0412', venueId: cPalais, distanceKm: 4 });
 
   // 2. Conférence confirmée la semaine prochaine
   const confPeriods: [PeriodKind, string, string, string][] = [
@@ -250,7 +255,7 @@ async function seedAll() {
       crew: [['Technicien atelier', pLea, 340, 230, 'Prestation J1']] },
     { name: 'Salle atelier 2', periods: confPeriods,
       lines: [['tv', 2], ['sm58', 2]] },
-  ], { contactPerson: 'Thomas Leclercq', tasks: [['Recevoir le déroulé définitif', true], ['Tester les micros HF', false, 4], ['Confirmer l\'accès quai de chargement', false, 3]] });
+  ], { contactPerson: 'Thomas Leclercq', distanceKm: 38, tasks: [['Recevoir le déroulé définitif', true], ['Tester les micros HF', false, 4], ['Confirmer l\'accès quai de chargement', false, 3]] });
 
   // 3. Festival en option, gros volume → manque d'enceintes et de lyres
   const pFest = await project('Festival des Lumières', cFestival, 'option', 'Parc de la Boverie, Liège', [
@@ -281,7 +286,7 @@ async function seedAll() {
       lines: [['qu16', 1], ['sm58', 4], ['di', 2], ['kitpar', 1]],
       crew: [['Technicien son', undefined, 300, undefined, 'Concerts J1'], ['Technicien son', undefined, 300, undefined, 'Concerts J2']] },
   ], {
-    contactPerson: 'Sophie Renard', notes: 'Accès technique par l\'entrée nord. Parking camion réservé.', externalRef: 'FDL-2026-07', venueId: cBoverie,
+    contactPerson: 'Sophie Renard', distanceKm: 3, notes: 'Accès technique par l\'entrée nord. Parking camion réservé.', externalRef: 'FDL-2026-07', venueId: cBoverie,
     tasks: [['Envoyer le plan de feu', false, 5], ['Valider la fiche technique des artistes', true], ['Réserver l\'hôtel des techniciens', false, 7], ['Demande de raccordement électrique', false, 2]],
   });
 
@@ -294,17 +299,17 @@ async function seedAll() {
     { name: 'Soirée', start: at(21, 16), end: at(22, 4), prepStart: at(21, 10), returnEnd: at(22, 14),
       lines: [['x12', 2], ['sub', 1], ['ampli', 1], ['qu16', 1], ['hf', 2], ['kitpar', 2], ['fumee', 1], ['lyre', 2, { optional: true }]],
       crew: [['Technicien DJ / son', pHugo, 300]], vehicles: [[vFourgon, pHugo]] },
-  ]);
+  ], { distanceKm: 18 });
 
   // 5. Demande de devis en cours (ne bloque pas le matériel)
   await project('Spectacle de fin d\'année', cEcole, 'demande', 'Lycée Saint-Jean, Huy', [
     { name: 'Représentation', start: at(30, 17), end: at(30, 22), lines: [['kitconf', 1], ['sm58', 4], ['par', 12], ['pratic', 12]], crew: [['Technicien', undefined, 280]] },
-  ], { discount: 10, typeName: 'Location sèche' });
+  ], { discount: 10, typeName: 'Location sèche', distanceKm: 33 });
 
   // 6. Marché de Noël en option sur un mois
   await project('Marché de Noël', cNamur, 'option', 'Place d\'Armes, Namur', [
     { name: 'Exploitation', start: at(25, 10), end: at(40, 22), lines: [['par', 16], ['pc16', 10], ['x12', 2], ['qu16', 1], ['distro', 1]], crew: [['Technicien d\'astreinte', pHugo, 250]] },
-  ], { contactPerson: 'Julie Martin', discount: 15 });
+  ], { contactPerson: 'Julie Martin', discount: 15, distanceKm: 65 });
 
   // 7. Séminaire annulé
   await project('Séminaire printemps', cAgence, 'annule', 'Bruxelles', [
@@ -314,7 +319,7 @@ async function seedAll() {
   // 8. Prestation en cours aujourd'hui
   await project('Salon de l\'emploi', cNamur, 'en_cours', 'Namur Expo', [
     { name: 'Salon', start: at(-1, 8), end: at(1, 19), lines: [['tv', 4], ['kitconf', 1], ['par', 8], ['gaffer', 2]], crew: [['Technicien', pLea, 340, 230]] },
-  ], { contactPerson: 'Marc Lambert' });
+  ], { contactPerson: 'Marc Lambert', distanceKm: 65 });
 
   // Documents : devis puis acompte et facture pour le gala, devis pour d'autres
   await createDocument(pGala, 'devis');
