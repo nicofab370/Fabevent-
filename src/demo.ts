@@ -54,6 +54,7 @@ async function seedAll() {
     },
     vatRate: 21,
     pricePerKm: 1.1,
+    customFields: [{ id: 'cf-repas', label: 'Repas fourni', entity: 'projet', type: 'oui_non' }, { id: 'cf-acces', label: 'Accès livraison', entity: 'projet', type: 'texte' }],
     crewFunctions: [
       { name: 'Technicien', dayRate: 280, hourRate: 35 },
       { name: 'Régisseur son', dayRate: 380, hourRate: 45 },
@@ -82,11 +83,11 @@ async function seedAll() {
   const cHotel = await contact('client', 'Hôtel Le Château (démo)', { city: 'Spa', postalCode: '4900', email: 'seminaires@exemple.be', persons: [{ name: 'Thomas Leclercq', role: 'Responsable séminaires' }] });
   const cAgence = await contact('client', 'Agence EventPro (démo)', { city: 'Bruxelles', postalCode: '1000', email: 'projets@exemple.be', vatNumber: 'BE0000000394', peppolId: '0208:0000000394', persons: [{ name: 'Nadia Benali', role: 'Chef de projet' }] });
   const cEcole = await contact('client', 'Lycée Saint-Jean (démo)', { city: 'Huy', postalCode: '4500' });
-  const cNL = await contact('client', 'Evenementen Limburg BV (démo)', { city: 'Maastricht', postalCode: '6211', country: 'NL', address: 'Markt 1', vatNumber: 'NL000000000B01', peppolId: '0106:00000000', vatRegime: 'autoliquidation', persons: [{ name: 'Joost de Vries', role: 'Productie' }] });
+  const cNL = await contact('client', 'Evenementen Limburg BV (démo)', { city: 'Maastricht', postalCode: '6211', country: 'NL', address: 'Markt 1', language: 'nl', vatNumber: 'NL000000000B01', peppolId: '0106:00000000', vatRegime: 'autoliquidation', persons: [{ name: 'Joost de Vries', role: 'Productie' }] });
   const cDupont = await contact('client', 'Mariage Dupont-Lemaire (démo)', { firstName: 'Claire', lastName: 'Dupont', phone: '+32 470 00 00 00' });
   const cSono = await contact('fournisseur', 'SonoRent — confrère (démo)', { city: 'Verviers', email: 'location@exemple.be' });
   await contact('fournisseur', 'LightPro Location (démo)', { city: 'Namur', email: 'info@exemple.be' });
-  await contact('soustraitant', 'Rigging Services (démo)', { city: 'Liège' });
+  const cRigging = await contact('soustraitant', 'Rigging Services (démo)', { city: 'Liège', address: 'Rue des Ponts 8', postalCode: '4020', email: 'planning@exemple.be' });
   const cPalais = await contact('lieu', 'Palais des Congrès (démo)', { city: 'Liège', postalCode: '4020', address: 'Esplanade de l\'Europe 2' });
   const cBoverie = await contact('lieu', 'Parc de la Boverie (démo)', { city: 'Liège', postalCode: '4020', address: 'Parc de la Boverie 3' });
 
@@ -179,13 +180,15 @@ async function seedAll() {
   const pHugo = await person('Hugo Laurent (démo)', 'Technicien polyvalent', 280, 0);
   const pLea = await person('Léa Moreau (démo)', 'Technicienne vidéo', 340, 230, true);
   const pKarim = await person('Karim Haddad (démo)', 'Rigger', 420, 300, true);
+  await db.people.update(pKarim, { contactId: cRigging });
   const pTom = await person('Tom Simon (démo)', 'Roadie / chauffeur', 220, 160, true);
   // coûts : salariés (coût employeur) et sous-traitants aux prix différents pour une même fonction
   await db.people.update(pLucas, { costRate: 240, hourlyRate: 45, hourlyCost: 30 });
   await db.people.update(pEmma, { costRate: 230 });
   await db.people.update(pHugo, { costRate: 180 });
   await person('Nina Lefèvre (démo)', 'Régisseuse son', 380, 320, true);
-  await person('Sam Moreau (démo)', 'Rigger', 420, 260, true);
+  const pSam = await person('Sam Moreau (démo)', 'Rigger', 420, 260, true);
+  await db.people.update(pSam, { contactId: cRigging });
   await db.unavailability.put({ ...base(), personId: pEmma, start: at(12, 0), end: at(16, 23, 59), reason: 'Congés' });
 
   const vehicle = async (name: string, plate: string, payload: number, dailyPrice: number, pricePerKm?: number) => {
@@ -375,6 +378,14 @@ async function seedAll() {
   for (const c of await db.crew.where({ projectId: pConf }).toArray()) await db.crew.update(c.id, { travel: true });
   // Document du personnel qui expire bientôt
   await db.files.put({ id: uid(), projectId: '', personId: pKarim, name: 'Certificat travail en hauteur.txt', type: 'text/plain', size: 40, blob: new Blob(['Certificat fictif — travail en hauteur'], { type: 'text/plain' }), createdAt: t, expires: dayOnly(12) });
+
+  // Champs personnalisés, étiquettes, postes provisoires, repérage
+  await db.projects.update(pFest, { tags: ['Festival', 'Extérieur'], custom: { 'cf-repas': true, 'cf-acces': 'Entrée nord, quai 2' } });
+  await db.projects.update(pConf, { tags: ['Corporate'] });
+  for (const c of await db.crew.where({ projectId: pFest }).toArray()) if (c.function === 'Roadie') await db.crew.update(c.id, { final: false });
+  await db.equipment.update(eq.x12, { tags: ['Line array'] });
+  await db.equipment.update(eq.sub, { tags: ['Line array'] });
+  await db.appointments.put({ ...base(), title: 'Repérage technique — Festival des Lumières', start: at(4, 10), end: at(4, 12), location: 'Parc de la Boverie', personIds: [pLucas, pKarim] });
 
   // Modèle de projet tiré de la conférence
   await copyProject(pConf, { name: 'Modèle — Conférence 3 salles', isTemplate: true, status: 'demande' });

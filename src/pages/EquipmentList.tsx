@@ -6,6 +6,7 @@ import { db } from '../db';
 import type { Equipment } from '../types';
 import { useAvailability } from '../data';
 import { resizeImage } from '../image';
+import { CsvButton, CustomFieldsEditor, exportCsv, TagInput, Tags } from '../components/extra';
 import { availableQty, money, save, stockIn, toLocalInput } from '../utils';
 
 type Draft = Omit<Equipment, 'id' | 'createdAt' | 'updatedAt'> & Partial<Equipment>;
@@ -140,6 +141,8 @@ export function EquipmentForm({ initial, onDone }: { initial?: Draft; onDone: ()
         </div>
       </Field>
       <Field label=" "><label className="check-row"><input type="checkbox" checked={!!e.archived} onChange={(x) => set('archived', x.target.checked)} /> Archivé (n'est plus proposé dans les projets)</label></Field>
+      <Field label="Étiquettes"><TagInput value={e.tags} onChange={(tags) => set('tags', tags)} /></Field>
+      <CustomFieldsEditor entity="materiel" value={e.custom} onChange={(custom) => set('custom', custom)} />
       <Field label="Notes" full><textarea value={e.notes || ''} onChange={(x) => set('notes', x.target.value)} /></Field>
       <div className="form-actions">
         <button type="button" className="secondary" onClick={onDone}>Annuler</button>
@@ -156,28 +159,38 @@ export default function EquipmentList() {
   const cats = useLiveQuery(() => db.categories.toArray(), []) || [];
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('');
+  const [tag, setTag] = useState('');
   const [creating, setCreating] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulk, setBulk] = useState(false);
   const now = new Date();
   const [from, setFrom] = useState(toLocalInput(now));
   const [to, setTo] = useState(toLocalInput(new Date(now.getTime() + 86400000)));
 
   const catName = new Map(cats.map((c) => [c.id, c.name]));
   const [showArchived, setShowArchived] = useState(false);
+  const allTags = Array.from(new Set(equipment.flatMap((e) => e.tags || []))).sort();
   const filtered = equipment.filter((e) =>
     !!e.archived === showArchived &&
     (!cat || e.categoryId === cat) &&
-    [e.name, e.code, e.barcode].join(' ').toLowerCase().includes(q.toLowerCase()));
+    (!tag || e.tags?.includes(tag)) &&
+    [e.name, e.code, e.barcode, ...(e.tags || [])].join(' ').toLowerCase().includes(q.toLowerCase()));
+  const toggle = (id: string) => { const n = new Set(selected); if (n.has(id)) n.delete(id); else n.add(id); setSelected(n); };
+
+  const csv = () => exportCsv('materiel.csv', ['Désignation', 'Référence', 'Catégorie', 'Type', 'Stock', 'Prix HT', "Valeur de remplacement", 'Poids', 'Code-barres', 'Emplacement', 'Étiquettes', 'Archivé'],
+    filtered.map((e) => [e.name, e.code, e.categoryId ? catName.get(e.categoryId) : '', e.isKit ? 'kit' : e.kind || 'location', e.quantity, e.dailyPrice, e.replacementValue, e.weight, e.barcode, e.location, (e.tags || []).join(', '), e.archived ? 'oui' : '']));
 
   return (
     <>
       <PageHead title="Matériel">
+        <CsvButton onClick={csv} />
         <button className="secondary" onClick={() => nav('/etiquettes')}>Étiquettes QR</button>
         <button className="secondary" onClick={() => nav('/inventaire')}>Inventaire</button>
         <button onClick={() => setCreating(true)}>+ Nouvel article</button>
       </PageHead>
       <div className="card">
         <div className="toolbar">
-          <input placeholder="Rechercher (nom, réf, code-barres)…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input placeholder="Rechercher (nom, réf, code-barres, étiquette)…" value={q} onChange={(e) => setQ(e.target.value)} />
           <select value={cat} onChange={(e) => setCat(e.target.value)}>
             <option value="">Toutes catégories</option>
             {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -188,22 +201,40 @@ export default function EquipmentList() {
               {depots.map((dp) => <option key={dp.id} value={dp.id}>{dp.name}</option>)}
             </select>
           )}
+          {allTags.length > 0 && (
+            <select value={tag} onChange={(e) => setTag(e.target.value)}>
+              <option value="">Toutes étiquettes</option>
+              {allTags.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          )}
           <label className="check-row"><input type="checkbox" checked={showArchived} onChange={(x) => setShowArchived(x.target.checked)} /> Archivés</label>
           <span className="muted" style={{ alignSelf: 'center' }}>Dispo du</span>
           <input type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} />
           <span className="muted" style={{ alignSelf: 'center' }}>au</span>
           <input type="datetime-local" value={to} onChange={(e) => setTo(e.target.value)} />
         </div>
+        {selected.size > 0 && (
+          <div className="info bulk-bar">
+            <strong>{selected.size} article(s) sélectionné(s)</strong>
+            <button className="small" onClick={() => setBulk(true)}>Modifier en groupe…</button>
+            <button className="secondary small" onClick={() => setSelected(new Set())}>Désélectionner</button>
+          </div>
+        )}
         {filtered.length === 0 ? <Empty>Aucun article. Crée-en un ou importe ton catalogue (menu Import).</Empty> : (
           <div className="table-wrap">
             <table className="list">
-              <thead><tr><th>Désignation</th><th>Réf.</th><th>Catégorie</th><th className="n">Stock</th><th className="n">Dispo période</th><th className="n">Prix/j HT</th></tr></thead>
+              <thead><tr>
+                <th><input type="checkbox" aria-label="Tout sélectionner" checked={filtered.length > 0 && filtered.every((e) => selected.has(e.id))}
+                  onChange={(x) => setSelected(x.target.checked ? new Set(filtered.map((e) => e.id)) : new Set())} /></th>
+                <th>Désignation</th><th>Réf.</th><th>Catégorie</th><th className="n">Stock</th><th className="n">Dispo période</th><th className="n">Prix/j HT</th>
+              </tr></thead>
               <tbody>
                 {filtered.map((e) => {
                   const av = availableQty(e, equipment, res, from, to, undefined, depot || undefined);
                   return (
                     <tr key={e.id} className="click" onClick={() => nav('/materiel/' + e.id)}>
-                      <td>{e.photo && <img src={e.photo} alt="" className="thumb" />}<strong>{e.name}</strong> {e.isKit && <span className="badge">Kit</span>} {e.kind === 'vente' && <span className="badge">vente</span>} {e.trackSerials && <span className="badge">n° série</span>}</td>
+                      <td onClick={(x) => x.stopPropagation()}><input type="checkbox" aria-label={`Sélectionner ${e.name}`} checked={selected.has(e.id)} onChange={() => toggle(e.id)} /></td>
+                      <td>{e.photo && <img src={e.photo} alt="" className="thumb" />}<strong>{e.name}</strong> {e.isKit && <span className="badge">Kit</span>} {e.kind === 'vente' && <span className="badge">vente</span>} {e.trackSerials && <span className="badge">n° série</span>} <Tags tags={e.tags} /></td>
                       <td>{e.code}</td>
                       <td>{e.categoryId ? catName.get(e.categoryId) : ''}</td>
                       <td className="n" title={e._stock ? depots.map((dp) => `${dp.name} : ${e._stock?.[dp.id] || 0}`).join('\n') : undefined}>{e.isKit ? '—' : depot ? stockIn(e, depot) : e.quantity}</td>
@@ -218,6 +249,61 @@ export default function EquipmentList() {
         )}
       </div>
       {creating && <Modal title="Nouvel article" onClose={() => setCreating(false)} wide><EquipmentForm onDone={() => setCreating(false)} /></Modal>}
+      {bulk && <BulkEdit ids={[...selected]} onClose={(done) => { setBulk(false); if (done) setSelected(new Set()); }} />}
     </>
+  );
+}
+
+/** Modification groupée : prix (%), catégorie, étiquette, archivage. */
+function BulkEdit({ ids, onClose }: { ids: string[]; onClose: (done: boolean) => void }) {
+  const cats = useLiveQuery(() => db.categories.orderBy('name').toArray(), []) || [];
+  const [pct, setPct] = useState(0);
+  const [round, setRound] = useState(true);
+  const [catId, setCatId] = useState('');
+  const [addTag, setAddTag] = useState('');
+  const [archive, setArchive] = useState<'' | 'oui' | 'non'>('');
+  const [msg, setMsg] = useState('');
+  return (
+    <Modal title={`Modifier ${ids.length} article(s)`} onClose={() => onClose(false)}>
+      <form className="form" onSubmit={async (ev) => {
+        ev.preventDefault();
+        let n = 0;
+        for (const id of ids) {
+          const e = await db.equipment.get(id);
+          if (!e) continue;
+          const price = pct ? e.dailyPrice * (1 + pct / 100) : e.dailyPrice;
+          await save(db.equipment, {
+            ...e,
+            dailyPrice: pct ? (round ? Math.round(price * 2) / 2 : Math.round(price * 100) / 100) : e.dailyPrice,
+            categoryId: catId || e.categoryId,
+            tags: addTag.trim() ? Array.from(new Set([...(e.tags || []), addTag.trim()])) : e.tags,
+            archived: archive === '' ? e.archived : archive === 'oui',
+          });
+          n++;
+        }
+        setMsg(`${n} article(s) mis à jour.`);
+        setTimeout(() => onClose(true), 700);
+      }}>
+        <Field label="Variation des prix (%)"><input type="number" step="any" value={pct} onChange={(e) => setPct(parseFloat(e.target.value) || 0)} /></Field>
+        <Field label=" "><label className="check-row"><input type="checkbox" checked={round} onChange={(e) => setRound(e.target.checked)} /> Arrondir aux 0,50 €</label></Field>
+        <Field label="Catégorie">
+          <select value={catId} onChange={(e) => setCatId(e.target.value)}>
+            <option value="">— inchangée —</option>
+            {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Ajouter l'étiquette"><input value={addTag} onChange={(e) => setAddTag(e.target.value)} /></Field>
+        <Field label="Archivage">
+          <select value={archive} onChange={(e) => setArchive(e.target.value as typeof archive)}>
+            <option value="">— inchangé —</option><option value="oui">Archiver</option><option value="non">Désarchiver</option>
+          </select>
+        </Field>
+        {msg && <p className="avail ok field full">{msg}</p>}
+        <div className="form-actions">
+          <button type="button" className="secondary" onClick={() => onClose(false)}>Annuler</button>
+          <button type="submit">Appliquer</button>
+        </div>
+      </form>
+    </Modal>
   );
 }

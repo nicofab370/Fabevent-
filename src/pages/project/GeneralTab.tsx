@@ -5,8 +5,9 @@ import { Empty, Field, Modal } from '../../components/ui';
 import { DEFAULT_PROJECT_TYPES, db } from '../../db';
 import { createDocument } from '../../documents';
 import type { DocType, Project, ProjectStatus, Task, VatRegime } from '../../types';
-import { STATUS_LABELS, VAT_REGIME_LABELS } from '../../types';
-import { blockPeriod, fmtDate, fmtRange, save, sortPeriods, uid, usageDays } from '../../utils';
+import { LANG_LABELS, STATUS_LABELS, VAT_REGIME_LABELS, type Lang } from '../../types';
+import { CustomFieldsEditor, TagInput } from '../../components/extra';
+import { blockPeriod, fmtDate, fmtRange, patch, save, sortPeriods, uid, usageDays } from '../../utils';
 import { ContactForm } from '../Contacts';
 import { setProjectStatus } from './status';
 import { setProjectDistance, type ProjectData } from './shared';
@@ -25,7 +26,7 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
   const nav = useNavigate();
   const { project, client, contacts, settings, subs, docs, conflicts, projectCrew, projectVas, lines } = d;
   const [newContact, setNewContact] = useState<'client' | 'lieu' | null>(null);
-  const upd = (patch: Partial<Project>) => save(db.projects, { ...project, ...patch });
+  const upd = (changes: Partial<Project>) => patch(db.projects, project.id, changes);
   const types = settings.projectTypes?.length ? settings.projectTypes : DEFAULT_PROJECT_TYPES;
   const venue = contacts.find((c) => c.id === project.venueId);
   const venueAddress = venue ? [venue.address, venue.postalCode, venue.city].filter(Boolean).join(', ') : project.venue || '';
@@ -59,7 +60,7 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
     const eqDisc = c?.discounts?.equipment, totDisc = c?.discounts?.total;
     if (c && (eqDisc || totDisc) && confirm(`Appliquer les remises de ${c.company} (matériel ${eqDisc || 0} %, total ${totDisc || 0} %) à ce projet ?`)) {
       const fresh = await db.projects.get(project.id);
-      if (fresh) await save(db.projects, { ...fresh, discount: totDisc || 0 });
+      if (fresh) await patch(db.projects, fresh.id, { discount: totDisc || 0 });
       if (eqDisc) for (const l of lines.filter((x) => x.equipmentId)) await save(db.lines, { ...l, discount: eqDisc });
     }
   };
@@ -97,6 +98,14 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
               </Field>
             )}
             <Field label="Référence externe (n° de commande client)" full><LazyInput value={project.externalRef} onSave={(v) => upd({ externalRef: v || undefined })} /></Field>
+            <Field label="Langue des documents">
+              <select value={project.language || ''} onChange={(e) => upd({ language: (e.target.value || undefined) as Lang | undefined })}>
+                <option value="">Selon le client ({LANG_LABELS[client?.language || 'fr']})</option>
+                {Object.entries(LANG_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </Field>
+            <Field label="Étiquettes"><TagInput value={project.tags} onChange={(tags) => upd({ tags })} /></Field>
+            <CustomFieldsEditor entity="projet" value={project.custom} onChange={(custom) => upd({ custom })} />
           </div>
         </div>
 
@@ -225,14 +234,14 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
 function Notes({ project }: { project: Project }) {
   const [v, setV] = useState(project.notes || '');
   useEffect(() => setV(project.notes || ''), [project.notes]);
-  return <textarea style={{ minHeight: 140 }} value={v} onChange={(e) => setV(e.target.value)} onBlur={() => v !== (project.notes || '') && save(db.projects, { ...project, notes: v || undefined })} placeholder="Accès, contraintes du lieu, contacts sur place…" />;
+  return <textarea style={{ minHeight: 140 }} value={v} onChange={(e) => setV(e.target.value)} onBlur={() => v !== (project.notes || '') && patch(db.projects, project.id, { notes: v || undefined })} placeholder="Accès, contraintes du lieu, contacts sur place…" />;
 }
 
 function Tasks({ project }: { project: Project }) {
   const [text, setText] = useState('');
   const [due, setDue] = useState('');
   const tasks = project.tasks || [];
-  const setTasks = (t: Task[]) => save(db.projects, { ...project, tasks: t });
+  const setTasks = (t: Task[]) => patch(db.projects, project.id, { tasks: t });
   const today = new Date().toISOString().slice(0, 10);
   return (
     <div className="card">

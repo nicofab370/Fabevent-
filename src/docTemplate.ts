@@ -3,7 +3,8 @@
  * Les variables sont échappées ; les blocs sont du HTML généré par l'application.
  */
 import type { Doc, DocHtml } from './types';
-import { DOC_LABELS, INVOICE_TYPES, VAT_REGIME_LABELS } from './types';
+import { INVOICE_TYPES, VAT_REGIME_LABELS } from './types';
+import { DOC_TITLES, docLang, tr } from './i18n';
 import { epcPayload, qrSvg } from './payment';
 import { fmtDate, money } from './utils';
 
@@ -19,14 +20,14 @@ export const DEFAULT_HTML: DocHtml = {
   </div>
   <div class="box">
     <h1>{{document.titre}}</h1>
-    <div>N° <strong>{{document.numero}}</strong> {{document.version}}</div>
-    <div>Date : {{document.date}}</div>
+    <div>{{libelle.numero}} <strong>{{document.numero}}</strong> {{document.version}}</div>
+    <div>{{libelle.date}} : {{document.date}}</div>
     {{document.infos}}
     <div style="margin-top:8px">{{client.bloc}}</div>
   </div>
 </div>
 <div>
-  <strong>Projet {{projet.numero}} — {{projet.nom}}</strong>
+  <strong>{{libelle.projet}} {{projet.numero}} — {{projet.nom}}</strong>
   {{projet.reference_bloc}}
   <div class="muted">{{projet.debut}} → {{projet.fin}} · {{projet.lieu}}</div>
 </div>`,
@@ -64,6 +65,7 @@ export const VARIABLE_GROUPS: { label: string; items: [string, string][] }[] = [
     ['projet.nom', 'Nom'], ['projet.numero', 'Numéro'], ['projet.lieu', 'Lieu'], ['projet.debut', 'Début'], ['projet.fin', 'Fin'],
     ['projet.reference_client', 'Référence du client'], ['projet.reference_bloc', 'Ligne « Votre référence »'], ['projet.notes', 'Notes'],
   ] },
+  { label: 'Libellés traduits', items: [['libelle.numero', 'N° / Nr. / No.'], ['libelle.date', 'Date / Datum'], ['libelle.projet', 'Projet / Project']] },
   { label: 'Paiement & TVA', items: [
     ['paiement.communication', 'Communication (structurée)'], ['paiement.qr', 'QR code de virement'], ['tva.regime', 'Régime de TVA'], ['tva.mention', 'Mention légale de TVA'],
   ] },
@@ -90,12 +92,13 @@ export function docValues(doc: Doc): Record<string, string> {
   return {
     'societe.nom': co.name, 'societe.adresse': co.address || '', 'societe.telephone': co.phone || '', 'societe.email': co.email || '',
     'societe.tva': co.vatNumber || '', 'societe.numero_entreprise': co.siret || '', 'societe.iban': co.iban || '', 'societe.bic': co.bic || '',
-    'societe.identifiants': [co.siret && `N° d'entreprise ${co.siret}`, co.vatNumber && `TVA ${co.vatNumber}`].filter(Boolean).join(' · '),
+    'societe.identifiants': [co.siret && `${tr(doc, 'companyNo')} ${co.siret}`, co.vatNumber && `${tr(doc, 'vat')} ${co.vatNumber}`].filter(Boolean).join(' · '),
+    'libelle.numero': tr(doc, 'no'), 'libelle.date': tr(doc, 'date'), 'libelle.projet': tr(doc, 'project'),
     'societe.pied': s.footer || '',
     'client.nom': c?.company || '', 'client.contact': doc.contactPerson || [c?.firstName, c?.lastName].filter(Boolean).join(' '),
     'client.adresse': c?.address || '', 'client.cp': c?.postalCode || '', 'client.ville': c?.city || '', 'client.tva': c?.vatNumber || '',
     'client.email': c?.email || '', 'client.telephone': c?.phone || '',
-    'document.titre': s.template?.title?.trim() || DOC_LABELS[doc.type], 'document.type': DOC_LABELS[doc.type], 'document.numero': doc.number,
+    'document.titre': (docLang(doc) === 'fr' && s.template?.title?.trim()) || DOC_TITLES[docLang(doc)][doc.type], 'document.type': DOC_TITLES[docLang(doc)][doc.type], 'document.numero': doc.number,
     'document.version': isInvoice ? '' : `— v${doc.version}`, 'document.date': fmtDate(s.issuedAt, false),
     'document.validite': s.validUntil ? fmtDate(s.validUntil, false) : '', 'document.echeance': s.dueDate && doc.type !== 'avoir' ? fmtDate(s.dueDate, false) : '',
     'document.reference': s.refNumber || '',
@@ -103,6 +106,7 @@ export function docValues(doc: Doc): Record<string, string> {
     'projet.fin': fmtDate(s.project.end), 'projet.reference_client': s.project.externalRef || '', 'projet.notes': s.project.notes || '',
     'total.ht': money(s.totalHT), 'total.tva': money(s.vat), 'total.taux_tva': `${s.vatRate} %`, 'total.ttc': money(s.totalTTC),
     'total.remise': s.discountAmount ? money(s.discountAmount) : '', 'total.reste': money(s.totalTTC - deposits),
+    ...Object.fromEntries((s.customFields || []).map((f) => [`champ.${f.key}`, f.value])),
     'paiement.communication': s.payment?.communication || '', 'tva.regime': s.vatRegime ? VAT_REGIME_LABELS[s.vatRegime] : '', 'tva.mention': s.vatMention || '',
   };
 }
@@ -117,14 +121,14 @@ function composite(doc: Doc, v: Record<string, string>): Record<string, string> 
     'societe.logo': s.company.logo ? `<img src="${esc(s.company.logo)}" alt="">` : '',
     'client.bloc': c && !isRoadmap ? `<strong>${esc(c.company)}</strong>` + lines([
       (c.firstName || c.lastName) && esc([c.firstName, c.lastName].filter(Boolean).join(' ')), c.address && esc(c.address),
-      (c.postalCode || c.city) && esc([c.postalCode, c.city].filter(Boolean).join(' ')), c.vatNumber && `<span class="muted">TVA ${esc(c.vatNumber)}</span>`,
-      doc.contactPerson && `À l'attention de ${esc(doc.contactPerson)}`,
+      (c.postalCode || c.city) && esc([c.postalCode, c.city].filter(Boolean).join(' ')), c.vatNumber && `<span class="muted">${tr(doc, 'vat')} ${esc(c.vatNumber)}</span>`,
+      doc.contactPerson && `${tr(doc, 'attention')} ${esc(doc.contactPerson)}`,
     ]) : '',
     'document.infos': lines([
-      v['document.validite'] && `Valable jusqu'au : ${esc(v['document.validite'])}`, v['document.echeance'] && `Échéance : ${esc(v['document.echeance'])}`,
-      s.refNumber && `Réf. : ${doc.type === 'avoir' ? 'facture' : 'devis'} ${esc(s.refNumber)}`,
+      v['document.validite'] && `${tr(doc, 'validUntil')} : ${esc(v['document.validite'])}`, v['document.echeance'] && `${tr(doc, 'due')} : ${esc(v['document.echeance'])}`,
+      s.refNumber && `${tr(doc, 'ref')} : ${doc.type === 'avoir' || doc.type === 'rappel' ? tr(doc, 'refInvoice') : tr(doc, 'refQuote')} ${esc(s.refNumber)}`,
     ]),
-    'projet.reference_bloc': s.project.externalRef && !isRoadmap ? `<div>Votre référence : ${esc(s.project.externalRef)}</div>` : '',
+    'projet.reference_bloc': s.project.externalRef && !isRoadmap ? `<div>${tr(doc, 'yourRef')} : ${esc(s.project.externalRef)}</div>` : '',
     'paiement.qr': (() => {
       const amount = s.totalTTC - (s.deposits || []).reduce((a, d) => a + d.ttc, 0);
       if (!s.company.iban || amount <= 0 || !s.payment) return '';

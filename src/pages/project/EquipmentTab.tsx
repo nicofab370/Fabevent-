@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Empty, Field, Modal, NumInput, StatusBadge } from '../../components/ui';
 import { db } from '../../db';
 import type { EquipGroup, Equipment, EquipmentLine, Subproject } from '../../types';
-import { availableQty, factorFor, fmtRange, lineBlock, lineDays, lineTotal, money, nowIso, round2, save, sortPeriods, uid, type Reservation } from '../../utils';
+import { availableQty, factorFor, fmtRange, lineBlock, lineDays, lineTotal, money, nowIso, round2, save, sortPeriods, uid, type Reservation, patch } from '../../utils';
 import { isPerPiece, type ProjectData } from './shared';
 
 /** Onglet Équipement : le matériel de chaque salle, organisé en groupes rattachés à des créneaux. */
@@ -31,18 +31,18 @@ function RoomEquipment({ d, sp }: { d: ProjectData; sp: Subproject }) {
   const weight = lines.reduce((a, l) => a + (l.equipmentId && !l.optional ? (eqMap.get(l.equipmentId)?.weight || 0) * l.qty : 0), 0);
   const total = round2(lines.filter((l) => !l.optional).reduce((a, l) => a + lineTotal(l, lineDays(l, sp), settings, isPerPiece(l, eqMap)), 0));
 
-  const updLine = async (l: EquipmentLine, patch: Partial<EquipmentLine>) => {
-    await save(db.lines, { ...l, ...patch });
+  const updLine = async (l: EquipmentLine, changes: Partial<EquipmentLine>) => {
+    await patch(db.lines, l.id, changes);
     const children = lines.filter((c) => c.parentLineId === l.id);
     // les accessoires suivent la quantité et le groupe de leur ligne
-    if (patch.qty !== undefined && l.equipmentId) {
+    if (changes.qty !== undefined && l.equipmentId) {
       const acc = eqMap.get(l.equipmentId)?.accessories || [];
       for (const c of children) {
         const a = acc.find((x) => x.equipmentId === c.equipmentId);
-        if (a) await save(db.lines, { ...c, qty: a.qty * patch.qty });
+        if (a) await save(db.lines, { ...c, qty: a.qty * changes.qty });
       }
     }
-    if ('groupId' in patch) for (const c of children) await save(db.lines, { ...c, groupId: patch.groupId });
+    if ('groupId' in changes) for (const c of children) await save(db.lines, { ...c, groupId: changes.groupId });
   };
   const removeLine = (l: EquipmentLine) => db.lines.bulkDelete([l.id, ...lines.filter((c) => c.parentLineId === l.id).map((c) => c.id)]);
 

@@ -4,7 +4,7 @@ import { useAvailability } from '../../data';
 import { db } from '../../db';
 import type { CrewAssignment, Equipment, EquipmentLine, Person, Project, ProjectCost, Settings, Subproject, Unavailability, VehicleAssignment } from '../../types';
 import { INVOICE_TYPES, RESERVING } from '../../types';
-import { crewAmount, crewCostRate, lineDays, lineTotal, overlaps, round2, save } from '../../utils';
+import { crewAmount, crewCostRate, lineDays, lineTotal, overlaps, patch, round2, save } from '../../utils';
 import { tripKm, vehiclePrice } from '../../geo';
 
 /** Toutes les données d'un projet, en temps réel, partagées par les onglets. */
@@ -16,7 +16,10 @@ export function useProjectData(id: string) {
   const subs = useLiveQuery(() => db.subprojects.where({ projectId: id }).sortBy('order'), [id]) || [];
   const crew = useLiveQuery(() => db.crew.toArray(), []) || [];
   const people = useLiveQuery(() => db.people.orderBy('name').toArray(), []) || [];
-  const unav = useLiveQuery(() => db.unavailability.toArray(), []) || [];
+  const unavailability = useLiveQuery(() => db.unavailability.toArray(), []) || [];
+  const appointments = useLiveQuery(() => db.appointments.toArray(), []) || [];
+  // un rendez-vous hors projet rend aussi ses participants indisponibles
+  const unav = [...unavailability, ...appointments.flatMap((a) => (a.personIds || []).map((personId) => ({ ...a, personId, reason: a.title })))];
   const vehicles = useLiveQuery(() => db.vehicles.orderBy('name').toArray(), []) || [];
   const vas = useLiveQuery(() => db.vehicleAssignments.toArray(), []) || [];
   const docs = useLiveQuery(() => db.docs.where({ projectId: id }).reverse().sortBy('createdAt'), [id]) || [];
@@ -123,7 +126,7 @@ export function printHtml(title: string, body: string, css: string) {
 
 /** Met à jour la distance du projet et recalcule les transports dont les km ne sont pas saisis à la main. */
 export async function setProjectDistance(d: ProjectData, distanceKm: number | undefined, travelMinutes?: number) {
-  await save(db.projects, { ...d.project, distanceKm, travelMinutes });
+  await patch(db.projects, d.project.id, { distanceKm, travelMinutes });
   const vMap = new Map(d.vehicles.map((v) => [v.id, v]));
   for (const va of d.projectVas) {
     if (va.kmManual) continue;

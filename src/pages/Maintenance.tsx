@@ -6,6 +6,7 @@ import { useAvailability } from '../data';
 import { db } from '../db';
 import type { Inspection, Repair } from '../types';
 import { fmtDate, inspectionsDue, money, save, toLocalInput } from '../utils';
+import { CsvButton, exportCsv } from '../components/extra';
 
 export function RepairModal({ equipmentId, unitId, repair, onClose }: { equipmentId: string; unitId?: string; repair?: Repair; onClose: () => void }) {
   const suppliers = useLiveQuery(() => db.contacts.toArray(), []) || [];
@@ -89,7 +90,10 @@ export default function Maintenance() {
 
   return (
     <>
-      <PageHead title="Maintenance" />
+      <PageHead title="Maintenance">
+        <CsvButton onClick={() => exportCsv('maintenance.csv', ['Article', 'Unité', 'Problème', 'Depuis', 'Retour', 'Réparateur', 'Coût', 'Statut'],
+          av.repairs.map((r) => [eqMap.get(r.equipmentId)?.name, r.unitId ? unitMap.get(r.unitId)?.serial : '', r.description, r.start.replace('T', ' '), r.end?.replace('T', ' '), r.supplierId ? cMap.get(r.supplierId) : 'Interne', r.cost, r.status === 'ouvert' ? 'En cours' : 'Terminée']))} />
+      </PageHead>
       <div className="card">
         <h2>Réparations</h2>
         <label className="check-row" style={{ marginBottom: 8 }}><input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} /> Afficher les réparations terminées</label>

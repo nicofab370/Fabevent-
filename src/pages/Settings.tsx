@@ -117,7 +117,27 @@ export default function SettingsPage() {
           setS({ ...s, depots: [...list, { id: uid(), name: `Dépôt ${list.length + 1}` }] });
         }}>+ Dépôt</button>
 
+        <h2 style={{ marginTop: 20 }}>Champs personnalisés</h2>
+        <p className="muted" style={{ marginTop: 0 }}>Informations en plus sur les projets, contacts ou articles (ex. « Repas fourni », « Accès PMR »). Utilisables dans les documents : {'{{champ.nom_du_champ}}'}.</p>
+        {(s.customFields || []).map((f, i, all) => {
+          const upd = (patch: Partial<typeof f>) => setS({ ...s, customFields: all.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
+          return (
+            <div key={f.id} style={{ display: 'flex', gap: 8, marginBottom: 6, maxWidth: 640, flexWrap: 'wrap' }}>
+              <input value={f.label} onChange={(e) => upd({ label: e.target.value })} placeholder="Nom du champ" style={{ flex: 2, minWidth: 160 }} />
+              <select value={f.entity} onChange={(e) => upd({ entity: e.target.value as typeof f.entity })} style={{ width: 'auto' }}>
+                <option value="projet">Projets</option><option value="contact">Contacts</option><option value="materiel">Matériel</option>
+              </select>
+              <select value={f.type} onChange={(e) => upd({ type: e.target.value as typeof f.type })} style={{ width: 'auto' }}>
+                <option value="texte">Texte</option><option value="oui_non">Oui / non</option><option value="nombre">Nombre</option><option value="date">Date</option>
+              </select>
+              <button type="button" className="ghost" onClick={() => setS({ ...s, customFields: all.filter((_, j) => j !== i) })} aria-label="Retirer">✕</button>
+            </div>
+          );
+        })}
+        <button type="button" className="secondary small" onClick={() => setS({ ...s, customFields: [...(s.customFields || []), { id: uid(), label: '', entity: 'projet', type: 'texte' }] })}>+ Champ</button>
+
         <h2 style={{ marginTop: 20 }}>Fonctions et tarifs clients</h2>
+        <label className="check-row" style={{ marginBottom: 8 }}><input type="checkbox" checked={!!s.crewFinalByDefault} onChange={(e) => setS({ ...s, crewFinalByDefault: e.target.checked })} /> Nouveaux postes en planification finale (visibles des techniciens) par défaut</label>
         <p className="muted" style={{ marginTop: 0 }}>
           Le client paie la fonction (ex. Régisseur son 380 €/jour), quel que soit le technicien ou sous-traitant envoyé.
           Le coût, lui, dépend de la personne affectée (fiche dans Équipe) et ne joue que sur ta marge.

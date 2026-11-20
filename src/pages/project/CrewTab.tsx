@@ -2,7 +2,7 @@ import { Empty, NumInput, StatusBadge } from '../../components/ui';
 import { appBaseUrl, db } from '../../db';
 import type { CrewAssignment, Person, Subproject, VehicleAssignment } from '../../types';
 import { RESERVING } from '../../types';
-import { blockPeriod, buildIcs, crewAmount, crewCostRate, crewWindow, functionRate, daysBetween, download, fmtRange, money, overlaps, round2, save, sortPeriods } from '../../utils';
+import { blockPeriod, buildIcs, crewAmount, crewCostRate, crewWindow, functionRate, daysBetween, download, fmtRange, money, overlaps, round2, save, sortPeriods, patch } from '../../utils';
 import { personIssue, type ProjectData } from './shared';
 import { perKmFor, tripKm, vehiclePrice } from '../../geo';
 
@@ -13,9 +13,11 @@ export default function CrewTab({ d }: { d: ProjectData }) {
   const subMap = new Map(d.subs.map((s) => [s.id, s]));
   const assigned = people.filter((p) => projectCrew.some((c) => c.personId === p.id));
   const open = projectCrew.filter((c) => !c.personId && subMap.get(c.subprojectId)?.status !== 'annule');
+  const provisional = projectCrew.filter((c) => c.final === false).length;
 
-  const schedule = (p: Person) => projectCrew
-    .filter((c) => c.personId === p.id)
+  /** postes d'une personne ; finalOnly = ce qu'elle a le droit de voir (planification finale) */
+  const schedule = (p: Person, finalOnly = false) => projectCrew
+    .filter((c) => c.personId === p.id && (!finalOnly || c.final !== false))
     .sort((a, b) => a.start.localeCompare(b.start))
     .map((c) => {
       const sp = subMap.get(c.subprojectId);
@@ -25,13 +27,14 @@ export default function CrewTab({ d }: { d: ProjectData }) {
     });
 
   const sendPlanning = (p: Person) => {
-    const items = schedule(p);
+    const items = schedule(p, true);
+    if (!items.length) return alert(`Aucun poste final pour ${p.name} : passe ses postes en « final » avant d'envoyer le planning.`);
     const body = `Bonjour ${p.name.split(' ')[0]},\n\nVoici ton planning pour « ${project.name} »${project.venue ? ` (${project.venue})` : ''} :\n\n${items.map((i) => '- ' + i.label).join('\n')}\n\n${project.notes ? project.notes + '\n\n' : ''}Merci de me confirmer ta disponibilité.\n${settings.company.name}`;
     location.href = `mailto:${p.email || ''}?subject=${encodeURIComponent(`Planning — ${project.name}`)}&body=${encodeURIComponent(body)}`;
   };
   const icsFor = (p: Person) => {
     const base = appBaseUrl(settings);
-    download(`${project.number}-${p.name.replace(/\s+/g, '-')}.ics`, buildIcs(`${project.name} — ${p.name}`, schedule(p).map(({ c, sp, a, b }) => ({
+    download(`${project.number}-${p.name.replace(/\s+/g, '-')}.ics`, buildIcs(`${project.name} — ${p.name}`, schedule(p, true).map(({ c, sp, a, b }) => ({
       uid: c.id, title: `${c.function} — ${project.name}`, start: a, end: b, location: sp?.venue || project.venue, description: sp?.name, url: `${base}#/projets/${project.id}`,
     }))), 'text/calendar;charset=utf-8');
   };
@@ -44,14 +47,16 @@ export default function CrewTab({ d }: { d: ProjectData }) {
           <div className="stat"><b>{projectCrew.length}</b><span>postes</span></div>
           <div className="stat"><b style={{ color: open.length ? 'var(--danger)' : 'var(--ok)' }}>{open.length}</b><span>à pourvoir</span></div>
           <div className="stat"><b>{assigned.length}</b><span>personnes affectées</span></div>
+          <div className="stat"><b style={{ color: provisional ? 'var(--accent)' : undefined }}>{provisional}</b><span>postes provisoires</span></div>
         </div>
+        {provisional > 0 && <button className="secondary small" style={{ marginBottom: 8 }} onClick={async () => { for (const c of projectCrew.filter((x) => x.final === false)) await save(db.crew, { ...c, final: true }); }}>Rendre toute la planification finale</button>}
         {assigned.length === 0 ? <Empty>Personne n'est encore affecté. Crée des postes dans les salles ci-dessous, puis choisis qui les occupe.</Empty> : (
           <table className="list">
             <tbody>
               {assigned.map((p) => (
                 <tr key={p.id}>
                   <td style={{ width: 200 }}><strong>{p.name}</strong><div className="muted">{p.role}{p.external ? ' · externe' : ''}</div></td>
-                  <td>{schedule(p).map((i) => <div key={i.c.id} style={{ fontSize: 12 }}>{i.label}</div>)}</td>
+                  <td>{schedule(p).map((i) => <div key={i.c.id} style={{ fontSize: 12 }}>{i.label}{i.c.final === false && <span className="badge st-option" style={{ marginLeft: 4 }}>provisoire</span>}</div>)}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <button className="secondary small" onClick={() => sendPlanning(p)}>Envoyer le planning</button>{' '}
                     <button className="secondary small" onClick={() => icsFor(p)}>.ics</button>
@@ -73,7 +78,7 @@ function RoomCrew({ d, sp, pMap }: { d: ProjectData; sp: Subproject; pMap: Map<s
   const crew = d.projectCrew.filter((c) => c.subprojectId === sp.id).sort((a, b) => a.start.localeCompare(b.start));
   const vas = d.projectVas.filter((v) => v.subprojectId === sp.id);
   const subMap = new Map(d.av.subs.map((s) => [s.id, s]));
-  const updCrew = (c: CrewAssignment, patch: Partial<CrewAssignment>) => save(db.crew, { ...c, ...patch });
+  const updCrew = (c: CrewAssignment, changes: Partial<CrewAssignment>) => patch(db.crew, c.id, changes);
   const catalogue = d.settings.crewFunctions || [];
   const defaultFn = catalogue[0]?.name || 'Technicien';
   const updVa = (v: VehicleAssignment, patch: Partial<VehicleAssignment>) => save(db.vehicleAssignments, { ...v, ...patch });
@@ -107,7 +112,7 @@ function RoomCrew({ d, sp, pMap }: { d: ProjectData; sp: Subproject; pMap: Map<s
         {crew.length > 0 && (
           <div className="table-wrap">
             <table className="list">
-              <thead><tr><th>Fonction</th>{periods.length > 0 && <th>Créneau</th>}<th>Personne</th><th>Début</th><th>Fin</th><th>Unité</th><th title="Prix facturé au client (fonction)">Tarif client</th><th title="Ce que te coûte la personne affectée">Coût</th><th title="Ajouter le temps de trajet du projet avant et après">Trajet</th><th>Facturé</th><th className="n">Total client</th><th className="n">Marge</th><th /></tr></thead>
+              <thead><tr><th>Fonction</th>{periods.length > 0 && <th>Créneau</th>}<th>Personne</th><th>Début</th><th>Fin</th><th>Unité</th><th title="Prix facturé au client (fonction)">Tarif client</th><th title="Ce que te coûte la personne affectée">Coût</th><th title="Final : visible du technicien (agenda, planning envoyé). Provisoire : pas encore communiqué.">Final</th><th title="Ajouter le temps de trajet du projet avant et après">Trajet</th><th>Facturé</th><th className="n">Total client</th><th className="n">Marge</th><th /></tr></thead>
               <tbody>
                 {crew.map((c) => {
                   const issue = personIssue(c.personId, c.start, c.end, c.id, d.crew, d.av.subs, d.unav);
@@ -158,6 +163,7 @@ function RoomCrew({ d, sp, pMap }: { d: ProjectData; sp: Subproject; pMap: Map<s
                           <button className="ghost small" title={`Revenir au coût de la personne (${money(personCost)}${unitLabel})`} onClick={() => updCrew(c, { cost: undefined })}>↺</button>
                         )}
                       </td>
+                      <td><input type="checkbox" aria-label="Planification finale" checked={c.final !== false} onChange={(e) => updCrew(c, { final: e.target.checked })} /></td>
                       <td><input type="checkbox" checked={!!c.travel} disabled={!d.project.travelMinutes} title={d.project.travelMinutes ? `${d.project.travelMinutes} min avant et après` : 'Calcule d\'abord la distance du projet (onglet Général)'} onChange={(e) => updCrew(c, { travel: e.target.checked })} /></td>
                       <td><input type="checkbox" checked={c.billable} onChange={(e) => updCrew(c, { billable: e.target.checked })} /></td>
                       <td className="n">{money(a.billed)}{a.unit === 'heure' && <div className="muted" style={{ fontSize: 11 }}>{a.hours} h{a.overtime ? ` dont ${a.overtime} h sup.` : ''}</div>}</td>
@@ -172,9 +178,9 @@ function RoomCrew({ d, sp, pMap }: { d: ProjectData; sp: Subproject; pMap: Map<s
         )}
         <div className="toolbar" style={{ marginTop: 8 }}>
           <datalist id="fonctions">{catalogue.map((f) => <option key={f.name} value={f.name} />)}</datalist>
-          <button className="small" onClick={() => save(db.crew, { projectId: sp.projectId, subprojectId: sp.id, function: defaultFn, ...slot(undefined), rate: functionRate(defaultFn, 'jour', catalogue) || 0, billable: true })}>+ Poste</button>
+          <button className="small" onClick={() => save(db.crew, { projectId: sp.projectId, subprojectId: sp.id, function: defaultFn, ...slot(undefined), rate: functionRate(defaultFn, 'jour', catalogue) || 0, billable: true, final: !!d.settings.crewFinalByDefault })}>+ Poste</button>
           {periods.map((pe) => (
-            <button key={pe.id} className="secondary small" onClick={() => save(db.crew, { projectId: sp.projectId, subprojectId: sp.id, function: defaultFn, ...slot(pe.id), rate: functionRate(defaultFn, 'jour', catalogue) || 0, billable: true })}>+ Poste {pe.name}</button>
+            <button key={pe.id} className="secondary small" onClick={() => save(db.crew, { projectId: sp.projectId, subprojectId: sp.id, function: defaultFn, ...slot(pe.id), rate: functionRate(defaultFn, 'jour', catalogue) || 0, billable: true, final: !!d.settings.crewFinalByDefault })}>+ Poste {pe.name}</button>
           ))}
         </div>
 

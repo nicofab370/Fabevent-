@@ -4,6 +4,7 @@ import { db, nextNumber } from '../../db';
 import { SUBRENT_LABELS } from '../../types';
 import { availableQty, blockPeriod, fmtRange, money, save } from '../../utils';
 import type { ProjectData } from './shared';
+import { hrOrders, mailHrOrder, printHrOrder } from './hrOrders';
 
 /** Onglet Sous-locations & bons de commande. */
 export default function SubrentTab({ d }: { d: ProjectData }) {
@@ -43,6 +44,7 @@ export default function SubrentTab({ d }: { d: ProjectData }) {
     nav('/transferts?id=' + t.id);
   };
 
+  const hr = hrOrders(d);
   const orders = [
     ...subrentals.map((s) => ({ key: s.id, kind: 'Sous-location', ref: s.number, supplier: s.supplierId, amount: s.lines.reduce((a, l) => a + l.cost, 0), status: SUBRENT_LABELS[s.status], go: () => nav('/souslocations/' + s.id) })),
     ...costs.filter((c) => c.supplierId).map((c) => ({ key: c.id, kind: 'Coût supplémentaire', ref: c.label, supplier: c.supplierId, amount: c.amount, status: '—', go: undefined })),
@@ -90,7 +92,29 @@ export default function SubrentTab({ d }: { d: ProjectData }) {
         )}
       </div>
       <div className="card">
-        <h2>Bons de commande</h2>
+        <h2>Bons de commande RH (sous-traitants)</h2>
+        <p className="muted" style={{ marginTop: 0 }}>Postes tenus par des sous-traitants, regroupés par société (ou par freelance) au coût convenu.</p>
+        {hr.length === 0 ? <Empty>Aucun sous-traitant affecté.</Empty> : (
+          <table className="list">
+            <thead><tr><th>Fournisseur</th><th>Postes</th><th className="n">Total HT</th><th /></tr></thead>
+            <tbody>
+              {hr.map((o) => (
+                <tr key={o.key}>
+                  <td><strong>{o.supplier}</strong></td>
+                  <td>{o.lines.map((l, i) => <div key={i} style={{ fontSize: 12 }}>{l.function} — {l.person} · {l.qty}{!l.final && <span className="badge st-option" style={{ marginLeft: 4 }}>provisoire</span>}</div>)}</td>
+                  <td className="n">{money(o.total)}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    <button className="secondary small" onClick={() => printHrOrder(d, o)}>Bon de commande</button>{' '}
+                    <button className="secondary small" onClick={() => mailHrOrder(d, o)}>Email</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+      <div className="card">
+        <h2>Bons de commande matériel et frais</h2>
         <p className="muted" style={{ marginTop: 0 }}>Toutes les commandes fournisseurs du projet : sous-locations et coûts supplémentaires avec un fournisseur.</p>
         {orders.length === 0 ? <Empty>Aucun bon de commande.</Empty> : (
           <table className="list">

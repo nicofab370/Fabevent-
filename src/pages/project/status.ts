@@ -1,13 +1,13 @@
 import { db } from '../../db';
 import type { ProjectStatus } from '../../types';
-import { save } from '../../utils';
+import { patch, save } from '../../utils';
 import type { ProjectData } from './shared';
 
 /** Change le statut du projet et de ses salles ; « Terminé » sort les consommables du stock. */
 export async function setProjectStatus(d: ProjectData, status: ProjectStatus) {
   const { project, subs, lines, eqMap } = d;
   await db.transaction('rw', [db.projects, db.subprojects, db.lines, db.equipment], async () => {
-    await save(db.projects, { ...project, status });
+    await patch(db.projects, project.id, { status });
     for (const sp of subs) if (sp.status !== 'annule' || status === 'annule') await save(db.subprojects, { ...sp, status });
     if (status === 'termine') {
       for (const l of lines) {

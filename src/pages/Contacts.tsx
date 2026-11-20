@@ -3,7 +3,8 @@ import { useState } from 'react';
 import { Empty, Field, Modal, PageHead, NumInput, useSettings } from '../components/ui';
 import { db } from '../db';
 import type { Contact, ContactPerson, ContactType } from '../types';
-import { CONTACT_TYPES, VAT_REGIME_LABELS, type VatRegime } from '../types';
+import { CONTACT_TYPES, LANG_LABELS, VAT_REGIME_LABELS, type Lang, type VatRegime } from '../types';
+import { CsvButton, CustomFieldsEditor, exportCsv, TagInput, Tags } from '../components/extra';
 import { suggestRegime } from '../payment';
 import { save } from '../utils';
 
@@ -71,6 +72,13 @@ export function ContactForm({ initial, onDone }: { initial?: Draft; onDone: (c?:
         })}
         <div><button type="button" className="secondary small" onClick={() => setC({ ...c, persons: [...(c.persons || []), { name: '' }] })}>+ Interlocuteur</button></div>
       </div>
+      <Field label="Langue des documents">
+        <select value={c.language || 'fr'} onChange={(e) => setC({ ...c, language: e.target.value === 'fr' ? undefined : e.target.value as Lang })}>
+          {Object.entries(LANG_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+      </Field>
+      <Field label="Étiquettes"><TagInput value={c.tags} onChange={(tags) => setC({ ...c, tags })} /></Field>
+      <CustomFieldsEditor entity="contact" value={c.custom} onChange={(custom) => setC({ ...c, custom })} />
       <Field label="Notes" full><textarea value={c.notes || ''} onChange={(e) => set('notes', e.target.value)} /></Field>
       <div className="form-actions">
         <button type="button" className="secondary" onClick={() => onDone()}>Annuler</button>
@@ -85,13 +93,19 @@ export default function Contacts() {
   const [q, setQ] = useState('');
   const [type, setType] = useState('');
   const [edit, setEdit] = useState<Draft | null>(null);
+  const [tag, setTag] = useState('');
+  const allTags = Array.from(new Set(contacts.flatMap((c) => c.tags || []))).sort();
   const filtered = contacts.filter((c) =>
     (!type || c.type === type) &&
-    [c.company, c.firstName, c.lastName, c.email, c.city].join(' ').toLowerCase().includes(q.toLowerCase()));
+    (!tag || c.tags?.includes(tag)) &&
+    [c.company, c.firstName, c.lastName, c.email, c.city, ...(c.tags || [])].join(' ').toLowerCase().includes(q.toLowerCase()));
+  const csv = () => exportCsv('contacts.csv', ['Société / nom', 'Type', 'Prénom', 'Nom', 'Email', 'Téléphone', 'Adresse', 'CP', 'Ville', 'Pays', 'N° TVA', 'Peppol', 'Étiquettes'],
+    filtered.map((c) => [c.company, CONTACT_TYPES[c.type], c.firstName, c.lastName, c.email, c.phone, c.address, c.postalCode, c.city, c.country, c.vatNumber, c.peppolId, (c.tags || []).join(', ')]));
 
   return (
     <>
       <PageHead title="Contacts">
+        <CsvButton onClick={csv} />
         <button onClick={() => setEdit({ type: 'client', company: '' })}>+ Nouveau contact</button>
       </PageHead>
       <div className="card">
@@ -101,6 +115,12 @@ export default function Contacts() {
             <option value="">Tous les types</option>
             {Object.entries(CONTACT_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
+          {allTags.length > 0 && (
+            <select value={tag} onChange={(e) => setTag(e.target.value)}>
+              <option value="">Toutes étiquettes</option>
+              {allTags.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          )}
         </div>
         {filtered.length === 0 ? <Empty>Aucun contact.</Empty> : (
           <div className="table-wrap">
@@ -109,7 +129,7 @@ export default function Contacts() {
               <tbody>
                 {filtered.map((c) => (
                   <tr key={c.id} className="click" onClick={() => setEdit(c)}>
-                    <td><strong>{c.company}</strong></td>
+                    <td><strong>{c.company}</strong> <Tags tags={c.tags} /></td>
                     <td><span className="badge">{CONTACT_TYPES[c.type]}</span></td>
                     <td>{[c.firstName, c.lastName].filter(Boolean).join(' ')}{c.persons?.length ? <span className="muted"> +{c.persons.length} interlocuteur(s)</span> : null}</td>
                     <td>{c.email}</td>
