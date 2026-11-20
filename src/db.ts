@@ -88,6 +88,9 @@ export class FabDB extends Dexie {
     this.version(4).stores({
       transfers: 'id, fromDepotId, toDepotId, status, start',
     });
+    this.version(5).stores({
+      files: 'id, projectId, personId',
+    });
   }
 }
 
@@ -128,6 +131,8 @@ export const defaultSettings: Settings = {
   quoteValidityDays: 30,
   paymentDays: 30,
   structuredComm: true,
+  overtimeAfter: 10,
+  overtimeRate: 50,
   reminderDays: 10,
   pricePerKm: 1,
   defaultTrips: 2,

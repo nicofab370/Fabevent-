@@ -175,15 +175,19 @@ function Rooms({ doc, st }: { doc: Doc; st: DocStyle }) {
               <>
                 <h3>Personnel</h3>
                 <table>
-                  <thead><tr><th>Fonction</th>{isRoadmap && <th>Nom</th>}{isRoadmap && <th>Tél.</th>}<th>Horaires</th>{showPrices && <><th className="n">Jours</th><th className="n">Tarif/j</th><th className="n">Total HT</th></>}</tr></thead>
+                  <thead><tr><th>Fonction</th>{isRoadmap && <th>Nom</th>}{isRoadmap && <th>Tél.</th>}<th>Horaires</th>{showPrices && <><th className="n">Quantité</th><th className="n">Tarif</th><th className="n">Total HT</th></>}</tr></thead>
                   <tbody>
                     {sp.crew.filter((x) => isRoadmap || x.billable || !showPrices).filter((x) => !(showPrices && st.hideZero && !x.total)).map((x, j) => (
                       <tr key={j}>
                         <td>{x.function}</td>
                         {isRoadmap && <td>{x.person || '—'}</td>}
                         {isRoadmap && <td>{x.phone || ''}</td>}
-                        <td>{fmtDate(x.start)} → {fmtDate(x.end)}</td>
-                        {showPrices && <><td className="n">{x.days}</td><td className="n">{money(x.rate)}</td><td className="n">{money(x.total)}</td></>}
+                        <td>{fmtDate(x.start)} → {fmtDate(x.end)}{!showPrices && x.departure && <div className="muted">départ {fmtDate(x.departure)} · retour {fmtDate(x.back)}</div>}</td>
+                        {showPrices && <>
+                          <td className="n">{x.unit === 'heure' ? `${x.hours} h${x.overtime ? ` (dont ${x.overtime} h sup.)` : ''}` : `${x.days} j`}</td>
+                          <td className="n">{money(x.rate)}{x.unit === 'heure' ? '/h' : '/j'}</td>
+                          <td className="n">{money(x.total)}</td>
+                        </>}
                       </tr>
                     ))}
                   </tbody>

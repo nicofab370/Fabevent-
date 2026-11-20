@@ -167,6 +167,7 @@ async function seedAll() {
     return p.id;
   };
   const pLucas = await person('Lucas Dubois (démo)', 'Régisseur son', 380, 0);
+  await db.people.update(pLucas, { hourlyRate: 45, hourlyCost: 0 });
   const pEmma = await person('Emma Petit (démo)', 'Éclairagiste', 360, 0);
   const pHugo = await person('Hugo Laurent (démo)', 'Technicien polyvalent', 280, 0);
   const pLea = await person('Léa Moreau (démo)', 'Technicienne vidéo', 340, 230, true);
@@ -353,6 +354,14 @@ async function seedAll() {
   for (const p of await db.projects.toArray()) {
     if (p.status === 'confirme' || p.status === 'option') await createDocument(p.id, 'devis');
   }
+
+  // Régisseur du festival payé à l'heure (concerts jusqu'à 1 h : heures sup.), trajet inclus pour la conférence
+  for (const c of await db.crew.where({ projectId: pFest }).toArray()) {
+    if (c.function === 'Régisseur son') await db.crew.update(c.id, { rateUnit: 'heure', rate: 45, travel: true });
+  }
+  for (const c of await db.crew.where({ projectId: pConf }).toArray()) await db.crew.update(c.id, { travel: true });
+  // Document du personnel qui expire bientôt
+  await db.files.put({ id: uid(), projectId: '', personId: pKarim, name: 'Certificat travail en hauteur.txt', type: 'text/plain', size: 40, blob: new Blob(['Certificat fictif — travail en hauteur'], { type: 'text/plain' }), createdAt: t, expires: dayOnly(12) });
 
   // Modèle de projet tiré de la conférence
   await copyProject(pConf, { name: 'Modèle — Conférence 3 salles', isTemplate: true, status: 'demande' });

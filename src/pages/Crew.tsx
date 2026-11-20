@@ -2,8 +2,8 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
 import { Empty, Field, Modal, NumInput, PageHead, useSettings } from '../components/ui';
 import { appBaseUrl, db } from '../db';
-import type { Person, Unavailability } from '../types';
-import { buildIcs, download, fmtRange, money, save, toLocalInput } from '../utils';
+import type { Person, ProjectFile, Unavailability } from '../types';
+import { buildIcs, crewWindow, download, fmtRange, money, save, toLocalInput, uid } from '../utils';
 
 type Draft = Partial<Person> & { name: string; dailyRate: number; external: boolean };
 
@@ -15,6 +15,9 @@ export default function Crew() {
   const subs = useLiveQuery(() => db.subprojects.toArray(), []) || [];
   const [edit, setEdit] = useState<Draft | null>(null);
   const [unavFor, setUnavFor] = useState<Person | null>(null);
+  const [docsFor, setDocsFor] = useState<Person | null>(null);
+  const files = useLiveQuery(() => db.files.where('personId').above('').toArray(), []) || [];
+  const soon = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
   const unav = useLiveQuery(() => db.unavailability.toArray(), []) || [];
   const pMap = new Map(projects.map((p) => [p.id, p]));
   const sMap = new Map(subs.map((s) => [s.id, s]));
@@ -29,7 +32,8 @@ export default function Crew() {
     const events = assignmentsOf(person.id).map((c) => {
       const p = pMap.get(c.projectId);
       const s = sMap.get(c.subprojectId);
-      return { uid: c.id, title: `${c.function} — ${p?.name || ''}`, start: c.start, end: c.end, location: s?.venue || p?.venue, description: s?.name, url: `${base}#/projets/${c.projectId}` };
+      const [a, b] = crewWindow(c, p?.travelMinutes);
+      return { uid: c.id, title: `${c.function} — ${p?.name || ''}`, start: a, end: b, location: s?.venue || p?.venue, description: s?.name, url: `${base}#/projets/${c.projectId}` };
     });
     download(`agenda-${person.name.replace(/\s+/g, '-')}.ics`, buildIcs(`FabEvent — ${person.name}`, events), 'text/calendar;charset=utf-8');
   };
@@ -58,6 +62,11 @@ export default function Crew() {
                         <div key={c.id} style={{ fontSize: 12 }}>{pMap.get(c.projectId)?.name} · {fmtRange(c.start, c.end)}</div>
                       ))}{next.length > 3 && <span className="muted">+{next.length - 3}</span>}</td>
                       <td style={{ whiteSpace: 'nowrap' }}>
+                        <button className="secondary small" onClick={() => setDocsFor(p)}>Documents{(() => {
+                          const mine = files.filter((f) => f.personId === p.id);
+                          const late = mine.filter((f) => f.expires && f.expires <= soon).length;
+                          return mine.length ? <span className={late ? 'avail ko' : ''}> ({mine.length}{late ? ` · ${late} à renouveler` : ''})</span> : null;
+                        })()}</button>{' '}
                         <button className="secondary small" onClick={() => setUnavFor(p)}>Indispos{unav.filter((u) => u.personId === p.id && u.end >= nowS).length ? ` (${unav.filter((u) => u.personId === p.id && u.end >= nowS).length})` : ''}</button>{' '}
                         <button className="secondary small" onClick={() => exportIcs(p)}>Agenda .ics</button>
                       </td>
@@ -70,6 +79,7 @@ export default function Crew() {
         )}
       </div>
       <p className="muted">Le bouton « Agenda .ics » produit le planning personnel de la personne, à lui envoyer pour son agenda (Google, Apple, Outlook).</p>
+      {docsFor && <PersonDocs person={docsFor} files={files.filter((f) => f.personId === docsFor.id)} onClose={() => setDocsFor(null)} />}
       {unavFor && <UnavailabilityModal person={unavFor} list={unav.filter((u) => u.personId === unavFor.id)} onClose={() => setUnavFor(null)} />}
       {edit && (
         <Modal title={edit.id ? 'Modifier' : 'Nouvelle personne'} onClose={() => setEdit(null)}>
@@ -78,6 +88,8 @@ export default function Crew() {
             <Field label="Fonction principale"><input value={edit.role || ''} onChange={(e) => setEdit({ ...edit, role: e.target.value })} placeholder="ex. Régisseur son" /></Field>
             <Field label="Tarif facturé / jour HT (€)"><NumInput value={edit.dailyRate} onChange={(n) => setEdit({ ...edit, dailyRate: n })} /></Field>
             <Field label="Coût pour toi / jour (€)"><NumInput value={edit.costRate || 0} onChange={(n) => setEdit({ ...edit, costRate: n })} /></Field>
+            <Field label="Tarif facturé / heure HT (€)"><NumInput value={edit.hourlyRate || 0} onChange={(n) => setEdit({ ...edit, hourlyRate: n || undefined })} /></Field>
+            <Field label="Coût pour toi / heure (€)"><NumInput value={edit.hourlyCost || 0} onChange={(n) => setEdit({ ...edit, hourlyCost: n || undefined })} /></Field>
             <Field label="Email"><input type="email" value={edit.email || ''} onChange={(e) => setEdit({ ...edit, email: e.target.value })} /></Field>
             <Field label="Téléphone"><input value={edit.phone || ''} onChange={(e) => setEdit({ ...edit, phone: e.target.value })} /></Field>
             <Field label=" " full><label className="check-row"><input type="checkbox" checked={edit.external} onChange={(e) => setEdit({ ...edit, external: e.target.checked })} /> Sous-traitant / freelance externe</label></Field>
@@ -125,6 +137,54 @@ function UnavailabilityModal({ person, list, onClose }: { person: Person; list: 
         <Field label="Motif" full><input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Congés, autre prestation…" /></Field>
         <div className="form-actions"><button type="submit">+ Ajouter</button></div>
       </form>
+    </Modal>
+  );
+}
+
+/** Documents d'une personne (permis, habilitations, contrat…) avec date d'expiration. */
+function PersonDocs({ person, files, onClose }: { person: Person; files: ProjectFile[]; onClose: () => void }) {
+  const [expires, setExpires] = useState('');
+  const today = new Date().toISOString().slice(0, 10);
+  const soon = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+  const open = (f: ProjectFile) => {
+    const url = URL.createObjectURL(f.blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = f.name; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  };
+  return (
+    <Modal title={`Documents — ${person.name}`} onClose={onClose}>
+      {files.length === 0 ? <Empty>Aucun document (permis, habilitation électrique, travail en hauteur, contrat…).</Empty> : (
+        <table className="list">
+          <tbody>
+            {files.sort((a, b) => (a.expires || '9').localeCompare(b.expires || '9')).map((f) => (
+              <tr key={f.id}>
+                <td><a href="#" onClick={(e) => { e.preventDefault(); open(f); }}>{f.name}</a></td>
+                <td>
+                  <input type="date" value={f.expires || ''} onChange={(e) => db.files.put({ ...f, expires: e.target.value || undefined })} style={{ width: 150 }} />
+                  {f.expires && f.expires < today && <span className="avail ko"> expiré</span>}
+                  {f.expires && f.expires >= today && f.expires <= soon && <span className="avail ko"> expire bientôt</span>}
+                </td>
+                <td><button className="ghost" onClick={() => confirm(`Supprimer ${f.name} ?`) && db.files.delete(f.id)} aria-label="Supprimer">✕</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <div className="toolbar" style={{ marginTop: 12, alignItems: 'center' }}>
+        <span className="muted">Expire le</span>
+        <input type="date" value={expires} onChange={(e) => setExpires(e.target.value)} style={{ width: 160 }} />
+        <label className="btn secondary" style={{ background: 'var(--soft)', color: 'var(--text)', border: '1px solid var(--border)' }}>
+          + Ajouter un document
+          <input type="file" hidden multiple onChange={async (e) => {
+            for (const file of Array.from(e.target.files || [])) {
+              await db.files.put({ id: uid(), projectId: '', personId: person.id, name: file.name, type: file.type, size: file.size, blob: file, createdAt: new Date().toISOString(), expires: expires || undefined });
+            }
+            e.target.value = '';
+          }} />
+        </label>
+      </div>
+      <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>Le tableau de bord signale les documents qui expirent dans les 30 jours.</p>
     </Modal>
   );
 }

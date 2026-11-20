@@ -436,3 +436,53 @@ export function lineDays(l: Pick<EquipmentLine, 'groupId'>, sp: Subproject): num
   const synced = syncPeriods({ start: '', end: '', periods: ps });
   return usageDays({ ...synced, periods: ps.some((p) => p.kind === 'prestation') ? ps : ps.map((p) => ({ ...p, kind: 'prestation' as const })) });
 }
+
+/* ---------- Personnel : montants, heures supplémentaires, trajet ---------- */
+
+export interface CrewAmount { unit: 'jour' | 'heure'; qty: number; hours: number; overtime: number; billed: number; cost: number }
+
+/** Heures par jour calendaire d'un intervalle. */
+export function hoursPerDay(start: string, end: string): number[] {
+  const out: number[] = [];
+  let t = new Date(start).getTime();
+  const e = new Date(end).getTime();
+  while (t < e) {
+    const d = new Date(t);
+    const next = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime();
+    const stop = Math.min(next, e);
+    out.push((stop - t) / 3600000);
+    t = stop;
+  }
+  return out;
+}
+
+/**
+ * Montants d'un poste : à la journée (jours × tarif) ou à l'heure, avec majoration
+ * des heures au-delà du seuil journalier. Le trajet est compté s'il est inclus.
+ */
+export function crewAmount(
+  c: { start: string; end: string; rate: number; cost?: number; rateUnit?: 'jour' | 'heure'; travel?: boolean },
+  s: Pick<Settings, 'overtimeAfter' | 'overtimeRate'>, travelMinutes = 0, costFallback = 0,
+): CrewAmount {
+  const costRate = c.cost ?? costFallback;
+  if (c.rateUnit !== 'heure') {
+    const days = daysBetween(c.start, c.end);
+    return { unit: 'jour', qty: days, hours: 0, overtime: 0, billed: round2(days * c.rate), cost: round2(days * costRate) };
+  }
+  const [a, b] = crewWindow(c, travelMinutes);
+  // un service de 24 h maximum (même à cheval sur minuit) compte comme une seule journée de travail
+  const total = (new Date(b).getTime() - new Date(a).getTime()) / 3600000;
+  const perDay = total <= 24 ? [total] : hoursPerDay(a, b);
+  const limit = s.overtimeAfter ?? 10;
+  const k = 1 + (s.overtimeRate ?? 50) / 100;
+  const hours = round2(perDay.reduce((x, h) => x + h, 0));
+  const overtime = round2(perDay.reduce((x, h) => x + Math.max(0, h - limit), 0));
+  const normal = hours - overtime;
+  return { unit: 'heure', qty: hours, hours, overtime, billed: round2(normal * c.rate + overtime * c.rate * k), cost: round2(normal * costRate + overtime * costRate * k) };
+}
+
+/** Horaires communiqués : trajet aller avant le début et retour après la fin. */
+export function crewWindow(c: { start: string; end: string; travel?: boolean }, travelMinutes = 0): [string, string] {
+  if (!c.travel || !travelMinutes) return [c.start, c.end];
+  return [toLocalInput(new Date(new Date(c.start).getTime() - travelMinutes * 60000)), toLocalInput(new Date(new Date(c.end).getTime() + travelMinutes * 60000))];
+}

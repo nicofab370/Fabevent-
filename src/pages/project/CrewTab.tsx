@@ -2,7 +2,7 @@ import { Empty, NumInput, StatusBadge } from '../../components/ui';
 import { appBaseUrl, db } from '../../db';
 import type { CrewAssignment, Person, Subproject, VehicleAssignment } from '../../types';
 import { RESERVING } from '../../types';
-import { blockPeriod, buildIcs, daysBetween, download, fmtRange, money, overlaps, round2, save, sortPeriods } from '../../utils';
+import { blockPeriod, buildIcs, crewAmount, crewWindow, daysBetween, download, fmtRange, money, overlaps, round2, save, sortPeriods } from '../../utils';
 import { personIssue, type ProjectData } from './shared';
 import { perKmFor, tripKm, vehiclePrice } from '../../geo';
 
@@ -20,7 +20,8 @@ export default function CrewTab({ d }: { d: ProjectData }) {
     .map((c) => {
       const sp = subMap.get(c.subprojectId);
       const pe = sp?.periods?.find((x) => x.id === c.periodId);
-      return { c, sp, label: `${fmtRange(c.start, c.end)} — ${c.function} · ${sp?.name}${pe ? ` (${pe.name})` : ''}` };
+      const [a, b] = crewWindow(c, project.travelMinutes);
+      return { c, sp, a, b, label: `${fmtRange(a, b)} — ${c.function} · ${sp?.name}${pe ? ` (${pe.name})` : ''}${a !== c.start ? ' (trajet inclus)' : ''}` };
     });
 
   const sendPlanning = (p: Person) => {
@@ -30,8 +31,8 @@ export default function CrewTab({ d }: { d: ProjectData }) {
   };
   const icsFor = (p: Person) => {
     const base = appBaseUrl(settings);
-    download(`${project.number}-${p.name.replace(/\s+/g, '-')}.ics`, buildIcs(`${project.name} — ${p.name}`, schedule(p).map(({ c, sp }) => ({
-      uid: c.id, title: `${c.function} — ${project.name}`, start: c.start, end: c.end, location: sp?.venue || project.venue, description: sp?.name, url: `${base}#/projets/${project.id}`,
+    download(`${project.number}-${p.name.replace(/\s+/g, '-')}.ics`, buildIcs(`${project.name} — ${p.name}`, schedule(p).map(({ c, sp, a, b }) => ({
+      uid: c.id, title: `${c.function} — ${project.name}`, start: a, end: b, location: sp?.venue || project.venue, description: sp?.name, url: `${base}#/projets/${project.id}`,
     }))), 'text/calendar;charset=utf-8');
   };
 
@@ -104,7 +105,7 @@ function RoomCrew({ d, sp, pMap }: { d: ProjectData; sp: Subproject; pMap: Map<s
         {crew.length > 0 && (
           <div className="table-wrap">
             <table className="list">
-              <thead><tr><th>Fonction</th>{periods.length > 0 && <th>Créneau</th>}<th>Personne</th><th>Début</th><th>Fin</th><th>Facturé/j</th><th>Coût/j</th><th>Facturé</th><th className="n">Total</th><th /></tr></thead>
+              <thead><tr><th>Fonction</th>{periods.length > 0 && <th>Créneau</th>}<th>Personne</th><th>Début</th><th>Fin</th><th>Unité</th><th>Tarif</th><th>Coût</th><th title="Ajouter le temps de trajet du projet avant et après">Trajet</th><th>Facturé</th><th className="n">Total</th><th /></tr></thead>
               <tbody>
                 {crew.map((c) => {
                   const issue = personIssue(c.personId, c.start, c.end, c.id, d.crew, d.av.subs, d.unav);
@@ -115,7 +116,8 @@ function RoomCrew({ d, sp, pMap }: { d: ProjectData; sp: Subproject; pMap: Map<s
                       <td>
                         <select value={c.personId || ''} onChange={(e) => {
                           const person = pMap.get(e.target.value);
-                          updCrew(c, { personId: e.target.value || undefined, rate: c.rate || person?.dailyRate || 0, cost: c.cost ?? person?.costRate });
+                          const hourly = c.rateUnit === 'heure';
+                          updCrew(c, { personId: e.target.value || undefined, rate: c.rate || (hourly ? person?.hourlyRate : person?.dailyRate) || 0, cost: c.cost ?? (hourly ? person?.hourlyCost : person?.costRate) });
                         }}>
                           <option value="">— à pourvoir —</option>
                           {d.people.map((x) => {
@@ -127,10 +129,23 @@ function RoomCrew({ d, sp, pMap }: { d: ProjectData; sp: Subproject; pMap: Map<s
                       </td>
                       <td><input type="datetime-local" value={c.start} onChange={(e) => updCrew(c, { start: e.target.value, periodId: undefined })} /></td>
                       <td><input type="datetime-local" value={c.end} onChange={(e) => updCrew(c, { end: e.target.value, periodId: undefined })} /></td>
+                      <td>
+                        <select value={c.rateUnit || 'jour'} onChange={(e) => {
+                          const unit = e.target.value as 'jour' | 'heure';
+                          const person = c.personId ? pMap.get(c.personId) : undefined;
+                          updCrew(c, { rateUnit: unit, rate: (unit === 'heure' ? person?.hourlyRate : person?.dailyRate) ?? c.rate, cost: (unit === 'heure' ? person?.hourlyCost : person?.costRate) ?? c.cost });
+                        }}>
+                          <option value="jour">/ jour</option><option value="heure">/ heure</option>
+                        </select>
+                      </td>
                       <td><NumInput className="w-price" value={c.rate} onChange={(n) => updCrew(c, { rate: n })} /></td>
                       <td><NumInput className="w-price" value={c.cost ?? 0} onChange={(n) => updCrew(c, { cost: n })} /></td>
+                      <td><input type="checkbox" checked={!!c.travel} disabled={!d.project.travelMinutes} title={d.project.travelMinutes ? `${d.project.travelMinutes} min avant et après` : 'Calcule d\'abord la distance du projet (onglet Général)'} onChange={(e) => updCrew(c, { travel: e.target.checked })} /></td>
                       <td><input type="checkbox" checked={c.billable} onChange={(e) => updCrew(c, { billable: e.target.checked })} /></td>
-                      <td className="n">{money(round2(daysBetween(c.start, c.end) * c.rate))}</td>
+                      <td className="n">{(() => {
+                        const a = crewAmount(c, d.settings, d.project.travelMinutes);
+                        return <>{money(a.billed)}{a.unit === 'heure' && <div className="muted" style={{ fontSize: 11 }}>{a.hours} h{a.overtime ? ` dont ${a.overtime} h sup.` : ''}</div>}</>;
+                      })()}</td>
                       <td><button className="ghost" onClick={() => db.crew.delete(c.id)} aria-label="Retirer">✕</button></td>
                     </tr>
                   );

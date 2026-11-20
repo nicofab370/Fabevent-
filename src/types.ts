@@ -187,7 +187,11 @@ export interface EquipGroup {
 
 export interface ProjectFile {
   id: ID;
+  /** vide pour un document du personnel */
   projectId: ID;
+  personId?: ID;
+  /** date d'expiration (permis, habilitation…) */
+  expires?: string;
   name: string;
   type: string;
   size: number;
@@ -271,6 +275,9 @@ export interface Person extends Base {
   dailyRate: number;
   /** ce que la personne te coûte par jour */
   costRate?: number;
+  /** tarifs horaires (facturé / coût) */
+  hourlyRate?: number;
+  hourlyCost?: number;
   external: boolean;
   contactId?: ID;
   notes?: string;
@@ -282,6 +289,10 @@ export interface CrewAssignment extends Base {
   personId?: ID;
   /** créneau du sous-projet auquel le poste est rattaché */
   periodId?: ID;
+  /** tarif à la journée (défaut) ou à l'heure, avec heures supplémentaires */
+  rateUnit?: 'jour' | 'heure';
+  /** temps de trajet du projet ajouté avant et après les horaires communiqués */
+  travel?: boolean;
   function: string;
   start: string;
   end: string;
@@ -437,7 +448,7 @@ export interface SnapshotSub {
   start: string;
   end: string;
   equipment: SnapshotLine[];
-  crew: { function: string; person?: string; phone?: string; start: string; end: string; days: number; rate: number; total: number; billable: boolean }[];
+  crew: { function: string; person?: string; phone?: string; start: string; end: string; days: number; rate: number; total: number; billable: boolean; unit?: 'jour' | 'heure'; hours?: number; overtime?: number; departure?: string; back?: string }[];
   vehicles: { name: string; plate?: string; driver?: string; start: string; end: string; price: number; billable: boolean; km?: number; trips?: number }[];
   subtotal: number;
 }
@@ -561,6 +572,9 @@ export interface Settings {
   structuredComm?: boolean;
   /** nouveau délai accordé par un rappel (jours) */
   reminderDays?: number;
+  /** heures supplémentaires : au-delà de X heures par jour, majoration en % */
+  overtimeAfter?: number;
+  overtimeRate?: number;
   /** prix au km par défaut pour le transport */
   pricePerKm?: number;
   /** allers-retours par défaut (livraison + reprise = 2) */

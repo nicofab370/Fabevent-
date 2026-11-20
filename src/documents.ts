@@ -2,7 +2,7 @@ import { db, DEFAULT_DOC_STYLE, getSettings, nextNumber } from './db';
 import type { Doc, DocSnapshot, DocType, Settings, SnapshotSub, VatRegime } from './types';
 import { DEFAULT_VAT_MENTIONS, structuredCommunication } from './payment';
 import { INVOICE_TYPES } from './types';
-import { daysBetween, factorFor, lineDays, lineTotal, round2, save, sortPeriods } from './utils';
+import { crewAmount, crewWindow, daysBetween, factorFor, lineDays, lineTotal, round2, save, sortPeriods } from './utils';
 
 const PREFIX: Record<DocType, 'D' | 'F' | 'AV' | 'BS' | 'FR' | 'RP'> = {
   devis: 'D', facture: 'F', acompte: 'F', avoir: 'AV', rappel: 'RP', bon_sortie: 'BS', feuille_route: 'FR',
@@ -74,9 +74,14 @@ export async function buildSnapshot(projectId: string, type: DocType): Promise<D
         .filter((c) => c.subprojectId === sp.id)
         .sort((a, b) => a.start.localeCompare(b.start))
         .map((c) => {
-          const d = daysBetween(c.start, c.end);
+          const a = crewAmount(c, s, project.travelMinutes, c.personId ? pMap.get(c.personId)?.costRate : undefined);
+          const [dep, back] = crewWindow(c, project.travelMinutes);
           const p = c.personId ? pMap.get(c.personId) : undefined;
-          return { function: c.function, person: p?.name, phone: p?.phone, start: c.start, end: c.end, days: d, rate: c.rate, total: round2(d * c.rate), billable: c.billable };
+          return {
+            function: c.function, person: p?.name, phone: p?.phone, start: c.start, end: c.end, days: a.unit === 'jour' ? a.qty : 0, rate: c.rate, total: a.billed,
+            billable: c.billable, unit: a.unit, hours: a.unit === 'heure' ? a.hours : undefined, overtime: a.overtime || undefined,
+            departure: dep !== c.start ? dep : undefined, back: back !== c.end ? back : undefined,
+          };
         });
       const vh = vas
         .filter((v) => v.subprojectId === sp.id)
