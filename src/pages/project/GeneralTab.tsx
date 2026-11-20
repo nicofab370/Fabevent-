@@ -9,7 +9,10 @@ import { STATUS_LABELS } from '../../types';
 import { blockPeriod, fmtDate, fmtRange, save, sortPeriods, uid, usageDays } from '../../utils';
 import { ContactForm } from '../Contacts';
 import { setProjectStatus } from './status';
-import type { ProjectData } from './shared';
+import { setProjectDistance, type ProjectData } from './shared';
+import { drivingRoute } from '../../geo';
+import { NumInput } from '../../components/ui';
+import { money } from '../../utils';
 
 /** Champ texte enregistré à la sortie du champ (pas à chaque frappe). */
 function LazyInput({ value, onSave, ...rest }: { value?: string; onSave: (v: string) => void; placeholder?: string; type?: string; required?: boolean }) {
@@ -26,7 +29,10 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
   const types = settings.projectTypes?.length ? settings.projectTypes : DEFAULT_PROJECT_TYPES;
   const venue = contacts.find((c) => c.id === project.venueId);
   const venueAddress = venue ? [venue.address, venue.postalCode, venue.city].filter(Boolean).join(', ') : project.venue || '';
-  const origin = [settings.company.street, settings.company.postalCode, settings.company.city].filter(Boolean).join(', ') || settings.company.address?.replace(/\n/g, ', ') || '';
+  const depots = settings.depots || [];
+  const depot = depots.find((x) => x.id === (project.depotId || depots[0]?.id));
+  const origin = (depot?.street || depot?.city ? [depot.street, depot.postalCode, depot.city].filter(Boolean).join(', ') : '')
+    || [settings.company.street, settings.company.postalCode, settings.company.city].filter(Boolean).join(', ') || settings.company.address?.replace(/\n/g, ', ') || '';
   const route = venueAddress ? `https://www.google.com/maps/dir/?api=1${origin ? `&origin=${encodeURIComponent(origin)}` : ''}&destination=${encodeURIComponent(venueAddress)}` : '';
 
   // Avancée du projet
@@ -71,6 +77,13 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
             </Field>
             <Field label="Numéro"><LazyInput value={project.number} onSave={(v) => v.trim() && upd({ number: v.trim() })} /></Field>
             <Field label="Couleur"><input type="color" value={project.color || '#2563eb'} onChange={(e) => upd({ color: e.target.value })} style={{ height: 36, padding: 2 }} /></Field>
+            {depots.length > 1 && (
+              <Field label="Dépôt (emplacement de stock)" full>
+                <select value={project.depotId || depots[0].id} onChange={(e) => upd({ depotId: e.target.value })}>
+                  {depots.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                </select>
+              </Field>
+            )}
             <Field label="Référence externe (n° de commande client)" full><LazyInput value={project.externalRef} onSave={(v) => upd({ externalRef: v || undefined })} /></Field>
           </div>
         </div>
@@ -124,7 +137,8 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
             </Field>
             <Field label="Nom affiché sur les documents" full><LazyInput value={project.venue} onSave={(v) => upd({ venue: v || undefined })} /></Field>
           </div>
-          {venueAddress && <p style={{ marginBottom: 0 }}>{venueAddress}<br /><a href={route} target="_blank" rel="noreferrer">Itinéraire et temps de trajet depuis le dépôt ↗</a></p>}
+          {venueAddress && <p>{venueAddress}<br /><a href={route} target="_blank" rel="noreferrer">Voir l'itinéraire ↗</a></p>}
+          <Distance d={d} from={origin} to={venueAddress} />
         </div>
 
         <div className="card">
@@ -257,6 +271,42 @@ function Files({ projectId }: { projectId: string }) {
         }} />
       </label>
       <p className="muted" style={{ marginBottom: 0, fontSize: 12 }}>Stockés sur cet appareil avec le projet.</p>
+    </div>
+  );
+}
+
+/** Distance dépôt → lieu : calcul automatique (OpenStreetMap) ou saisie manuelle ; elle chiffre le transport. */
+function Distance({ d, from, to }: { d: ProjectData; from: string; to: string }) {
+  const { project, settings } = d;
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const transport = d.projectVas.reduce((a, v) => a + (v.billable ? v.price : 0), 0);
+  const compute = async () => {
+    if (!from) return setMsg('Renseigne l\'adresse de ton dépôt dans Paramètres → Ma société.');
+    if (!to) return setMsg('Choisis un lieu avec une adresse, ou saisis le nom du lieu.');
+    setBusy(true); setMsg('');
+    try {
+      const r = await drivingRoute(from, to);
+      await setProjectDistance(d, r.km, r.minutes);
+      setMsg(r.estimated ? 'Itinéraire indisponible : estimation à vol d\'oiseau × 1,3, à vérifier.' : '');
+    } catch (e) {
+      setMsg('Calcul impossible : ' + (e as Error).message);
+    } finally { setBusy(false); }
+  };
+  const h = project.travelMinutes ? `${Math.floor(project.travelMinutes / 60)} h ${String(project.travelMinutes % 60).padStart(2, '0')}` : '';
+  return (
+    <div className="distance">
+      <div className="toolbar" style={{ alignItems: 'center', marginBottom: 4 }}>
+        <span>Distance depuis le dépôt</span>
+        <NumInput className="w-qty" value={project.distanceKm || 0} min={0} onChange={(n) => setProjectDistance(d, n || undefined, undefined)} />
+        <span>km{h && ` · ~${h} de route`}</span>
+        <button type="button" className="secondary small" disabled={busy} onClick={compute}>{busy ? 'Calcul…' : 'Calculer'}</button>
+      </div>
+      {msg && <p className="avail ko" style={{ margin: '4px 0' }}>{msg}</p>}
+      <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+        Transport facturé : {money(transport)} HT — forfait du véhicule + km × {money(settings.pricePerKm ?? 0)}/km,
+        sur {settings.defaultTrips ?? 2} aller(s)-retour(s) par défaut (réglable par véhicule dans « Équipe & transport »).
+      </p>
     </div>
   );
 }

@@ -98,7 +98,7 @@ function ProjectPage({ d }: { d: ProjectData }) {
 
       {(conflicts.length > 0 || open > 0) && (
         <div className="alert">
-          {conflicts.length > 0 && <div><strong>Manque de matériel :</strong> {conflicts.map((c) => `${c.equipment.name} (−${c.shortage})`).join(', ')} — <a href="#" onClick={(e) => { e.preventDefault(); goTab('souslocation'); }}>sous-louer</a></div>}
+          {conflicts.length > 0 && <div><strong>Manque de matériel :</strong> {Array.from(conflicts.reduce((m, c) => m.set(c.equipment.name, Math.max(m.get(c.equipment.name) || 0, c.shortage)), new Map<string, number>())).map(([n, q]) => `${n} (−${q})`).join(', ')} — <a href="#" onClick={(e) => { e.preventDefault(); goTab('souslocation'); }}>sous-louer</a></div>}
           {open > 0 && <div><strong>{open} poste(s) à pourvoir</strong> — <a href="#" onClick={(e) => { e.preventDefault(); goTab('equipe'); }}>planifier l'équipe</a></div>}
         </div>
       )}

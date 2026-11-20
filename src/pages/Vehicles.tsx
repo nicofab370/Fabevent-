@@ -21,7 +21,7 @@ export default function Vehicles() {
       <div className="card">
         {vehicles.length === 0 ? <Empty>Aucun véhicule.</Empty> : (
           <table className="list">
-            <thead><tr><th>Véhicule</th><th>Immatriculation</th><th className="n">Charge utile</th><th className="n">Prix/j</th><th>Prochaines sorties</th></tr></thead>
+            <thead><tr><th>Véhicule</th><th>Immatriculation</th><th className="n">Charge utile</th><th className="n">Forfait/j</th><th className="n">€/km</th><th>Prochaines sorties</th></tr></thead>
             <tbody>
               {vehicles.map((v) => {
                 const next = vas.filter((a) => a.vehicleId === v.id && a.end >= nowS).sort((a, b) => a.start.localeCompare(b.start));
@@ -30,6 +30,7 @@ export default function Vehicles() {
                     <td><strong>{v.name}</strong></td><td>{v.plate}</td>
                     <td className="n">{v.payload ? `${v.payload} kg` : ''}</td>
                     <td className="n">{money(v.dailyPrice)}</td>
+                    <td className="n">{v.pricePerKm != null ? money(v.pricePerKm) : <span className="muted">défaut</span>}</td>
                     <td>{next.slice(0, 3).map((a) => <div key={a.id} style={{ fontSize: 12 }}>{pMap.get(a.projectId)?.name} · {fmtRange(a.start, a.end)}</div>)}</td>
                   </tr>
                 );
@@ -45,7 +46,8 @@ export default function Vehicles() {
             <Field label="Immatriculation"><input value={edit.plate || ''} onChange={(e) => setEdit({ ...edit, plate: e.target.value })} /></Field>
             <Field label="Places"><NumInput value={edit.seats || 0} step="1" onChange={(n) => setEdit({ ...edit, seats: n })} /></Field>
             <Field label="Charge utile (kg)"><NumInput value={edit.payload || 0} onChange={(n) => setEdit({ ...edit, payload: n })} /></Field>
-            <Field label="Prix facturé / jour HT (€)"><NumInput value={edit.dailyPrice} onChange={(n) => setEdit({ ...edit, dailyPrice: n })} /></Field>
+            <Field label="Forfait facturé / jour HT (€)"><NumInput value={edit.dailyPrice} onChange={(n) => setEdit({ ...edit, dailyPrice: n })} /></Field>
+            <Field label="Prix facturé au km HT (€, vide = paramètres)"><input type="number" step="any" value={edit.pricePerKm ?? ''} onChange={(e) => setEdit({ ...edit, pricePerKm: e.target.value === '' ? undefined : parseFloat(e.target.value) })} /></Field>
             <Field label="Notes" full><textarea value={edit.notes || ''} onChange={(e) => setEdit({ ...edit, notes: e.target.value })} /></Field>
             <div className="form-actions">
               {edit.id && <button type="button" className="danger" style={{ marginRight: 'auto' }} onClick={async () => {

@@ -44,6 +44,15 @@ npm run build     # version de production dans dist/ (hébergeable sur n'importe
 - Devis, facture d'acompte, facture (acomptes déduits automatiquement), avoir, bon de sortie, feuille de route sans prix.
 - Impression / PDF, export HTML, email, **export Peppol BIS 3.0 (UBL)** pour les factures et les avoirs.
 
+**Transport chiffré à la distance** : distance dépôt → lieu calculée automatiquement (OpenStreetMap, connexion requise) ou saisie à la main ;
+prix d'un véhicule = forfait journalier × jours + km (distance × 2 × allers-retours) × prix au km (par véhicule ou par défaut).
+
+**Dépôts et transferts** : plusieurs dépôts, stock par dépôt, dépôt de départ par projet, transferts définitifs ou temporaires
+(proposés automatiquement en cas de manque), bon de transfert.
+
+**Modèles de documents** (version simplifiée) : titre et textes d'introduction et de fin par type de document, avec variables ({client}, {projet}…),
+couleur, police, position du logo, colonnes affichées, masquage des lignes à 0 €, aperçu en direct. Le modèle est figé dans chaque document émis.
+
 **Équipe et véhicules** : postes, tarif facturé / coût, indisponibilités, conflits, agenda personnel `.ics`.
 
 **Planning** mensuel et export `.ics` avec lien direct vers chaque projet.

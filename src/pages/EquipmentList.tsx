@@ -1,11 +1,11 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Empty, Field, Modal, NumInput, PageHead } from '../components/ui';
+import { Empty, Field, Modal, NumInput, PageHead, useSettings } from '../components/ui';
 import { db } from '../db';
 import type { Equipment } from '../types';
 import { useAvailability } from '../data';
-import { availableQty, money, save, toLocalInput } from '../utils';
+import { availableQty, money, save, stockIn, toLocalInput } from '../utils';
 
 type Draft = Omit<Equipment, 'id' | 'createdAt' | 'updatedAt'> & Partial<Equipment>;
 const blank = (): Draft => ({ name: '', quantity: 1, dailyPrice: 0, isKit: false, kitItems: [] });
@@ -14,6 +14,7 @@ export function EquipmentForm({ initial, onDone }: { initial?: Draft; onDone: ()
   const [e, setE] = useState<Draft>(initial || blank());
   const [newCat, setNewCat] = useState('');
   const cats = useLiveQuery(() => db.categories.orderBy('name').toArray(), []) || [];
+  const depots = useSettings().depots || [];
   const all = useLiveQuery(() => db.equipment.orderBy('name').toArray(), []) || [];
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setE({ ...e, [k]: v });
 
@@ -48,6 +49,28 @@ export function EquipmentForm({ initial, onDone }: { initial?: Draft; onDone: ()
       </Field>
       {e.trackSerials
         ? <Field label="Quantité en stock"><span className="muted">= nombre d'unités en service (gérées sur la fiche article)</span></Field>
+        : depots.length > 1 ? (
+          <div className="field full">
+            <span>Stock par dépôt (total : {e.quantity})</span>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {depots.map((dp, i) => {
+                const others = depots.slice(1).reduce((a, x) => a + (e.stock?.[x.id] || 0), 0);
+                const val = i === 0 ? Math.max(0, e.quantity - others) : e.stock?.[dp.id] || 0;
+                return (
+                  <label key={dp.id} className="check-row">{dp.name}
+                    <NumInput className="w-qty" step="1" min={0} value={val} onChange={(n) => {
+                      if (i === 0) set('quantity', n + others);
+                      else {
+                        const stock = { ...(e.stock || {}), [dp.id]: n };
+                        setE({ ...e, stock, quantity: Math.max(0, e.quantity - others) + depots.slice(1).reduce((a, x) => a + (stock[x.id] || 0), 0) });
+                      }
+                    }} />
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )
         : <Field label="Quantité en stock"><NumInput value={e.quantity} onChange={(n) => set('quantity', n)} step="1" min={0} /></Field>}
       <Field label={e.kind === 'vente' ? 'Prix de vente unitaire HT (€)' : 'Prix location / jour HT (€)'}><NumInput value={e.dailyPrice} onChange={(n) => set('dailyPrice', n)} /></Field>
       {e.kind === 'vente' && <Field label="Prix d'achat unitaire HT (€)"><NumInput value={e.costPrice || 0} onChange={(n) => set('costPrice', n)} /></Field>}
@@ -107,7 +130,8 @@ export function EquipmentForm({ initial, onDone }: { initial?: Draft; onDone: ()
 
 export default function EquipmentList() {
   const nav = useNavigate();
-  const { equipment, res } = useAvailability();
+  const { equipment, res, depots } = useAvailability();
+  const [depot, setDepot] = useState('');
   const cats = useLiveQuery(() => db.categories.toArray(), []) || [];
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('');
@@ -133,6 +157,12 @@ export default function EquipmentList() {
             <option value="">Toutes catégories</option>
             {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
+          {depots.length > 1 && (
+            <select value={depot} onChange={(e) => setDepot(e.target.value)}>
+              <option value="">Tous les dépôts</option>
+              {depots.map((dp) => <option key={dp.id} value={dp.id}>{dp.name}</option>)}
+            </select>
+          )}
           <span className="muted" style={{ alignSelf: 'center' }}>Dispo du</span>
           <input type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} />
           <span className="muted" style={{ alignSelf: 'center' }}>au</span>
@@ -144,13 +174,13 @@ export default function EquipmentList() {
               <thead><tr><th>Désignation</th><th>Réf.</th><th>Catégorie</th><th className="n">Stock</th><th className="n">Dispo période</th><th className="n">Prix/j HT</th></tr></thead>
               <tbody>
                 {filtered.map((e) => {
-                  const av = availableQty(e, equipment, res, from, to);
+                  const av = availableQty(e, equipment, res, from, to, undefined, depot || undefined);
                   return (
                     <tr key={e.id} className="click" onClick={() => nav('/materiel/' + e.id)}>
                       <td><strong>{e.name}</strong> {e.isKit && <span className="badge">Kit</span>} {e.kind === 'vente' && <span className="badge">vente</span>} {e.trackSerials && <span className="badge">n° série</span>}</td>
                       <td>{e.code}</td>
                       <td>{e.categoryId ? catName.get(e.categoryId) : ''}</td>
-                      <td className="n">{e.isKit ? '—' : e.quantity}</td>
+                      <td className="n" title={e._stock ? depots.map((dp) => `${dp.name} : ${e._stock?.[dp.id] || 0}`).join('\n') : undefined}>{e.isKit ? '—' : depot ? stockIn(e, depot) : e.quantity}</td>
                       <td className="n"><span className={'avail ' + (av > 0 ? 'ok' : 'ko')}>{av}</span></td>
                       <td className="n">{money(e.dailyPrice)}{e.kind === 'vente' ? ' /pce' : ''}</td>
                     </tr>

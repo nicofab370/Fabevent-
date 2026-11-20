@@ -57,8 +57,39 @@ export interface Accessory extends KitItem {
 /** location = facturé par jour et revient ; vente = consommable vendu à l'unité */
 export type EquipmentKind = 'location' | 'vente';
 
+/** Dépôt / emplacement de stock. Le premier de la liste est le dépôt principal. */
+export interface Depot {
+  id: ID;
+  name: string;
+  street?: string;
+  postalCode?: string;
+  city?: string;
+  country?: string;
+}
+
+export type TransferStatus = 'planifie' | 'effectue' | 'annule';
+export const TRANSFER_LABELS: Record<TransferStatus, string> = { planifie: 'Planifié', effectue: 'Effectué', annule: 'Annulé' };
+
+/** Déplacement de matériel entre dépôts : définitif (sans date de retour) ou temporaire. */
+export interface Transfer extends Base {
+  number: string;
+  fromDepotId: ID;
+  toDepotId: ID;
+  start: string;
+  /** retour au dépôt d'origine ; vide = transfert définitif */
+  end?: string;
+  status: TransferStatus;
+  lines: { equipmentId: ID; qty: number }[];
+  projectId?: ID;
+  notes?: string;
+}
+
 export interface Equipment extends Base {
   name: string;
+  /** quantités dans les dépôts secondaires (matériel en vrac) ; le dépôt principal a le reste */
+  stock?: Record<ID, number>;
+  /** calculé, jamais enregistré : quantité par dépôt */
+  _stock?: Record<ID, number>;
   kind?: EquipmentKind;
   trackSerials?: boolean;
   accessories?: Accessory[];
@@ -108,6 +139,11 @@ export interface Project extends Base {
   externalRef?: string;
   /** lieu de prestation (contact de type « lieu ») */
   venueId?: ID;
+  /** dépôt d'où part le matériel */
+  depotId?: ID;
+  /** distance aller dépôt → lieu (km) et temps de trajet (min) */
+  distanceKm?: number;
+  travelMinutes?: number;
   tasks?: Task[];
   notes?: string;
 }
@@ -247,6 +283,7 @@ export interface SerialUnit extends Base {
   barcode?: string;
   /** hs / perdu = sorti définitivement du stock */
   status: 'ok' | 'hs' | 'perdu';
+  depotId?: ID;
   lastInspection?: string;
   notes?: string;
 }
@@ -311,6 +348,8 @@ export interface Vehicle extends Base {
   seats?: number;
   payload?: number;
   dailyPrice: number;
+  /** prix facturé au km (sinon celui des paramètres) */
+  pricePerKm?: number;
   notes?: string;
 }
 
@@ -321,6 +360,14 @@ export interface VehicleAssignment extends Base {
   periodId?: ID;
   start: string;
   end: string;
+  /** nombre d'allers-retours (ex. 2 = livraison + reprise) */
+  trips?: number;
+  /** km facturés ; recalculés depuis la distance du projet tant que kmManual n'est pas coché */
+  km?: number;
+  kmManual?: boolean;
+  /** prix au km appliqué (sinon celui du véhicule ou des paramètres) */
+  perKm?: number;
+  /** prix total HT = forfait journalier × jours + km × prix au km (modifiable) */
   price: number;
   billable: boolean;
   driverId?: ID;
@@ -368,8 +415,38 @@ export interface SnapshotSub {
   end: string;
   equipment: SnapshotLine[];
   crew: { function: string; person?: string; phone?: string; start: string; end: string; days: number; rate: number; total: number; billable: boolean }[];
-  vehicles: { name: string; plate?: string; driver?: string; start: string; end: string; price: number; billable: boolean }[];
+  vehicles: { name: string; plate?: string; driver?: string; start: string; end: string; price: number; billable: boolean; km?: number; trips?: number }[];
   subtotal: number;
+}
+
+/** Style commun des documents (éditeur de modèles simplifié). */
+export interface DocStyle {
+  color: string;
+  font: 'sans' | 'serif' | 'arrondie';
+  logoPosition: 'gauche' | 'droite' | 'centre';
+  showCode: boolean;
+  showFactor: boolean;
+  showDiscount: boolean;
+  showGroups: boolean;
+  showSubtotals: boolean;
+  showPeriods: boolean;
+  /** masque les lignes à 0 € (accessoires gratuits…) sur les documents chiffrés */
+  hideZero: boolean;
+  /** devis / factures : un total par salle au lieu du détail du matériel */
+  hideEquipmentDetail: boolean;
+  showSignature: boolean;
+}
+
+/** Textes propres à un type de document ; variables : {client} {contact} {projet} {numero} {date} {lieu} {debut} {fin} {total} {echeance} {societe} */
+export interface DocTypeTemplate {
+  title?: string;
+  intro?: string;
+  outro?: string;
+}
+
+export interface DocTemplates {
+  style: DocStyle;
+  types: Partial<Record<DocType, DocTypeTemplate>>;
 }
 
 export interface DocSnapshot {
@@ -396,6 +473,8 @@ export interface DocSnapshot {
   refNumber?: string;
   dueDate?: string;
   optionalTotal?: number;
+  /** modèle figé au moment de la génération */
+  template?: DocTypeTemplate & { style: DocStyle };
 }
 
 /** Document figé : une génération = un nouvel enregistrement, jamais d'écrasement. */
@@ -437,8 +516,14 @@ export interface Settings {
   factorExtraPerDay: number;
   quoteValidityDays: number;
   paymentDays: number;
+  /** prix au km par défaut pour le transport */
+  pricePerKm?: number;
+  /** allers-retours par défaut (livraison + reprise = 2) */
+  defaultTrips?: number;
   footer: string;
   appUrl: string;
   counters: Record<string, number>;
   projectTypes?: { name: string; color: string }[];
+  depots?: Depot[];
+  templates?: DocTemplates;
 }

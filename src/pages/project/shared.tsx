@@ -4,7 +4,8 @@ import { useAvailability } from '../../data';
 import { db } from '../../db';
 import type { CrewAssignment, Equipment, EquipmentLine, Person, Project, ProjectCost, Settings, Subproject, Unavailability, VehicleAssignment } from '../../types';
 import { INVOICE_TYPES, RESERVING } from '../../types';
-import { daysBetween, lineDays, lineTotal, overlaps, round2 } from '../../utils';
+import { daysBetween, lineDays, lineTotal, overlaps, round2, save } from '../../utils';
+import { tripKm, vehiclePrice } from '../../geo';
 
 /** Toutes les données d'un projet, en temps réel, partagées par les onglets. */
 export function useProjectData(id: string) {
@@ -32,8 +33,11 @@ export function useProjectData(id: string) {
     ? computeFinance(project, subs, lines, projectCrew, projectVas, costs, people, eqMap, settings,
       subrentals.filter((s) => s.status !== 'annule').reduce((a, s) => a + s.lines.reduce((b, l) => b + l.cost, 0), 0))
     : null;
+  const depotId = project ? av.projectDepots.get(project.id) : undefined;
+  /** dépôt du projet pour les disponibilités (undefined si un seul dépôt) */
+  const depot = av.depots.length > 1 ? depotId : undefined;
   return {
-    settings, av, project, client, subs, crew, projectCrew, people, unav, vehicles, vas, projectVas, docs, costs, contacts,
+    settings, av, project, client, depot, subs, crew, projectCrew, people, unav, vehicles, vas, projectVas, docs, costs, contacts,
     eqMap, lines, conflicts, subrentals, finance,
   };
 }
@@ -115,4 +119,15 @@ export function printHtml(title: string, body: string, css: string) {
   w.document.write(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${title}</title><style>body{margin:0}${css}</style></head><body>${body}</body></html>`);
   w.document.close();
   setTimeout(() => w.print(), 300);
+}
+
+/** Met à jour la distance du projet et recalcule les transports dont les km ne sont pas saisis à la main. */
+export async function setProjectDistance(d: ProjectData, distanceKm: number | undefined, travelMinutes?: number) {
+  await save(db.projects, { ...d.project, distanceKm, travelMinutes });
+  const vMap = new Map(d.vehicles.map((v) => [v.id, v]));
+  for (const va of d.projectVas) {
+    if (va.kmManual) continue;
+    const km = tripKm(distanceKm, va.trips ?? d.settings.defaultTrips ?? 2);
+    await save(db.vehicleAssignments, { ...va, km, price: vehiclePrice({ ...va, km }, vMap.get(va.vehicleId), d.settings) });
+  }
 }

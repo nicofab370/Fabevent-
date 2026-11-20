@@ -67,6 +67,10 @@ export default function EquipmentDetail() {
         <div className="stat"><b>{money(eq.replacementValue || 0)}</b><span>valeur de remplacement</span></div>
         <div className="stat"><b>{eq.code || '—'}</b><span>référence{eq.location ? ` · ${eq.location}` : ''}</span></div>
       </div>
+      {eq._stock && av.depots.length > 1 && !eq.isKit && (
+        <div className="info">Stock par dépôt : {av.depots.map((dp) => `${dp.name} ${eq._stock?.[dp.id] || 0}`).join(' · ')}
+          {av.transfers.some((t) => t.status !== 'annule' && t.lines.some((l) => l.equipmentId === eq.id)) && <> — <a href="#/transferts">voir les transferts</a></>}</div>
+      )}
 
       {!eq.isKit && (
         <div className="card">
@@ -100,7 +104,7 @@ export default function EquipmentDetail() {
           </div>
           {units.length === 0 ? <Empty>Ajoute chaque unité avec son numéro de série et son code-barres.</Empty> : (
             <table className="list">
-              <thead><tr><th>N° de série</th><th>Code-barres</th><th>État</th><th>Prochain contrôle</th><th /></tr></thead>
+              <thead><tr><th>N° de série</th><th>Code-barres</th>{av.depots.length > 1 && <th>Dépôt</th>}<th>État</th><th>Prochain contrôle</th><th /></tr></thead>
               <tbody>
                 {units.map((u) => {
                   const d = due.find((x) => x.unit?.id === u.id);
@@ -108,6 +112,7 @@ export default function EquipmentDetail() {
                     <tr key={u.id}>
                       <td><a href="#" onClick={(e) => { e.preventDefault(); setUnitEdit(u); }}><strong>{u.serial}</strong></a></td>
                       <td>{u.barcode}</td>
+                      {av.depots.length > 1 && <td>{av.depots.find((dp) => dp.id === (u.depotId || av.mainDepot))?.name}</td>}
                       <td><span className="badge">{UNIT_STATUS[u.status]}</span>{repairs.some((r) => r.unitId === u.id && r.status === 'ouvert') && <span className="badge st-annule" style={{ marginLeft: 4 }}>en réparation</span>}</td>
                       <td>{d ? <span className={d.due <= new Date().toISOString().slice(0, 10) ? 'avail ko' : ''}>{fmtDate(d.due, false)}</span> : '—'}</td>
                       <td style={{ whiteSpace: 'nowrap' }}>
@@ -190,6 +195,13 @@ export default function EquipmentDetail() {
                 {Object.entries(UNIT_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </Field>
+            {av.depots.length > 1 && (
+              <Field label="Dépôt">
+                <select value={unitEdit.depotId || av.mainDepot} onChange={(e) => setUnitEdit({ ...unitEdit, depotId: e.target.value })}>
+                  {av.depots.map((dp) => <option key={dp.id} value={dp.id}>{dp.name}</option>)}
+                </select>
+              </Field>
+            )}
             <Field label="Dernier contrôle"><input type="date" value={unitEdit.lastInspection || ''} onChange={(e) => setUnitEdit({ ...unitEdit, lastInspection: e.target.value })} /></Field>
             <Field label="Notes" full><textarea value={unitEdit.notes || ''} onChange={(e) => setUnitEdit({ ...unitEdit, notes: e.target.value })} /></Field>
             <div className="form-actions">
