@@ -25,6 +25,7 @@ import Projects from './pages/Projects';
 import SettingsPage from './pages/Settings';
 import Vehicles from './pages/Vehicles';
 import Shortages from './pages/Shortages';
+import { SyncBadge } from './components/SyncPanel';
 import Venues, { VenueDetail } from './pages/Venues';
 import CrewAssignmentPage from './pages/crewAssign';
 
@@ -75,7 +76,7 @@ export default function App() {
             </NavLink>
           ))}
         </nav>
-        <div className={'net ' + (online ? 'on' : 'off')}>{online ? '● En ligne' : '● Hors ligne'} · données locales</div>
+        <SyncBadge online={online} />
       </aside>
       <div className="topbar">
         <button className="ghost" onClick={() => setMenu(!menu)} aria-label="Menu">☰</button>

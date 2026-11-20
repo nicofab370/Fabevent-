@@ -162,15 +162,23 @@ export async function getSettings(): Promise<Settings> {
 
 /** Numérotation : P-2026-001, D-2026-001, F-2026-001… */
 export async function nextNumber(kind: 'P' | 'D' | 'F' | 'AV' | 'BS' | 'FR' | 'SL' | 'TR' | 'RP'): Promise<string> {
+  const year = new Date().getFullYear();
+  const key = `${kind}-${year}`;
+  const local = ((await getSettings()).counters[key] || 0) + 1;
+  // avec la synchro, le serveur attribue le numéro : pas de doublon entre appareils (factures)
+  // (jamais au milieu d'une transaction : un appel réseau la fermerait)
+  const remote = numberProvider && !Dexie.currentTransaction ? await numberProvider(key, local) : null;
   return db.transaction('rw', db.settings, async () => {
     const s = await getSettings();
-    const year = new Date().getFullYear();
-    const key = `${kind}-${year}`;
-    const n = (s.counters[key] || 0) + 1;
+    const n = Math.max(remote ?? 0, (s.counters[key] || 0) + 1);
     await db.settings.put({ ...s, counters: { ...s.counters, [key]: n } });
     return `${key}-${String(n).padStart(3, '0')}`;
   });
 }
+
+let numberProvider: ((key: string, localNext: number) => Promise<number | null>) | null = null;
+/** Branche la numérotation sur le serveur de synchronisation. */
+export function setNumberProvider(f: typeof numberProvider) { numberProvider = f; }
 
 export function appBaseUrl(s: Settings): string {
   if (s.appUrl) return s.appUrl.replace(/#.*$/, '').replace(/\/?$/, '/');
@@ -223,12 +231,14 @@ function writeLog(projectId: string | undefined, entityId: string, text: string,
 for (const [table, label] of Object.entries(LOGGED)) {
   const t = db.table(table);
   const pid = (o: Record<string, unknown>) => (table === 'projects' ? (o.id as string) : (o.projectId as string));
-  t.hook('creating', (_k, obj) => { writeLog(pid(obj), obj.id, `${label}${describe(obj)} ajouté`); });
-  t.hook('updating', (mods, _k, obj) => {
+  const remote = (tx: unknown) => !!(tx as { __remote?: boolean } | undefined)?.__remote;
+  t.hook('creating', (_k, obj, tx) => { if (!remote(tx)) writeLog(pid(obj), obj.id, `${label}${describe(obj)} ajouté`); });
+  t.hook('updating', (mods, _k, obj, tx) => {
+    if (remote(tx)) return;
     const keys = Array.from(new Set(Object.keys(mods).map((k) => k.split('.')[0]).filter((k) => k !== 'updatedAt' && k !== 'createdAt')));
     if (!keys.length) return;
     const fields = Array.from(new Set(keys.map((k) => FIELD_LABELS[k] || k)));
     writeLog(pid(obj), obj.id, `${label}${describe({ ...obj, ...mods })} modifié : ${fields.join(', ')}`, fields);
   });
-  t.hook('deleting', (_k, obj) => { if (obj) writeLog(pid(obj), obj.id, `${label}${describe(obj)} supprimé`); });
+  t.hook('deleting', (_k, obj, tx) => { if (obj && !remote(tx)) writeLog(pid(obj), obj.id, `${label}${describe(obj)} supprimé`); });
 }

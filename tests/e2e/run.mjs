@@ -2,8 +2,10 @@
  * Parcours complet de FabEvent dans un vrai navigateur (Playwright).
  * Lancement : npm run test:e2e  (construit l'application, la sert, puis déroule les scénarios).
  */
-import { spawn } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
@@ -1253,6 +1255,67 @@ await step('Inventaire : unités non vues → en réparation, visibles en mainte
 });
 
 await ctx.close();
+
+/* ---------- Synchronisation : deux appareils, le vrai serveur PHP ---------- */
+const hasPhp = spawnSync('php', ['-v']).status === 0;
+if (hasPhp) {
+  console.log('\n  — synchronisation entre appareils (serveur PHP) —');
+  const root = mkdtempSync(join(tmpdir(), 'fabweb-'));
+  cpSync('dist', root, { recursive: true });
+  mkdirSync(join(root, 'api'));
+  cpSync('server/sync.php', join(root, 'api/sync.php'));
+  const SPORT = PORT + 700;
+  const php = spawn('php', ['-S', `127.0.0.1:${SPORT}`, '-t', root], {
+    env: { ...process.env, FABEVENT_AUTH: resolve('tests/server/auth-stub.php'), FABEVENT_DATA: mkdtempSync(join(tmpdir(), 'fabdata-')) }, stdio: 'ignore',
+  });
+  await new Promise((r) => setTimeout(r, 1200));
+  const SU = `http://127.0.0.1:${SPORT}/`;
+  const device = async (user) => {
+    const c = await browser.newContext({ viewport: { width: 1300, height: 900 } });
+    await c.addCookies([{ name: 'testuser', value: user, url: SU }]);
+    await c.addInitScript(() => { try { if (!localStorage.getItem('fab.sync.url')) localStorage.setItem('fab.sync.url', 'api/sync.php'); } catch {} });
+    const p = await c.newPage();
+    p.on('pageerror', (e) => consoleErrors.push(e.message));
+    p.on('dialog', (d) => d.accept());
+    return { c, p };
+  };
+  const syncOn = async (p) => { await p.goto(SU + '#/parametres'); await p.click('button:text-is("Synchroniser maintenant")'); await p.waitForTimeout(1500); };
+  const A = await device('nico');
+  const B = await device('collegue');
+  await step('Synchro : un contact créé sur un appareil apparaît sur l’autre', async () => {
+    await A.p.goto(SU + '#/contacts'); await A.p.waitForTimeout(500);
+    await A.p.click('button:text-is("+ Nouveau contact")');
+    await A.p.locator('.modal .field', { hasText: 'Société / Nom' }).locator('input').fill('Client synchronisé SA');
+    await A.p.click('.modal button[type=submit]');
+    await A.p.waitForTimeout(3500); // envoi automatique 2 s après la modification
+    await syncOn(B.p);
+    await B.p.goto(SU + '#/contacts'); await B.p.waitForTimeout(500);
+    expect(await B.p.locator('table.list tr', { hasText: 'Client synchronisé SA' }).count() === 1, 'contact reçu sur le 2e appareil');
+    expect((await B.p.locator('.net').innerText()).includes('synchronisé'), 'état « synchronisé » affiché');
+  });
+  await step('Synchro : modification et numérotation sans doublon entre appareils', async () => {
+    await B.p.locator('table.list tr', { hasText: 'Client synchronisé SA' }).click();
+    await B.p.locator('.modal .field', { hasText: 'Ville' }).first().locator('input').fill('Liège');
+    await B.p.click('.modal button[type=submit]');
+    await B.p.waitForTimeout(3500);
+    await syncOn(A.p);
+    await A.p.goto(SU + '#/contacts'); await A.p.waitForTimeout(500);
+    expect((await A.p.locator('table.list tr', { hasText: 'Client synchronisé SA' }).innerText()).includes('Liège'), 'modification reçue');
+    const newProject = async (p, name) => {
+      await p.goto(SU + '#/projets'); await p.waitForTimeout(400);
+      await p.click('button:text-is("+ Nouveau projet")');
+      await p.locator('.modal .field', { hasText: 'Nom du projet' }).locator('input').fill(name);
+      await p.click('.modal button[type=submit]');
+      await p.waitForSelector('.project-tabs');
+      return (await p.locator('h1').innerText()).split(' · ')[0];
+    };
+    const n1 = await newProject(A.p, 'Projet A');
+    const n2 = await newProject(B.p, 'Projet B'); // B n'a pas encore reçu le projet de A
+    expect(n1 !== n2, `numéros distincts (${n1} / ${n2})`);
+  });
+  await A.c.close(); await B.c.close();
+  php.kill();
+}
 
 await step('Aucune erreur dans la console du navigateur', async () => {
   expect(consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '));

@@ -1,0 +1,33 @@
+name: Paquet pour l'hébergement FABRI.live
+
+# À chaque mise à jour de main : un zip prêt à déposer sur l'hébergement
+# (dossier fabevent/ = l'application + api/sync.php). Onglet Actions → dernière exécution → Artifacts.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: |
+          mkdir -p paquet/fabevent/api
+          cp -r dist/. paquet/fabevent/
+          cp server/sync.php paquet/fabevent/api/sync.php
+          cp docs/deploiement-fabri.md paquet/LISEZMOI.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fabevent-fabri
+          path: paquet

@@ -4,6 +4,7 @@ import { currentWorkspace, db, DEFAULT_PROJECT_TYPES, listWorkspaces, switchWork
 import { DEMO_WORKSPACE, seedDemo } from '../demo';
 import type { InvoiceMoment, Settings } from '../types';
 import { MOMENT_TRIGGERS, VAT_REGIME_LABELS } from '../types';
+import { SyncPanel } from '../components/SyncPanel';
 import { settingsMoments } from '../invoicing';
 import { DEFAULT_VAT_MENTIONS } from '../payment';
 import { download, uid } from '../utils';
@@ -230,11 +231,12 @@ export default function SettingsPage() {
         </div>
       </form>
 
+      <SyncPanel />
       <div className="card">
         <h2>Données & hors ligne</h2>
         <p className="muted">
-          Les données sont enregistrées dans ce navigateur et fonctionnent sans connexion. Fais des sauvegardes régulières
-          tant que la synchronisation serveur n'est pas en place.
+          Les données sont enregistrées dans ce navigateur et fonctionnent sans connexion ; avec la synchronisation, elles sont aussi
+          sur le serveur. Une sauvegarde de temps en temps reste une bonne idée.
         </p>
         <p>
           Stockage protégé contre l'effacement automatique : <strong>{persisted === null ? 'inconnu' : persisted ? 'oui' : 'non'}</strong>{' '}
