@@ -50,8 +50,9 @@ prix d'un véhicule = forfait journalier × jours + km (distance × 2 × allers-
 **Dépôts et transferts** : plusieurs dépôts, stock par dépôt, dépôt de départ par projet, transferts définitifs ou temporaires
 (proposés automatiquement en cas de manque), bon de transfert.
 
-**Modèles de documents** (version simplifiée) : titre et textes d'introduction et de fin par type de document, avec variables ({client}, {projet}…),
-couleur, police, position du logo, colonnes affichées, masquage des lignes à 0 €, aperçu en direct. Le modèle est figé dans chaque document émis.
+**Modèles de documents** : style commun éditable en HTML (en-tête, mise en page, pied de page, CSS) avec une liste de variables
+cliquables ({{client.nom}}, {{total.ttc}}…) et de blocs générés ({{bloc.salles}}, {{bloc.totaux}}…) ; titre et textes par type de document ;
+options d'affichage (couleur, police, colonnes, lignes à 0 €) ; aperçu en direct. Le modèle est figé dans chaque document émis.
 
 **Équipe et véhicules** : postes, tarif facturé / coût, indisponibilités, conflits, agenda personnel `.ics`.
 

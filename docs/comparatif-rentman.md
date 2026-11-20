@@ -69,7 +69,7 @@ Légende : ✅ fait · 🟡 partiel · ❌ absent · ⛔ écarté volontairement
 | [Code de paiement / communication structurée](https://support.rentman.io/hc/fr/articles/40383206373778-Ajouter-un-code-de-paiement-aux-factures-%C3%A9lectroniques) | 🟡 | Ajouter la communication structurée belge (+++…+++) et un QR code de virement (EPC) sur la facture |
 | [Rappels de facture](https://support.rentman.io/hc/fr/articles/17195865170706-Rappels-de-facture) | ❌ | Liste des factures échues, 1er et 2e rappel en PDF ou email |
 | [Langue des documents](https://support.rentman.io/hc/fr/articles/360014194100-Changer-la-langue-des-mod%C3%A8les-de-document) | ❌ | Documents en français, néerlandais ou anglais selon le client |
-| Éditeur de modèles de documents | ✅ | Version simplifiée : titre et textes par type de document avec variables, couleur, police, logo, colonnes, masquage des lignes à 0 €, total par salle, aperçu en direct |
+| Éditeur de modèles de documents | ✅ | Version simplifiée : style commun en HTML (en-tête, mise en page, pied, CSS) avec liste de variables et de blocs cliquables, textes par type de document, options d'affichage, aperçu en direct |
 | [Devis en ligne](https://support.rentman.io/hc/fr/articles/29481848461458-Devis-en-ligne) et [signature numérique](https://support.rentman.io/hc/fr/articles/360014193840-Ajouter-l-option-de-signature-num%C3%A9rique) | 🌐 | |
 | Paiement en ligne (Mollie, Stripe) | 🌐 | |
 | Connexion comptable | ⛔ | Billy.tech n'a pas d'API : PDF groupés et journal CSV |

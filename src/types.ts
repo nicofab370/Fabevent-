@@ -444,8 +444,17 @@ export interface DocTypeTemplate {
   outro?: string;
 }
 
+/** Gabarit HTML commun à tous les documents, avec variables {{…}}. */
+export interface DocHtml {
+  header: string;
+  layout: string;
+  footer: string;
+  css: string;
+}
+
 export interface DocTemplates {
   style: DocStyle;
+  html?: DocHtml;
   types: Partial<Record<DocType, DocTypeTemplate>>;
 }
 
@@ -474,7 +483,7 @@ export interface DocSnapshot {
   dueDate?: string;
   optionalTotal?: number;
   /** modèle figé au moment de la génération */
-  template?: DocTypeTemplate & { style: DocStyle };
+  template?: DocTypeTemplate & { style: DocStyle; html?: DocHtml };
 }
 
 /** Document figé : une génération = un nouvel enregistrement, jamais d'écrasement. */

@@ -108,7 +108,7 @@ export async function buildSnapshot(projectId: string, type: DocType): Promise<D
     dueDate: INVOICE_TYPES.includes(type) ? new Date(issued.getTime() + s.paymentDays * 86400000).toISOString() : undefined,
     footer: s.footer,
     hidePrices: isPacking,
-    template: { style: { ...DEFAULT_DOC_STYLE, ...s.templates?.style }, ...s.templates?.types?.[type] },
+    template: { style: { ...DEFAULT_DOC_STYLE, ...s.templates?.style }, html: s.templates?.html, ...s.templates?.types?.[type] },
     optionalTotal: isQuote && optionalTotal ? optionalTotal : undefined,
   };
 }
