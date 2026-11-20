@@ -48,7 +48,7 @@ export default function Inventory() {
   const inDepot = (u: SerialUnit) => !multi || (u.depotId || av.mainDepot) === depot;
   /** unités attendues au dépôt : en service ou à réparer (les unités en réparation et perdues n'y sont pas) */
   const unitsHere = (eqId: string) => av.units.filter((u) => u.equipmentId === eqId && u.status === 'ok' && inDepot(u));
-  const items = av.equipment.filter((e) => !e.isKit && !e.archived);
+  const items = av.equipment.filter((e) => !e.isKit && !e.archived && !e.accessoryOnly);
   const expected = (e: Equipment) => (e.trackSerials ? unitsHere(e.id).length : stockIn(e, dep));
   const countOf = (e: Equipment): number | undefined => (e.trackSerials ? (unitsHere(e.id).some((u) => found.has(u.id)) ? unitsHere(e.id).filter((u) => found.has(u.id)).length : undefined) : ses.counted[e.id]);
   const setCount = (id: string, n: number | undefined) => setSes((s) => { const counted = { ...s.counted }; if (n === undefined) delete counted[id]; else counted[id] = n; return { ...s, counted }; });

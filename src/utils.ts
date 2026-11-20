@@ -147,7 +147,8 @@ export function buildReservations(lines: EquipmentLine[], subs: Subproject[], eq
   const unitDepot = new Map((extras.units || []).map((u) => [u.id, u.depotId || main]));
   const push = (eqId: string, qty: number, l: EquipmentLine, sp: Subproject, depth: number) => {
     const eq = eqMap.get(eqId);
-    if (!eq || depth > 4) return;
+    // élément hors inventaire (accessoire) : ni stock ni réservation
+    if (!eq || depth > 4 || eq.accessoryOnly) return;
     if (eq.isKit && eq.kitItems.length) {
       for (const k of eq.kitItems) push(k.equipmentId, k.qty * qty, l, sp, depth + 1);
     } else {
@@ -211,6 +212,7 @@ export function peakReserved(res: Reservation[], equipmentId: string, start: str
 export function availableQty(
   eq: Equipment, all: Equipment[], res: Reservation[], start: string, end: string, excludeLineId?: string, depotId?: string,
 ): number {
+  if (eq.accessoryOnly) return Infinity;
   if (eq.isKit && eq.kitItems.length) {
     const map = new Map(all.map((e) => [e.id, e]));
     let min = Infinity;

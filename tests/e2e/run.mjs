@@ -1389,7 +1389,7 @@ await step('Contenu fourni : affiché à la checklist, au scan et sur le bon de 
   await page.waitForSelector('.doc');
   expect((await page.locator('.doc').innerText()).includes('avec : Télécommande, Câble HDMI 5 m, Câble secteur'), 'contenu sur le bon de sortie');
   await go('entrepot');
-  await page.locator('table.list tr.click', { hasText: 'Conférence annuelle' }).first().click();
+  await page.locator('table.list tr.click', { hasText: 'Conférence annuelle' }).filter({ hasText: 'Salle plénière' }).click();
   await page.waitForSelector('.checklist-scan');
   expect((await page.locator('.cl-line', { hasText: 'Vidéoprojecteur' }).innerText()).includes('avec : Télécommande'), 'contenu sur la checklist');
   // QR « lien vers la fiche » : la page /q/<code> montre le contenu à cocher
@@ -1407,6 +1407,49 @@ await step('Contenu fourni : affiché à la checklist, au scan et sur le bon de 
   await page.press('.scan-input', 'Enter');
   await page.waitForTimeout(300);
   expect((await page.locator('.flash').first().innerText()).includes('VP10K-1002'), 'QR-lien reconnu au scan');
+  await ctx.close();
+});
+
+await step('Élément hors inventaire : créé depuis un article, ajouté avec lui, coché à la checklist, absent du catalogue', async () => {
+  ctx = await newContext();
+  await openDemo();
+  await go('materiel');
+  await page.click('text=+ Nouvel article');
+  await page.locator('.modal .field', { hasText: 'Désignation' }).locator('input').fill('PC portable de régie');
+  const answers = ['Chargeur 65 W', 'Dock USB-C'];
+  page.removeAllListeners('dialog');
+  page.on('dialog', (d) => (d.type() === 'prompt' ? d.accept(answers.shift()) : d.accept()));
+  for (let i = 0; i < 2; i++) { await page.click('.modal button:has-text("+ Nouvel élément (hors inventaire)")'); await page.waitForTimeout(300); }
+  page.removeAllListeners('dialog');
+  page.on('dialog', (d) => (d.type() === 'prompt' ? d.accept(d.defaultValue()) : d.accept()));
+  await page.locator('.modal label', { hasText: 'Dépôt Liège' }).locator('input').fill('3');
+  await page.click('.modal button[type=submit]');
+  await page.waitForTimeout(400);
+  expect(await page.locator('table.list tr', { hasText: 'Chargeur 65 W' }).count() === 0, 'absent de la liste du matériel');
+  await page.locator('label', { hasText: 'Éléments hors inventaire' }).locator('input').check();
+  await page.waitForTimeout(200);
+  expect((await page.locator('table.list').innerText()).includes('Dock USB-C'), 'visible avec le filtre');
+  await go('inventaire');
+  expect(await page.locator('table.list tr', { hasText: 'Chargeur 65 W' }).count() === 0, 'absent de l’inventaire');
+  // ajouté à un projet : ses éléments suivent, sans dispo ni manque
+  await openProject('Mariage Dupont-Lemaire');
+  await tab('Équipement');
+  const qa = page.locator('input[aria-label="Ajouter un article"]').first();
+  await qa.fill('chargeur');
+  expect(await page.locator('.quick-add-list li', { hasText: 'Chargeur 65 W' }).count() === 0, 'absent de la saisie rapide');
+  await qa.fill('2 pc portable');
+  await qa.press('Enter');
+  await page.waitForTimeout(500);
+  const rows = page.locator('.sub').first();
+  expect(await rows.locator('tr', { hasText: 'Chargeur 65 W' }).locator('input').first().inputValue() === '2', '2 chargeurs ajoutés avec les 2 PC');
+  expect((await rows.locator('tr', { hasText: 'Dock USB-C' }).locator('td.eq-avail').innerText()).trim() === '—', 'pas de disponibilité pour un élément hors inventaire');
+  await go('penuries');
+  expect(!(await page.locator('body').innerText()).includes('Chargeur 65 W'), 'jamais en pénurie');
+  await openChecklist('Mariage Dupont-Lemaire');
+  const line = page.locator('.cl-line', { hasText: 'Chargeur 65 W' });
+  await line.locator('.cl-check').click();
+  await page.waitForTimeout(300);
+  expect((await line.getAttribute('class')).includes('done'), 'chargeurs cochés à la sortie');
   await ctx.close();
 });
 

@@ -291,7 +291,8 @@ export async function stockMove(equipmentId: string, delta: number, text: string
   const e = await db.equipment.get(equipmentId);
   if (!e || !delta) return;
   await patch(db.equipment, e.id, {
-    quantity: Math.max(0, e.quantity + delta),
+    // élément hors inventaire : pas de stock, on garde seulement la trace
+    quantity: e.accessoryOnly ? e.quantity : Math.max(0, e.quantity + delta),
     stockLog: [...(e.stockLog || []), { at: nowIso(), delta, text: `[${new Date().toLocaleDateString('fr-FR')}] ${text}`, projectId }],
   });
 }

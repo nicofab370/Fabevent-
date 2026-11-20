@@ -221,6 +221,11 @@ export interface Equipment extends Base {
   barcode?: string;
   /** dépôt de base (première lettre du code) */
   homeDepotId?: ID;
+  /**
+   * élément d'accessoire (chargeur, dock, housse…) : hors inventaire, hors catalogue et hors disponibilités,
+   * il n'existe que comme accessoire d'autres articles (lignes cochées à la sortie et au retour)
+   */
+  accessoryOnly?: boolean;
   /** contenu fourni avec l'article, sans fiche ni stock à part (ex. PC : chargeur, dock USB-C) */
   contents?: { name: string; qty: number }[];
   /** codes en plus (code-barres du fabricant, ancienne étiquette…) qui désignent aussi l'article */

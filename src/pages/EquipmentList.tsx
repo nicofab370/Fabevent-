@@ -74,7 +74,10 @@ export function EquipmentForm({ initial, onDone }: { initial?: Draft; onDone: ()
       <Field label=" ">
         <label className="check-row"><input type="checkbox" checked={!!e.trackSerials} onChange={(x) => set('trackSerials', x.target.checked)} /> Suivi par numéro de série</label>
       </Field>
-      {e.trackSerials
+      <Field label=" ">
+        <label className="check-row" title="Chargeur, dock, housse… : seulement comme accessoire d'autres articles"><input type="checkbox" checked={!!e.accessoryOnly} onChange={(x) => set('accessoryOnly', x.target.checked || undefined)} /> Élément hors inventaire (accessoire seulement)</label>
+      </Field>
+      {e.accessoryOnly ? <Field label="Quantité en stock"><span className="muted">pas de stock : l'élément suit l'article dont il est l'accessoire</span></Field> : e.trackSerials
         ? <Field label="Quantité en stock"><span className="muted">= nombre d'unités en service (gérées sur la fiche article)</span></Field>
         : depots.length > 1 ? (
           <div className="field full">
@@ -149,17 +152,25 @@ export function EquipmentForm({ initial, onDone }: { initial?: Draft; onDone: ()
             <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6, alignItems: 'center' }}>
               <NumInput className="w-qty" value={a.qty} step="1" min={1} onChange={(n) => upd({ qty: n })} />
               <select value={a.equipmentId} onChange={(x) => upd({ equipmentId: x.target.value })}>
-                {all.filter((o) => o.id !== e.id).map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                {all.filter((o) => o.id !== e.id).map((o) => <option key={o.id} value={o.id}>{o.name}{o.accessoryOnly ? ' (hors inventaire)' : ''}</option>)}
               </select>
               <label className="check-row" style={{ whiteSpace: 'nowrap' }}><input type="checkbox" checked={a.free} onChange={(x) => upd({ free: x.target.checked })} /> gratuit</label>
               <button type="button" className="ghost" onClick={() => set('accessories', (e.accessories || []).filter((_, j) => j !== i))}>✕</button>
             </div>
           );
         })}
-        <div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <button type="button" className="secondary small" disabled={all.length < 2 && !all.some((o) => o.id !== e.id)}
-            onClick={() => set('accessories', [...(e.accessories || []), { equipmentId: all.find((o) => o.id !== e.id)?.id || '', qty: 1, free: true }])}>+ Accessoire</button>
+            onClick={() => set('accessories', [...(e.accessories || []), { equipmentId: all.find((o) => o.id !== e.id)?.id || '', qty: 1, free: true }])}>+ Accessoire existant</button>
+          <button type="button" className="secondary small" onClick={async () => {
+            const name = prompt('Nom du nouvel élément d\'accessoire (ex. Chargeur 65 W, Dock USB-C) :')?.trim();
+            if (!name) return;
+            // élément hors inventaire : pas de stock ni de disponibilité, il suit son article
+            const acc = await save(db.equipment, { name, accessoryOnly: true, quantity: 0, dailyPrice: 0, isKit: false, kitItems: [], categoryId: e.categoryId });
+            set('accessories', [...(e.accessories || []), { equipmentId: acc.id, qty: 1, free: true }]);
+          }}>+ Nouvel élément (hors inventaire)</button>
         </div>
+        <small className="muted">Un élément hors inventaire (chargeur, dock, housse…) n'apparaît ni dans le catalogue ni dans l'inventaire : il est ajouté avec son article et se coche à la sortie et au retour.</small>
       </div>
       <div className="field full">
         <span>Articles de remplacement (proposés en cas de manque)</span>
@@ -209,9 +220,11 @@ export default function EquipmentList() {
 
   const catName = new Map(cats.map((c) => [c.id, c.name]));
   const [showArchived, setShowArchived] = useState(false);
+  const [showAcc, setShowAcc] = useState(false);
   const allTags = Array.from(new Set(equipment.flatMap((e) => e.tags || []))).sort();
   const filtered = equipment.filter((e) =>
     !!e.archived === showArchived &&
+    !!e.accessoryOnly === showAcc &&
     (!cat || e.categoryId === cat) &&
     (!tag || e.tags?.includes(tag)) &&
     [e.name, e.code, e.barcode, ...(e.tags || [])].join(' ').toLowerCase().includes(q.toLowerCase()));
@@ -248,6 +261,7 @@ export default function EquipmentList() {
             </select>
           )}
           <label className="check-row"><input type="checkbox" checked={showArchived} onChange={(x) => setShowArchived(x.target.checked)} /> Archivés</label>
+          <label className="check-row" title="Chargeurs, docks… qui n'existent que comme accessoires d'autres articles"><input type="checkbox" checked={showAcc} onChange={(x) => setShowAcc(x.target.checked)} /> Éléments hors inventaire</label>
           <span className="muted" style={{ alignSelf: 'center' }}>Dispo du</span>
           <input type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} />
           <span className="muted" style={{ alignSelf: 'center' }}>au</span>
@@ -277,8 +291,8 @@ export default function EquipmentList() {
                       <td>{e.photo && <img src={e.photo} alt="" className="thumb" />}<strong>{e.name}</strong> {e.isKit && <span className="badge">Kit</span>} {e.kind === 'vente' && <span className="badge">vente</span>} {e.trackSerials && <span className="badge">n° série</span>} <Tags tags={e.tags} /></td>
                       <td>{e.code}</td>
                       <td>{e.categoryId ? catName.get(e.categoryId) : ''}</td>
-                      <td className="n" title={e._stock ? depots.map((dp) => `${dp.name} : ${e._stock?.[dp.id] || 0}`).join('\n') : undefined}>{e.isKit ? '—' : depot ? stockIn(e, depot) : e.quantity}</td>
-                      <td className="n"><span className={'avail ' + (av > 0 ? 'ok' : 'ko')}>{av}</span></td>
+                      <td className="n" title={e._stock ? depots.map((dp) => `${dp.name} : ${e._stock?.[dp.id] || 0}`).join('\n') : undefined}>{e.isKit || e.accessoryOnly ? '—' : depot ? stockIn(e, depot) : e.quantity}</td>
+                      <td className="n">{e.accessoryOnly ? <span className="muted">hors inventaire</span> : <span className={'avail ' + (av > 0 ? 'ok' : 'ko')}>{av}</span>}</td>
                       <td className="n">{money(e.dailyPrice)}{e.kind === 'vente' ? ' /pce' : ''}</td>
                     </tr>
                   );

@@ -13,7 +13,7 @@ export function CodesPanel({ letterOf }: { letterOf: (depotId?: string) => strin
   const equipment = useLiveQuery(() => db.equipment.toArray(), []) || [];
   const units = useLiveQuery(() => db.units.toArray(), []) || [];
   const [msg, setMsg] = useState('');
-  const missingEq = equipment.filter((e) => !e.code?.trim() && !e.archived);
+  const missingEq = equipment.filter((e) => !e.code?.trim() && !e.archived && !e.accessoryOnly);
   const missingUnits = units.filter((u) => !u.barcode?.trim());
   const taken = cats.map((c) => c.letter || '');
   return (

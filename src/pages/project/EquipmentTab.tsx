@@ -84,7 +84,7 @@ function Catalogue({ d, qty, setQty, targetLabel, onAdd }: { d: ProjectData; qty
   const cats = useLiveQuery(() => db.categories.orderBy('name').toArray(), []) || [];
   const [b0, b1] = d.subs.length ? [d.subs.map((x) => blockPeriod(x)[0]).sort()[0], d.subs.map((x) => blockPeriod(x)[1]).sort().slice(-1)[0]] : [d.project.start, d.project.end];
   const list = d.av.equipment
-    .filter((e) => !e.archived && (!cat || e.categoryId === cat) && [e.name, e.code, e.barcode, ...(e.tags || [])].join(' ').toLowerCase().includes(q.toLowerCase()))
+    .filter((e) => !e.archived && !e.accessoryOnly && (!cat || e.categoryId === cat) && [e.name, e.code, e.barcode, ...(e.tags || [])].join(' ').toLowerCase().includes(q.toLowerCase()))
     .slice(0, 200);
   return (
     <aside className="eq-catalogue card">
@@ -190,7 +190,7 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
                       {ordered.map((l) => {
                         const eq = l.equipmentId ? eqMap.get(l.equipmentId) : undefined;
                         const [b0, b1] = lineBlock(l, sp);
-                        const avail = eq ? availableQty(eq, av.equipment, av.res, b0, b1, l.id, d.depot) : null;
+                        const avail = eq && !eq.accessoryOnly ? availableQty(eq, av.equipment, av.res, b0, b1, l.id, d.depot) : null;
                         const perPiece = isPerPiece(l, eqMap);
                         return (
                           <tr key={l.id} style={l.optional ? { opacity: 0.6 } : undefined} draggable={!l.parentLineId}
@@ -405,7 +405,7 @@ function EquipmentPicker({ sp, groupId, depot, discount, equipment, res, existin
   for (const l of existing) if (l.equipmentId && !l.parentLineId) inProject.set(l.equipmentId, (inProject.get(l.equipmentId) || 0) + l.qty);
   const tags = Array.from(new Set(equipment.flatMap((e) => e.tags || []))).sort();
   const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  const base = equipment.filter((e) => !e.archived && words.every((w) => [e.name, e.code, e.barcode, ...(e.extraCodes || []), e.categoryId && catName.get(e.categoryId), ...(e.tags || [])].join(' ').toLowerCase().includes(w)));
+  const base = equipment.filter((e) => !e.archived && !e.accessoryOnly && words.every((w) => [e.name, e.code, e.barcode, ...(e.extraCodes || []), e.categoryId && catName.get(e.categoryId), ...(e.tags || [])].join(' ').toLowerCase().includes(w)));
   const list = base
     .filter((e) => (!cat || e.categoryId === cat) && (!tag || e.tags?.includes(tag)) && (!onlyAvail || (avail.get(e.id) || 0) > 0))
     .sort((a, b) => sort === 'dispo' ? (avail.get(b.id) || 0) - (avail.get(a.id) || 0) : sort === 'prix' ? a.dailyPrice - b.dailyPrice : a.name.localeCompare(b.name));
@@ -514,7 +514,7 @@ export function QuickAdd({ equipment, units, availOf, onAdd }: {
   const term = (m ? m[2] : q).trim().toLowerCase();
   const words = term.split(/\s+/).filter(Boolean);
   const results = term.length < 1 ? [] : equipment
-    .filter((e) => !e.archived && words.every((w) => [e.name, e.code, e.barcode, ...(e.extraCodes || [])].join(' ').toLowerCase().includes(w)))
+    .filter((e) => !e.archived && !e.accessoryOnly && words.every((w) => [e.name, e.code, e.barcode, ...(e.extraCodes || [])].join(' ').toLowerCase().includes(w)))
     .sort((a, b) => Number(!(a.code || '').toLowerCase().startsWith(term)) - Number(!(b.code || '').toLowerCase().startsWith(term)) || a.name.localeCompare(b.name))
     .slice(0, 8);
   const add = async (e: Equipment) => {

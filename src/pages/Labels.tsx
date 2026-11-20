@@ -32,7 +32,7 @@ export default function Labels() {
   const qrLink = !!settings.qrLink;
   /** contenu du QR : le code seul, ou un lien vers la fiche (lisible par l'appareil photo de tout téléphone) */
   const payload = (code: string) => (qrLink ? `${appBaseUrl(settings)}#/q/${encodeURIComponent(code)}` : code);
-  const items = av.equipment.filter((e) => !e.isKit && !e.archived && [e.name, e.code].join(' ').toLowerCase().includes(q.toLowerCase()));
+  const items = av.equipment.filter((e) => !e.isKit && !e.archived && !e.accessoryOnly && [e.name, e.code].join(' ').toLowerCase().includes(q.toLowerCase()));
   const total = Object.values(counts).reduce((a, b) => a + (b || 0), 0);
 
   const print = async () => {
