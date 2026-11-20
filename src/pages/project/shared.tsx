@@ -1,9 +1,10 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useSettings } from '../../components/ui';
 import { useAvailability } from '../../data';
-import { db } from '../../db';
+import { db, getSettings } from '../../db';
+import { invoicedTotal } from '../../invoicing';
 import type { CrewAssignment, Equipment, EquipmentLine, Person, Project, ProjectCost, Settings, Subproject, Unavailability, VehicleAssignment } from '../../types';
-import { INVOICE_TYPES, RESERVING } from '../../types';
+import { RESERVING } from '../../types';
 import { crewAmount, crewCostRate, lineDays, lineTotal, overlaps, patch, round2, save } from '../../utils';
 import { tripKm, vehiclePrice } from '../../geo';
 
@@ -61,6 +62,9 @@ export interface Finance {
   cost: number;
   margin: number;
   invoicedHT: number;
+  /** coûts et marge réels (coûts saisis après le projet, sinon prévus) */
+  actualCost: number;
+  actualMargin: number;
 }
 
 /** Chiffre d'affaires et coûts par catégorie (onglet Finances). */
@@ -70,11 +74,13 @@ export function computeFinance(
 ): Finance {
   const active = new Map(subs.filter((x) => x.status !== 'annule').map((x) => [x.id, x]));
   const pMap = new Map(people.map((p) => [p.id, p]));
-  let eqRev = 0, consCost = 0;
+  let eqRev = 0, consCost = 0, rentalRev = 0;
   for (const l of lines) {
     const sp = active.get(l.subprojectId);
     if (!sp || l.optional) continue;
-    eqRev += lineTotal(l, lineDays(l, sp), s, isPerPiece(l, eqMap));
+    const t = lineTotal(l, lineDays(l, sp), s, isPerPiece(l, eqMap));
+    eqRev += t;
+    if (!isPerPiece(l, eqMap)) rentalRev += t;
     if (isPerPiece(l, eqMap)) consCost += l.qty * (eqMap.get(l.equipmentId!)?.costPrice || 0);
   }
   let crewRev = 0, crewCost = 0;
@@ -86,24 +92,56 @@ export function computeFinance(
   }
   const vehRev = vas.filter((v) => active.has(v.subprojectId) && v.billable).reduce((a, v) => a + v.price, 0);
   const extraRev = costs.filter((c) => c.billable && c.price).reduce((a, c) => a + (c.qty || 1) * (c.price || 0), 0);
+  const insurance = insuranceAmount(rentalRev, project, s);
   const extraCost = costs.reduce((a, c) => a + (c.amount || 0), 0);
   const rows = [
     { label: 'Matériel', revenue: round2(eqRev), cost: round2(consCost + subrentCost) },
     { label: 'Personnel', revenue: round2(crewRev), cost: round2(crewCost) },
     { label: 'Transport', revenue: round2(vehRev), cost: 0 },
     { label: 'Frais supplémentaires', revenue: round2(extraRev), cost: round2(extraCost) },
+    ...(insurance ? [{ label: 'Assurance', revenue: insurance, cost: 0 }] : []),
   ];
   const gross = round2(rows.reduce((a, r) => a + r.revenue, 0));
   const discount = round2(gross * (project.discount || 0) / 100);
   const totalHT = round2(gross - discount);
   const vat = round2(totalHT * s.vatRate / 100);
   const cost = round2(rows.reduce((a, r) => a + r.cost, 0));
-  return { rows, gross, discount, totalHT, vat, totalTTC: round2(totalHT + vat), cost, margin: round2(totalHT - cost), invoicedHT: 0 };
+  // coûts réels saisis après coup (sinon on reprend le coût prévu)
+  const actual = project.actualCosts || {};
+  const actualCost = round2(rows.reduce((a, r) => a + (actual[r.label] ?? r.cost), 0));
+  return {
+    rows, gross, discount, totalHT, vat, totalTTC: round2(totalHT + vat), cost, margin: round2(totalHT - cost), invoicedHT: 0,
+    actualCost, actualMargin: round2(totalHT - actualCost),
+  };
 }
 
-export function invoicedHT(docs: { type: string; number: string; snapshot: { totalHT: number; deposits?: { number: string }[] } }[]) {
-  const deducted = new Set(docs.flatMap((d) => (d.snapshot.deposits || []).map((x) => x.number)));
-  return round2(docs.filter((d) => INVOICE_TYPES.includes(d.type as never) && !(d.type === 'acompte' && deducted.has(d.number))).reduce((a, d) => a + d.snapshot.totalHT, 0));
+/** Assurance du matériel loué (% du prix de location, hors ventes). */
+export function insuranceAmount(rentalHT: number, project: Pick<Project, 'insurancePct'>, s: Pick<Settings, 'insurancePct'>) {
+  const pct = project.insurancePct ?? s.insurancePct ?? 0;
+  return pct > 0 ? round2(rentalHT * pct / 100) : 0;
+}
+
+export const invoicedHT = invoicedTotal;
+
+/** Total HT de chaque projet (pour « À facturer » et les listes). */
+export async function loadProjectTotals(): Promise<Map<string, number>> {
+  const [settings, projects, subs, lines, crew, vas, costs, people, equipment, subrentals] = await Promise.all([
+    getSettings(), db.projects.toArray(), db.subprojects.toArray(), db.lines.toArray(), db.crew.toArray(), db.vehicleAssignments.toArray(),
+    db.costs.toArray(), db.people.toArray(), db.equipment.toArray(), db.subrentals.toArray(),
+  ]);
+  const eqMap = new Map(equipment.map((e) => [e.id, e]));
+  const by = <T extends { projectId: string }>(xs: T[]) => {
+    const m = new Map<string, T[]>();
+    for (const x of xs) m.set(x.projectId, [...(m.get(x.projectId) || []), x]);
+    return m;
+  };
+  const [bS, bL, bC, bV, bK, bR] = [by(subs), by(lines), by(crew), by(vas), by(costs), by(subrentals)];
+  const out = new Map<string, number>();
+  for (const p of projects) {
+    const srCost = (bR.get(p.id) || []).filter((x) => x.status !== 'annule').reduce((a, x) => a + x.lines.reduce((b, l) => b + l.cost, 0), 0);
+    out.set(p.id, computeFinance(p, bS.get(p.id) || [], bL.get(p.id) || [], bC.get(p.id) || [], bV.get(p.id) || [], bK.get(p.id) || [], people, eqMap, settings, srCost).totalHT);
+  }
+  return out;
 }
 
 /** Motif d'indisponibilité d'une personne sur un créneau (ou ''). */

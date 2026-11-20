@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { Field, PageHead, useSettings } from '../components/ui';
 import { currentWorkspace, db, DEFAULT_PROJECT_TYPES, listWorkspaces, switchWorkspace, TABLES } from '../db';
 import { DEMO_WORKSPACE, seedDemo } from '../demo';
-import type { Settings } from '../types';
-import { VAT_REGIME_LABELS } from '../types';
+import type { InvoiceMoment, Settings } from '../types';
+import { MOMENT_TRIGGERS, VAT_REGIME_LABELS } from '../types';
+import { settingsMoments } from '../invoicing';
 import { DEFAULT_VAT_MENTIONS } from '../payment';
 import { download, uid } from '../utils';
 
@@ -59,6 +60,8 @@ export default function SettingsPage() {
       alert('Échec de la restauration : ' + (err as Error).message);
     }
   };
+
+  const moments = settingsMoments(s);
 
   if (!loaded) return <p>Chargement…</p>;
 
@@ -128,8 +131,10 @@ export default function SettingsPage() {
                 <option value="projet">Projets</option><option value="contact">Contacts</option><option value="materiel">Matériel</option>
               </select>
               <select value={f.type} onChange={(e) => upd({ type: e.target.value as typeof f.type })} style={{ width: 'auto' }}>
-                <option value="texte">Texte</option><option value="oui_non">Oui / non</option><option value="nombre">Nombre</option><option value="date">Date</option>
+                <option value="texte">Texte</option><option value="oui_non">Oui / non</option><option value="nombre">Nombre</option><option value="date">Date</option><option value="liste">Liste déroulante</option>
               </select>
+              {f.type === 'liste' && <input defaultValue={(f.choices || []).join(', ')} onBlur={(e) => upd({ choices: e.target.value.split(',').map((x) => x.trim()).filter(Boolean) })} placeholder="Valeurs séparées par des virgules" style={{ flex: 3, minWidth: 200 }} />}
+              {f.entity === 'projet' && <label className="check-row" title="Colonne et filtre dans la liste des projets"><input type="checkbox" checked={!!f.inList} onChange={(e) => upd({ inList: e.target.checked })} /> En liste</label>}
               <button type="button" className="ghost" onClick={() => setS({ ...s, customFields: all.filter((_, j) => j !== i) })} aria-label="Retirer">✕</button>
             </div>
           );
@@ -156,15 +161,40 @@ export default function SettingsPage() {
         <button type="button" className="secondary small" onClick={() => setS({ ...s, crewFunctions: [...(s.crewFunctions || []), { name: '', dayRate: 0 }] })}>+ Fonction</button>
 
         <h2 style={{ marginTop: 20 }}>Types de projet</h2>
-        <p className="muted" style={{ marginTop: 0 }}>Chaque type a une couleur, reprise dans la liste des projets.</p>
+        <p className="muted" style={{ marginTop: 0 }}>Chaque type a une couleur, reprise dans la liste des projets, et ses moments de facturation par défaut.</p>
         {(s.projectTypes?.length ? s.projectTypes : DEFAULT_PROJECT_TYPES).map((t, i, all) => (
-          <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6, maxWidth: 420 }}>
+          <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6, maxWidth: 680 }}>
             <input type="color" value={t.color} style={{ width: 48, padding: 2 }} onChange={(e) => setS({ ...s, projectTypes: all.map((x, j) => (j === i ? { ...x, color: e.target.value } : x)) })} />
             <input value={t.name} onChange={(e) => setS({ ...s, projectTypes: all.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} />
+            <select multiple title="Moments de facturation par défaut (Ctrl + clic pour en choisir plusieurs)" value={t.moments || []} style={{ minWidth: 200, height: 'auto' }} size={Math.min(3, moments.length)}
+              onChange={(e) => setS({ ...s, projectTypes: all.map((x, j) => (j === i ? { ...x, moments: [...e.target.selectedOptions].map((o) => o.value).slice(0, 3) } : x)) })}>
+              {moments.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
             <button type="button" className="ghost" onClick={() => setS({ ...s, projectTypes: all.filter((_, j) => j !== i) })} aria-label="Retirer">✕</button>
           </div>
         ))}
         <button type="button" className="secondary small" onClick={() => setS({ ...s, projectTypes: [...(s.projectTypes?.length ? s.projectTypes : DEFAULT_PROJECT_TYPES), { name: 'Nouveau type', color: '#64748b' }] })}>+ Type</button>
+
+        <h2 style={{ marginTop: 20 }}>Moments de facturation</h2>
+        <p className="muted" style={{ marginTop: 0 }}>
+          Quand facturer et quelle part du projet (ex. 30 % à la confirmation, 70 % après la prestation). Un projet en utilise 3 au plus,
+          choisis sur le projet, sinon sur le client, sinon sur le type de projet. Ils alimentent la liste « À facturer ».
+        </p>
+        {moments.map((m, i) => {
+          const upd = (c: Partial<InvoiceMoment>) => setS({ ...s, invoiceMoments: moments.map((x, j) => (j === i ? { ...x, ...c } : x)) });
+          return (
+            <div key={m.id} style={{ display: 'flex', gap: 8, marginBottom: 6, maxWidth: 760, flexWrap: 'wrap', alignItems: 'center' }}>
+              <input value={m.name} onChange={(e) => upd({ name: e.target.value })} placeholder="Nom (affiché sur la facture)" style={{ flex: 2, minWidth: 180 }} />
+              <input type="number" step="any" value={m.percent} onChange={(e) => upd({ percent: parseFloat(e.target.value) || 0 })} style={{ width: 80 }} title="Part du total (%)" /> %
+              <select value={m.trigger} onChange={(e) => upd({ trigger: e.target.value as InvoiceMoment['trigger'] })} style={{ width: 'auto' }}>
+                {Object.entries(MOMENT_TRIGGERS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+              {m.trigger !== 'accord' && <><input type="number" value={m.days || 0} onChange={(e) => upd({ days: parseInt(e.target.value) || 0 })} style={{ width: 70 }} title="Décalage en jours" /> j {m.trigger === 'avant' ? 'avant' : 'après'}</>}
+              <button type="button" className="ghost" onClick={() => setS({ ...s, invoiceMoments: moments.filter((_, j) => j !== i) })} aria-label="Retirer">✕</button>
+            </div>
+          );
+        })}
+        <button type="button" className="secondary small" onClick={() => setS({ ...s, invoiceMoments: [...moments, { id: uid(), name: 'Nouveau moment', percent: 50, trigger: 'avant', days: 7 }] })}>+ Moment</button>
 
         <h2 style={{ marginTop: 20 }}>Tarification</h2>
         <div className="form">
@@ -186,6 +216,9 @@ export default function SettingsPage() {
             <input value={s.factors.join(' ; ')} onChange={(e) => setS({ ...s, factors: e.target.value.split(';').map((x) => parseFloat(x.replace(',', '.'))).filter((x) => !isNaN(x)) })} />
           </Field>
           <Field label="Au-delà : + par jour supplémentaire"><input type="number" step="any" value={s.factorExtraPerDay} onChange={(e) => setS({ ...s, factorExtraPerDay: parseFloat(e.target.value) || 0 })} /></Field>
+          <Field label="Assurance du matériel par défaut (% de la location, 0 = aucune)"><input type="number" step="any" value={s.insurancePct ?? 0} onChange={(e) => setS({ ...s, insurancePct: parseFloat(e.target.value) || 0 })} /></Field>
+          <Field label="Conditions générales (imprimées après les devis)" full><textarea style={{ minHeight: 120 }} value={s.terms || ''} onChange={(e) => setS({ ...s, terms: e.target.value || undefined })} placeholder="Annulation, casse, retards, assurance…" /></Field>
+          <Field label=" " full><label className="check-row"><input type="checkbox" checked={!!s.termsOnInvoices} onChange={(e) => setS({ ...s, termsOnInvoices: e.target.checked })} /> Imprimer aussi les conditions générales sur les factures</label></Field>
           <Field label="Pied de page des documents" full><textarea value={s.footer} onChange={(e) => setS({ ...s, footer: e.target.value })} /></Field>
           <Field label="Adresse web de l'application (pour les liens d'agenda)" full>
             <input value={s.appUrl} placeholder={location.origin + location.pathname} onChange={(e) => setS({ ...s, appUrl: e.target.value })} />

@@ -4,6 +4,7 @@
  */
 import { db, defaultSettings, DEFAULT_PROJECT_TYPES, suppressLog, TABLES } from './db';
 import { createDocument } from './documents';
+import { DEFAULT_MOMENTS } from './invoicing';
 import type { ContactType, Equipment, PeriodKind, ProjectStatus } from './types';
 import { nowIso, syncPeriods, toLocalInput, uid } from './utils';
 import { tripKm, vehiclePrice } from './geo';
@@ -54,7 +55,13 @@ async function seedAll() {
     },
     vatRate: 21,
     pricePerKm: 1.1,
-    customFields: [{ id: 'cf-repas', label: 'Repas fourni', entity: 'projet', type: 'oui_non' }, { id: 'cf-acces', label: 'Accès livraison', entity: 'projet', type: 'texte' }],
+    customFields: [
+      { id: 'cf-repas', label: 'Repas fourni', entity: 'projet', type: 'oui_non' }, { id: 'cf-acces', label: 'Accès livraison', entity: 'projet', type: 'texte' },
+      { id: 'cf-proba', label: 'Probabilité', entity: 'projet', type: 'liste', choices: ['Faible', 'Moyenne', 'Forte'], inList: true },
+    ],
+    invoiceMoments: DEFAULT_MOMENTS,
+    insurancePct: 0,
+    terms: 'Le matériel reste la propriété du loueur. Toute casse ou perte est facturée à sa valeur de remplacement.\nAnnulation moins de 7 jours avant la prestation : 50 % du montant est dû.',
     crewFunctions: [
       { name: 'Technicien', dayRate: 280, hourRate: 35 },
       { name: 'Régisseur son', dayRate: 380, hourRate: 45 },
@@ -64,7 +71,8 @@ async function seedAll() {
       { name: 'Roadie', dayRate: 220 },
     ],
     defaultTrips: 2,
-    projectTypes: DEFAULT_PROJECT_TYPES,
+    // les prestations : 30 % à la commande, le solde après ; les autres types : une facture après
+    projectTypes: DEFAULT_PROJECT_TYPES.map((t) => (t.name === 'Prestation' ? { ...t, moments: ['m_acompte', 'm_solde'] } : t)),
     depots: [
       { id: DEPOT_LIEGE, name: 'Dépôt Liège', street: 'Rue de l\'Exemple 12', postalCode: '4000', city: 'Liège', country: 'BE' },
       { id: DEPOT_NAMUR, name: 'Dépôt Namur', street: 'Rue du Dépôt 5', postalCode: '5000', city: 'Namur', country: 'BE' },
@@ -380,15 +388,26 @@ async function seedAll() {
   await db.files.put({ id: uid(), projectId: '', personId: pKarim, name: 'Certificat travail en hauteur.txt', type: 'text/plain', size: 40, blob: new Blob(['Certificat fictif — travail en hauteur'], { type: 'text/plain' }), createdAt: t, expires: dayOnly(12) });
 
   // Champs personnalisés, étiquettes, postes provisoires, repérage
-  await db.projects.update(pFest, { tags: ['Festival', 'Extérieur'], custom: { 'cf-repas': true, 'cf-acces': 'Entrée nord, quai 2' } });
-  await db.projects.update(pConf, { tags: ['Corporate'] });
+  await db.projects.update(pFest, { tags: ['Festival', 'Extérieur'] });
+  await db.projects.update(pConf, {
+    tags: ['Corporate'], insurancePct: 3,
+    noteList: [{ id: uid(), title: 'Accès et parking', text: 'Déchargement par la cour arrière, badge à retirer à l\'accueil.', on: ['devis', 'bon_sortie', 'feuille_route'] }],
+  });
+  await db.projects.update(pFest, { deposit: { amount: 1500, status: 'demandee' }, custom: { 'cf-repas': true, 'cf-acces': 'Entrée nord, quai 2', 'cf-proba': 'Forte' } });
+  // salle de la conférence déjà prête pour l'entrepôt ; un vidéoprojecteur ne sert que le premier jour
+  for (const sp of await db.subprojects.where({ projectId: pConf }).toArray()) {
+    await db.subprojects.update(sp.id, { readyToPack: sp.order === 0 });
+    const day1 = (sp.periods || []).find((x) => x.kind === 'prestation');
+    const line = day1 && (await db.lines.where({ subprojectId: sp.id }).toArray()).find((l) => l.name.toLowerCase().includes('vidéoprojecteur'));
+    if (line && day1) await db.lines.update(line.id, { periodIds: [day1.id], remark: 'Uniquement pour la plénière du premier jour' });
+  }
   for (const c of await db.crew.where({ projectId: pFest }).toArray()) if (c.function === 'Roadie') await db.crew.update(c.id, { final: false });
   await db.equipment.update(eq.x12, { tags: ['Line array'] });
   await db.equipment.update(eq.sub, { tags: ['Line array'] });
   await db.appointments.put({ ...base(), title: 'Repérage technique — Festival des Lumières', start: at(4, 10), end: at(4, 12), location: 'Parc de la Boverie', personIds: [pLucas, pKarim] });
 
   // Modèle de projet tiré de la conférence
-  await copyProject(pConf, { name: 'Modèle — Conférence 3 salles', isTemplate: true, status: 'demande' });
+  await copyProject(pConf, { name: 'Modèle — Conférence 3 salles', isTemplate: true, status: 'brouillon' });
 
   // Sous-location déjà demandée pour une partie du manque du festival
   const fSub = (await db.subprojects.where({ projectId: pFest }).toArray()).find((s) => s.name === 'Grande scène')!;

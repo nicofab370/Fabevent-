@@ -60,7 +60,7 @@ function ProjectPage({ d }: { d: ProjectData }) {
   const saveAsTemplate = async () => {
     const name = prompt('Nom du modèle :', project.name);
     if (!name) return;
-    const t = await copyProject(project.id, { name, isTemplate: true, status: 'demande' });
+    const t = await copyProject(project.id, { name, isTemplate: true, status: 'brouillon' });
     nav('/projets/' + t.id);
   };
 
@@ -98,7 +98,10 @@ function ProjectPage({ d }: { d: ProjectData }) {
           <strong>Modèle de projet</strong> — il n'apparaît pas dans le planning et ne réserve rien. Utilise-le depuis « Projets → + Nouveau projet → À partir d'un modèle ».
         </div>
       )}
-      {project.status === 'demande' && !project.isTemplate && <div className="info">Statut « Demande » : le matériel n'est pas encore bloqué. Passe en « Option » ou « Confirmé » pour le réserver.</div>}
+      {['demande', 'brouillon', 'option'].includes(project.status) && !project.isTemplate && !subs.every((x) => x.reserve || x.status === 'annule') && (
+        <div className="info">Statut « {STATUS_LABELS[project.status]} » : le matériel est décompté des disponibilités mais pas réservé ferme — un projet confirmé passera avant.
+          Il sera réservé à la confirmation (devis accepté), ou tout de suite avec « Réserver le matériel » dans l'onglet Planning.</div>
+      )}
 
       <div className="tabs project-tabs">
         {TABS.map(([k, label]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => goTab(k)}>{label}</button>)}
@@ -132,7 +135,7 @@ function RepeatModal({ project, onClose }: { project: Project; onClose: () => vo
       <form className="form" onSubmit={async (e) => {
         e.preventDefault();
         setBusy(true);
-        for (const st of starts) await copyProject(project.id, { name: project.name, status: project.status === 'annule' ? 'demande' : project.status, shift: shiftBetween(project.start, st), keepPeople });
+        for (const st of starts) await copyProject(project.id, { name: project.name, status: project.status === 'annule' ? 'brouillon' : project.status, shift: shiftBetween(project.start, st), keepPeople });
         setBusy(false);
         onClose();
         nav('/projets');

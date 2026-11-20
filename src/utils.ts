@@ -1,7 +1,7 @@
 import type { Table } from 'dexie';
 import { db } from './db';
 import type { Base, Equipment, EquipmentLine, Inspection, Period, Repair, SerialUnit, Settings, Subproject, Subrental, Transfer } from './types';
-import { RESERVING } from './types';
+import { FIRM, RESERVING } from './types';
 
 export function uid(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
@@ -92,6 +92,8 @@ export interface Reservation {
   projectId: string;
   source: 'projet' | 'reparation' | 'souslocation' | 'transfert';
   depotId?: string;
+  /** réservation ferme (projet confirmé ou matériel réservé à la main) ; sinon simple option */
+  firm?: boolean;
 }
 
 export interface AvailabilityExtras {
@@ -153,7 +155,7 @@ export function buildReservations(lines: EquipmentLine[], subs: Subproject[], eq
       // un consommable vendu ne revient pas
       const sold = eq.kind === 'vente';
       if (sold && l.consumed) return;
-      out.push({ equipmentId: eqId, qty, start, end: sold ? FOREVER : end, lineId: l.id, subprojectId: sp.id, projectId: sp.projectId, source: 'projet', depotId: depotOf(sp.projectId) });
+      out.push({ equipmentId: eqId, qty, start, end: sold ? FOREVER : end, lineId: l.id, subprojectId: sp.id, projectId: sp.projectId, source: 'projet', depotId: depotOf(sp.projectId), firm: FIRM.includes(sp.status) || !!sp.reserve });
     }
   };
   for (const l of lines) {
@@ -228,6 +230,11 @@ export interface Conflict {
   projectId: string;
   shortage: number;
   depotId?: string;
+  /** ferme : même en ne comptant que les réservations fermes, il manque du matériel ;
+   *  concurrence : le manque vient de demandes ou projets en attente qui se chevauchent */
+  level: 'ferme' | 'concurrence';
+  start: string;
+  end: string;
 }
 
 export function findConflicts(res: Reservation[], equipment: Equipment[]): Conflict[] {
@@ -242,9 +249,14 @@ export function findConflicts(res: Reservation[], equipment: Equipment[]): Confl
     const eq = eqMap.get(r.equipmentId);
     if (!eq) continue;
     const depot = eq._stock ? r.depotId : undefined;
-    const peak = peakReserved(res, eq.id, r.start, r.end === FOREVER ? r.start : r.end, undefined, depot);
+    const end = r.end === FOREVER ? r.start : r.end;
+    const peak = peakReserved(res, eq.id, r.start, end, undefined, depot);
     const have = stockIn(eq, depot);
-    if (peak > have) out.push({ equipment: eq, subprojectId: r.subprojectId, projectId: r.projectId, shortage: peak - have, depotId: depot });
+    if (peak <= have) continue;
+    // seules comptent les réservations fermes des autres projets, plus celles de cette salle
+    const firmOnly = res.filter((x) => x.source !== 'projet' || x.firm || x.subprojectId === r.subprojectId);
+    const level = peakReserved(firmOnly, eq.id, r.start, end, undefined, depot) > have ? 'ferme' : 'concurrence';
+    out.push({ equipment: eq, subprojectId: r.subprojectId, projectId: r.projectId, shortage: peak - have, depotId: depot, level, start: r.start, end });
   }
   return out;
 }
@@ -425,7 +437,12 @@ export function usageDays(sp: Pick<Subproject, 'start' | 'end' | 'periods'>): nu
 /* ---------- Groupes d'équipement liés à des créneaux ---------- */
 
 /** Créneaux couverts par le groupe de la ligne (ou null = toute la salle). */
-function groupPeriods(l: Pick<EquipmentLine, 'groupId'>, sp: Pick<Subproject, 'groups' | 'periods'>): Period[] | null {
+function groupPeriods(l: Pick<EquipmentLine, 'groupId' | 'periodIds'>, sp: Pick<Subproject, 'groups' | 'periods'>): Period[] | null {
+  // horaire propre à la ligne, prioritaire sur celui du groupe
+  if (l.periodIds?.length) {
+    const own = (sp.periods || []).filter((p) => l.periodIds!.includes(p.id));
+    if (own.length) return sortPeriods(own);
+  }
   if (!l.groupId) return null;
   const g = sp.groups?.find((x) => x.id === l.groupId);
   if (!g || !g.periodIds.length) return null;
@@ -434,14 +451,14 @@ function groupPeriods(l: Pick<EquipmentLine, 'groupId'>, sp: Pick<Subproject, 'g
 }
 
 /** Période pendant laquelle la ligne bloque le matériel. */
-export function lineBlock(l: Pick<EquipmentLine, 'groupId'>, sp: Subproject): [string, string] {
+export function lineBlock(l: Pick<EquipmentLine, 'groupId' | 'periodIds'>, sp: Subproject): [string, string] {
   const ps = groupPeriods(l, sp);
   if (!ps) return blockPeriod(sp);
   return [ps[0].start, ps.reduce((a, p) => (p.end > a ? p.end : a), ps[0].end)];
 }
 
 /** Jours facturés pour la ligne : jours de prestation des créneaux du groupe, sinon ceux de la salle. */
-export function lineDays(l: Pick<EquipmentLine, 'groupId'>, sp: Subproject): number {
+export function lineDays(l: Pick<EquipmentLine, 'groupId' | 'periodIds'>, sp: Subproject): number {
   const ps = groupPeriods(l, sp);
   if (!ps) return usageDays(sp);
   const synced = syncPeriods({ start: '', end: '', periods: ps });

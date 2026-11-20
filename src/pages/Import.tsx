@@ -68,10 +68,12 @@ function guessMap(target: Target, cols: string[]): Record<string, string> {
 function mapStatus(v: string): ProjectStatus {
   const s = v.toLowerCase();
   if (/annul|cancel/.test(s)) return 'annule';
+  if (/concept|brouillon|draft/.test(s)) return 'brouillon';
+  if (/option|attente|pending/.test(s)) return 'option';
   if (/confirm/.test(s)) return 'confirme';
-  if (/option|concept|pending/.test(s)) return 'option';
-  if (/termin|clôtur|closed|finished|retour/.test(s)) return 'termine';
-  if (/cours|prepar|progress/.test(s)) return 'en_cours';
+  if (/ex[ée]cution|retourn|returned/.test(s)) return 'execute';
+  if (/termin|clôtur|closed|finished/.test(s)) return 'termine';
+  if (/cours|prepar|progress|site|route/.test(s)) return 'en_cours';
   return 'demande';
 }
 function mapContactType(v: string): ContactType {

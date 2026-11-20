@@ -87,6 +87,21 @@ la facture finale excluant les salles déjà facturées. **Champs personnalisés
 **Équipe** : postes à la journée ou à l'heure avec heures supplémentaires majorées, temps de trajet dans les horaires
 communiqués, documents du personnel avec date d'expiration.
 
+**Statuts comme Rentman (2026)** : Demande, Brouillon, En attente, Confirmé, En cours, Exécution terminée, Terminé, Annulé.
+Un devis émis met le projet « en attente », un devis accepté le confirme, la première sortie d'entrepôt le passe « en cours »
+et le retour complet en « exécution terminée ». Tous les projets non annulés comptent dans les disponibilités, mais seuls les
+projets confirmés (ou une salle « matériel réservé ») passent en priorité : la page **Pénuries** distingue les manques réels de la
+simple concurrence entre options. L'entrepôt voit les salles confirmées et celles marquées « prêtes pour la préparation ».
+
+**Facturation par moments** : moments paramétrables (ex. 30 % à la confirmation, solde après la prestation), choisis par type
+de projet, par client ou par projet ; échéancier dans l'onglet Finances et liste **À facturer** (rouge si en retard) avec
+facturation en un clic ou « facturé en externe ». Délai de paiement par client, **caution** (hors total) et **assurance du matériel**
+(% de la location), **conditions générales** imprimées après les devis, **coût réel** par catégorie pour la marge réelle.
+
+**Matériel par ligne** : horaire propre à une ligne (l'article n'est bloqué et facturé que sur ses créneaux), remarque pour le
+client (devis, facture) et remarque pour l'entrepôt (bon de sortie). **Notes de projet** imprimées sur les documents choisis.
+Champs personnalisés en **liste déroulante**, affichables en colonne et en filtre dans la liste des projets.
+
 **Démo** : Paramètres → « Ouvrir la base de démo » crée une base séparée avec des clients, du matériel, une équipe et 8 projets fictifs (réinitialisable).
 
 **Données** : import CSV (exports Rentman), plusieurs bases, sauvegarde et restauration.

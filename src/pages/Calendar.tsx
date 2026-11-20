@@ -8,7 +8,7 @@ import { STATUS_LABELS } from '../types';
 import { buildIcs, download, save, toLocalInput } from '../utils';
 
 const COLORS: Record<ProjectStatus, string> = {
-  demande: '#c7d2fe', option: '#fde68a', confirme: '#86efac', en_cours: '#67e8f9', termine: '#d1d5db', annule: '#fecaca',
+  demande: '#c7d2fe', brouillon: '#e9d5ff', option: '#fde68a', confirme: '#86efac', en_cours: '#67e8f9', execute: '#a5b4fc', termine: '#d1d5db', annule: '#fecaca',
 };
 const DOW = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;

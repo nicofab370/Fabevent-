@@ -25,6 +25,7 @@ function RoomEquipment({ d, sp }: { d: ProjectData; sp: Subproject }) {
   const { settings, av, eqMap } = d;
   const [picking, setPicking] = useState<string | null | undefined>(undefined);
   const [editGroup, setEditGroup] = useState<Partial<EquipGroup> | null>(null);
+  const [editLine, setEditLine] = useState<EquipmentLine | null>(null);
   const lines = d.lines.filter((l) => l.subprojectId === sp.id).sort((a, b) => a.order - b.order);
   const groups = sp.groups || [];
   const periods = sortPeriods(sp.periods || []);
@@ -96,6 +97,9 @@ function RoomEquipment({ d, sp }: { d: ProjectData; sp: Subproject }) {
                               {l.parentLineId && <span className="muted">↳ </span>}
                               {eq ? <Link to={'/materiel/' + eq.id}>{l.name}</Link> : <input value={l.name} onChange={(e) => updLine(l, { name: e.target.value })} />}
                               {perPiece && <span className="badge" style={{ marginLeft: 6 }}>vente</span>}
+                              {l.periodIds?.length ? <div className="muted" style={{ fontSize: 11 }}>🕑 {periods.filter((p) => l.periodIds!.includes(p.id)).map((p) => p.name).join(', ')} · {fmtRange(b0, b1)}</div> : null}
+                              {l.remark && <div className="muted" style={{ fontSize: 11 }}>Devis : {l.remark}</div>}
+                              {l.internalRemark && <div className="muted" style={{ fontSize: 11 }}>Entrepôt : {l.internalRemark}</div>}
                             {eq && avail !== null && avail < l.qty && !l.optional && (eq.alternatives || []).map((altId) => {
                               const alt = eqMap.get(altId);
                               if (!alt || alt.archived) return null;
@@ -124,7 +128,10 @@ function RoomEquipment({ d, sp }: { d: ProjectData; sp: Subproject }) {
                               )}</td>
                             )}
                             <td className="n">{money(lineTotal(l, lineDays(l, sp), settings, perPiece))}</td>
-                            <td><button className="ghost" onClick={() => removeLine(l)} aria-label="Retirer">✕</button></td>
+                            <td className="nowrap">
+                              <button className="ghost" onClick={() => setEditLine(l)} title="Horaire propre et remarques" aria-label="Détails de la ligne">⋯</button>
+                              <button className="ghost" onClick={() => removeLine(l)} aria-label="Retirer">✕</button>
+                            </td>
                           </tr>
                         );
                       })}
@@ -141,7 +148,52 @@ function RoomEquipment({ d, sp }: { d: ProjectData; sp: Subproject }) {
         <EquipmentPicker sp={sp} groupId={picking || undefined} depot={d.depot} discount={d.client?.discounts?.equipment || 0} equipment={av.equipment} res={av.res} existing={lines} onClose={() => setPicking(undefined)} />
       )}
       {editGroup && <GroupModal sp={sp} group={editGroup} onClose={() => setEditGroup(null)} />}
+      {editLine && <LineModal sp={sp} line={editLine} accessories={lines.filter((c) => c.parentLineId === editLine.id)} onClose={() => setEditLine(null)} />}
     </div>
+  );
+}
+
+/** Détails d'une ligne : horaire propre (créneaux) et remarques pour le client ou l'entrepôt. */
+function LineModal({ sp, line, accessories, onClose }: { sp: Subproject; line: EquipmentLine; accessories: EquipmentLine[]; onClose: () => void }) {
+  const periods = sortPeriods(sp.periods || []);
+  const [l, setL] = useState(line);
+  const groupName = sp.groups?.find((g) => g.id === line.groupId)?.name;
+  return (
+    <Modal title={`Ligne — ${line.name}`} onClose={onClose}>
+      <form className="form" onSubmit={async (e) => {
+        e.preventDefault();
+        const periodIds = l.periodIds?.length ? l.periodIds : undefined;
+        await patch(db.lines, line.id, { periodIds, remark: l.remark?.trim() || undefined, internalRemark: l.internalRemark?.trim() || undefined });
+        // les accessoires suivent l'horaire de leur article
+        for (const c of accessories) await patch(db.lines, c.id, { periodIds });
+        onClose();
+      }}>
+        <div className="field full">
+          <span>Horaire propre à la ligne</span>
+          {periods.length === 0 ? <p className="muted" style={{ margin: 0 }}>Ajoute des créneaux à la salle (onglet Planning) pour donner un horaire propre à cet article.</p> : (
+            <>
+              {periods.map((p) => (
+                <label key={p.id} className="check-row">
+                  <input type="checkbox" checked={(l.periodIds || []).includes(p.id)}
+                    onChange={(e) => setL({ ...l, periodIds: e.target.checked ? [...(l.periodIds || []), p.id] : (l.periodIds || []).filter((x) => x !== p.id) })} />
+                  {p.name} <span className="muted">{fmtRange(p.start, p.end)}</span>
+                </label>
+              ))}
+              <p className="muted" style={{ margin: '4px 0 0' }}>
+                Aucun coché = horaire {groupName ? `du groupe « ${groupName} »` : 'de la salle'}. L'article n'est bloqué et facturé que sur les créneaux cochés :
+                il reste disponible pour un autre projet le reste du temps.
+              </p>
+            </>
+          )}
+        </div>
+        <Field label="Remarque pour le client (devis, facture)" full><input value={l.remark || ''} onChange={(e) => setL({ ...l, remark: e.target.value })} placeholder="ex. livré monté sur pied" /></Field>
+        <Field label="Remarque pour l'entrepôt (bon de sortie)" full><input value={l.internalRemark || ''} onChange={(e) => setL({ ...l, internalRemark: e.target.value })} placeholder="ex. prendre les câbles neufs" /></Field>
+        <div className="form-actions">
+          <button type="button" className="secondary" onClick={onClose}>Annuler</button>
+          <button type="submit">Enregistrer</button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 

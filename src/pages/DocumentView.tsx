@@ -3,6 +3,7 @@ import { useRef } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { DOC_CSS, DocRender } from '../components/DocRender';
 import { PageHead } from '../components/ui';
+import { setStatusDeep } from '../documents';
 import { db } from '../db';
 import { createDocument } from '../documents';
 import type { DocStatus } from '../types';
@@ -54,7 +55,12 @@ export default function DocumentView() {
       <div className="no-print">
         <PageHead title={title}>
           <Link to={'/projets/' + doc.projectId}><button className="secondary">← Projet</button></Link>
-          <select value={doc.status} style={{ width: 'auto' }} onChange={(e) => save(db.docs, { ...doc, status: e.target.value as DocStatus })}>
+          <select value={doc.status} style={{ width: 'auto' }} onChange={async (e) => {
+            const status = e.target.value as DocStatus;
+            await save(db.docs, { ...doc, status });
+            // devis accepté = projet confirmé (le matériel passe en réservation ferme)
+            if (doc.type === 'devis' && status === 'accepte') await setStatusDeep(doc.projectId, 'confirme', ['demande', 'brouillon', 'option']);
+          }}>
             {Object.entries(DOC_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
           <button onClick={() => window.print()}>Imprimer / PDF</button>

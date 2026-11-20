@@ -91,6 +91,38 @@ Légende : ✅ fait · 🟡 partiel · ❌ absent · ⛔ écarté volontairement
 - ✅ [Facturer des sous-projets séparément](https://support.rentman.io/hc/fr/articles/360017700379-Comment-cr%C3%A9er-une-facture-partielle-pour-un-projet)
 - ✅ [Exporter vos données](https://support.rentman.io/hc/fr) (CSV de toutes les listes) et mise à jour groupée du matériel
 
+## Lot 3 : relecture complète du manuel
+
+Relu en entier, article par article (y compris les 28 articles disponibles seulement en anglais et les notes de version).
+Ce que j'avais mal compris ou survolé, et ce qui est fait :
+
+| Point du manuel | Ce que j'avais compris | Ce que fait Rentman | FabEvent |
+|---|---|---|---|
+| [Statuts des projets](https://support.rentman.io/hc/fr) | 6 statuts manuels ; une demande ne bloque rien | 8 statuts de gestion, la plupart changent seuls (devis envoyé, devis signé, 1re sortie, tout rentré) ; préparé / sur site deviennent des statuts d'entrepôt | ✅ |
+| [Statut et disponibilité](https://support.rentman.io/hc/fr) | Option = réservé | Tout projet non annulé est décompté ; seul un projet confirmé (ou une réservation manuelle) est **réservé** et prioritaire | ✅ Manque réel / concurrence entre options / servi en priorité, « Réserver le matériel » par salle |
+| Horaires d'équipement (oct. 2026) | Horaire par groupe | Chaque ligne peut avoir sa propre période de planification et d'utilisation | ✅ Horaire propre à la ligne |
+| Prêt pour la préparation | — | L'entrepôt ne voit une salle qu'une fois marquée prête | ✅ |
+| [Moments de facturation](https://support.rentman.io/hc/fr/articles/360017647300-Que-sont-les-moments-de-facturation) et « À facturer » | Acomptes manuels | Jusqu'à 3 moments (accord, avant le 1er jour, fin), par type de projet ou par contact ; liste « À facturer », en rouge si en retard ; « facturé en externe » | ✅ |
+| Conditions de paiement | Un délai global | Délai par contact | ✅ |
+| Aperçu financier | Une colonne de coûts | Coûts estimés, prévus et réels | ✅ Prévus et réels (les « estimés » supposent des tarifs de fonction côté coût) |
+| Notes | Une note | Plusieurs notes, chacune affichée sur les documents choisis | ✅ |
+| Remarques d'équipement | — | Remarque externe (devis) et interne (entrepôt) | ✅ |
+| Caution, assurance, conditions générales | — | Champs du projet et des documents | ✅ |
+| [Champs supplémentaires](https://support.rentman.io/hc/fr/articles/360013637220-Ajouter-des-champs-de-saisie-suppl%C3%A9mentaires) | Texte, oui/non, nombre, date | Aussi listes déroulantes (ex. « Probabilité »), en colonne et en filtre | ✅ |
+| Pénuries | Par projet | Vue de tous les manques, tous projets | ✅ Page Pénuries |
+
+Vu dans le manuel mais pas encore repris (dis-moi ce qui t'est utile) :
+
+- Combinaisons physiques (flight-cases au contenu fixe, scellés, numéros de série) — 🟡 kits virtuels seulement.
+- Listes de colisage par date de sortie / de retour et statuts d'entrepôt par liste (préparé, chargé, sur site).
+- Retours anticipés et retards, aperçu cross-docking (matériel qui repart directement d'un projet à l'autre).
+- Classes de TVA par article (6 %, 12 %, 21 %) — aujourd'hui un seul taux par document.
+- Bons de commande avec circuit d'approbation, comparaison de devis fournisseurs.
+- Contacts : adresses de visite / postale / facturation séparées, contact administratif, rappels CRM.
+- Volume et dimensions pour le chargement des véhicules, articles vendus au mètre (surface).
+- Tableau de bord personnalisable et module de statistiques avec graphiques.
+- Fonctions créées automatiquement depuis les créneaux (« copier les périodes vers l'équipe »).
+
 ## Reste à faire
 
 - **Serveur de synchronisation** 🌐 : plusieurs appareils, collègues avec droits, invitations aux techniciens, devis signés en ligne, agenda en abonnement.

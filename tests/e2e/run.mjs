@@ -673,6 +673,167 @@ await step('Export CSV et modification groupée des prix', async () => {
   await page.waitForTimeout(1200);
   expect(before.startsWith('5,00') && (await price('Micro Shure SM58')).startsWith('6,00'), `prix 5 € → 6 € (+20 %) (${before} → ${await price('Micro Shure SM58')})`);
 });
+console.log('\n  — lot 3 : relecture du manuel Rentman —');
+const statusOf = async (name) => { await openProject(name); return field('Statut').locator('select').first().inputValue(); };
+
+await step('Statuts : devis émis → En attente, devis accepté → Confirmé', async () => {
+  await resetDemo();
+  expect(await statusOf('Spectacle de fin d') === 'demande', 'départ en « Demande »');
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Devis")');
+  await page.waitForSelector('.doc');
+  const docUrl = page.url();
+  expect(await statusOf('Spectacle de fin d') === 'option', 'passé « En attente » après le devis');
+  await page.goto(docUrl);
+  await page.waitForSelector('.doc');
+  await page.locator('select', { has: page.locator('option[value=accepte]') }).selectOption('accepte');
+  await page.waitForTimeout(400);
+  expect(await statusOf('Spectacle de fin d') === 'confirme', 'confirmé quand le devis est accepté');
+});
+
+await step('Échéancier : l’acompte à la commande arrive dans « À facturer »', async () => {
+  // le spectacle est une « Location sèche » : facture unique ; on choisit acompte + solde sur le projet
+  await openProject('Spectacle de fin d');
+  await tab('Finances & documents');
+  const card = page.locator('.card', { hasText: 'Échéancier de facturation' });
+  // cases liées à la base : on clique puis on laisse la base se mettre à jour
+  for (const m of ['Acompte à la commande', 'Solde après la prestation', 'Facture après la prestation']) {
+    await card.locator('label', { hasText: m }).locator('input').click();
+    await page.waitForTimeout(300);
+  }
+  expect((await card.locator('tbody tr').count()) === 2, 'deux moments');
+  expect((await card.locator('tbody tr').first().innerText()).includes('À facturer'), 'acompte à facturer');
+  await go('comptabilite');
+  const row = page.locator('.card', { hasText: 'À facturer' }).locator('tr', { hasText: 'Spectacle de fin' });
+  await row.waitFor({ timeout: 5000 });
+  expect((await row.innerText()).includes('Acompte à la commande'), 'moment indiqué');
+  await row.locator('button:text-is("Facturer")').click();
+  await page.waitForSelector('.doc');
+  expect((await page.locator('.doc').innerText()).includes('Acompte à la commande'), 'acompte libellé selon le moment');
+  await openProject('Spectacle de fin d');
+  await tab('Finances & documents');
+  const rows = page.locator('.card', { hasText: 'Échéancier de facturation' }).locator('tbody tr');
+  expect((await rows.first().innerText()).includes('Facturé') && (await rows.nth(1).innerText()).includes('À venir'), 'acompte facturé, solde à venir');
+});
+
+await step('Facturé en externe : retiré de « À facturer », puis remis', async () => {
+  await go('comptabilite');
+  const card = page.locator('.card', { hasText: 'À facturer' }).first();
+  await card.locator('label', { hasText: 'échéances à venir' }).locator('input').check();
+  const row = card.locator('tr', { hasText: 'Conférence annuelle' });
+  await row.waitFor({ timeout: 5000 });
+  await row.locator('button:has-text("Facturé en externe")').click();
+  await page.waitForTimeout(500);
+  expect((await card.locator('.table-wrap tr', { hasText: 'Conférence annuelle' }).count()) === 0, 'retiré de la liste');
+  await card.locator('summary').click();
+  await card.locator('button:has-text("Remettre")').click();
+  await page.waitForTimeout(500);
+  expect((await card.locator('.table-wrap tr', { hasText: 'Conférence annuelle' }).count()) === 1, 'remis dans la liste');
+});
+
+await step('Pénuries : liste de tous les manques, réels ou entre options', async () => {
+  await go('');
+  await page.locator('.stat', { hasText: 'manques de matériel' }).click();
+  await page.waitForSelector('h1:text-is("Pénuries")');
+  const n = await page.locator('table.list tbody tr').count();
+  expect(n > 0, 'des manques listés');
+  const txt = await page.locator('table.list').innerText();
+  expect(txt.includes('Manque réel') || txt.includes('Concurrence entre options'), 'type de manque affiché');
+  await page.locator('.toolbar select').selectOption('concurrence');
+  await page.waitForTimeout(200);
+  expect(!(await page.locator('table.list, .empty').first().innerText()).includes('Manque réel'), 'filtre par type');
+});
+
+await step('Ligne : horaire propre, remarques client et entrepôt, notes et assurance sur les documents', async () => {
+  await openProject('Conférence annuelle');
+  await tab('Équipement');
+  expect((await page.locator('.sub', { hasText: 'Salle plénière' }).innerText()).includes('Uniquement pour la plénière'), 'remarque affichée sur la ligne');
+  const row = page.locator('.sub', { hasText: 'Salle plénière' }).locator('tr', { hasText: 'Vidéoprojecteur' });
+  await row.locator('button[aria-label="Détails de la ligne"]').click();
+  await page.locator('.modal .field', { hasText: "Remarque pour l'entrepôt" }).locator('input').fill('Prendre la lentille grand angle');
+  await page.click('.modal button[type=submit]');
+  await page.waitForTimeout(300);
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Devis")');
+  await page.waitForSelector('.doc');
+  const quote = await page.locator('.doc').innerText();
+  expect(quote.includes('Uniquement pour la plénière du premier jour'), 'remarque client sur le devis');
+  expect(!quote.includes('lentille'), 'remarque entrepôt absente du devis');
+  expect(quote.includes('Accès et parking'), 'note du projet sur le devis');
+  expect(quote.includes('Assurance du matériel (3 %)'), 'assurance ajoutée');
+  expect(quote.includes('Conditions générales'), 'conditions générales');
+  await openProject('Conférence annuelle');
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Bon de sortie")');
+  await page.waitForSelector('.doc');
+  const bs = await page.locator('.doc').innerText();
+  expect(bs.includes('Prendre la lentille grand angle') && bs.includes('Accès et parking'), 'remarque entrepôt et note sur le bon de sortie');
+});
+
+await step('Caution : affichée sur le devis, hors total', async () => {
+  await openProject('Festival des Lumières');
+  await tab('Finances & documents');
+  const total = await page.locator('.stat').first().innerText();
+  await page.click('button:text-is("+ Devis")');
+  await page.waitForSelector('.doc');
+  const doc = await page.locator('.doc').innerText();
+  expect(doc.includes('Caution à verser'), 'caution sur le devis');
+  expect(/1\s?500,00/.test(doc.replace(/[\u202f\u00a0]/g, ' ')), 'montant de la caution');
+  await openProject('Festival des Lumières');
+  await tab('Finances & documents');
+  expect((await page.locator('.stat').first().innerText()) === total, 'total inchangé');
+});
+
+await step('Coût réel : la marge réelle suit le coût saisi', async () => {
+  await openProject('Gala de fin d');
+  await tab('Finances & documents');
+  const r = page.locator('tr', { hasText: 'Personnel' }).first();
+  await r.locator('input').fill('2000');
+  await r.locator('input').blur();
+  await page.waitForTimeout(400);
+  const num = (t) => parseFloat(t.replace(/[\s\u202f\u00a0€]/g, '').replace(',', '.'));
+  const cells = async (label) => (await page.locator('tr', { hasText: label }).first().locator('td').allInnerTexts());
+  const sub = await cells('Sous-total');
+  const totalRow = await cells('Total HT');
+  const actualCost = num(sub[5]);
+  expect(actualCost >= 2000, `coût réel cumulé (${sub[5]})`);
+  expect(Math.abs(num(totalRow[1]) - actualCost - num(totalRow[5].split('(')[0])) < 0.02, `marge réelle = total − coût réel (${totalRow[5]})`);
+});
+
+await step('Entrepôt : 1re sortie → En cours, tout rentré → Exécution terminée', async () => {
+  await go('entrepot');
+  await page.locator('table.list tr.click', { hasText: 'Beurs Maastricht' }).click();
+  await page.waitForSelector('.scan-input');
+  for (let i = 0; i < 10 && await page.locator('button:text-is("Tout")').count(); i++) { await page.locator('button:text-is("Tout")').first().click(); await page.waitForTimeout(250); }
+  expect(await statusOf('Beurs Maastricht') === 'en_cours', 'en cours après la sortie');
+  await go('entrepot');
+  await page.locator('table.list tr.click', { hasText: 'Beurs Maastricht' }).click();
+  await page.waitForSelector('.scan-input');
+  await page.click('.tabs button:text-is("Retour")');
+  for (let i = 0; i < 10 && await page.locator('button:text-is("Tout")').count(); i++) { await page.locator('button:text-is("Tout")').first().click(); await page.waitForTimeout(250); }
+  expect(await statusOf('Beurs Maastricht') === 'execute', 'exécution terminée au retour complet');
+});
+
+await step('Entrepôt : une salle en attente n’apparaît qu’une fois prête pour la préparation', async () => {
+  await go('entrepot');
+  expect((await page.locator('table.list tr', { hasText: 'Marché de Noël' }).count()) === 0, 'option masquée');
+  await openProject('Marché de Noël');
+  await tab('Planning');
+  await page.locator('label', { hasText: 'Prête pour la préparation' }).first().locator('input').click();
+  await page.waitForTimeout(300);
+  await go('entrepot');
+  expect((await page.locator('table.list tr', { hasText: 'Marché de Noël' }).count()) === 1, 'visible une fois prête');
+});
+
+await step('Champ en liste déroulante : colonne et filtre des projets', async () => {
+  await go('projets');
+  expect((await page.locator('table.list thead').innerText()).includes('Probabilité'), 'colonne affichée');
+  await page.locator('.toolbar select', { has: page.locator('option', { hasText: 'Probabilité : tous' }) }).selectOption('Forte');
+  await page.waitForTimeout(200);
+  const rows = await page.locator('table.list tbody tr').allInnerTexts();
+  expect(rows.length === 1 && rows[0].includes('Festival'), 'filtre sur la valeur');
+});
+
 await ctx.close();
 
 await step('Aucune erreur dans la console du navigateur', async () => {

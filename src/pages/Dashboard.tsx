@@ -6,6 +6,7 @@ import { DEMO_WORKSPACE } from '../demo';
 import { DOC_LABELS, DOC_STATUS_LABELS, INVOICE_TYPES } from '../types';
 import { useAvailability } from '../data';
 import { useOverdue } from './Overdue';
+import { shortageLabel, upcomingShortages } from './Shortages';
 import { fmtDate, fmtRange, inspectionsDue, money, toLocalInput } from '../utils';
 
 export default function Dashboard() {
@@ -27,7 +28,8 @@ export default function Dashboard() {
   const upcoming = subs
     .filter((s) => s.end >= now && s.start <= in30 && s.status !== 'annule' && !pMap.get(s.projectId)?.isTemplate)
     .sort((a, b) => a.start.localeCompare(b.start));
-  const conflicts = av.conflicts().filter((c) => (sMap.get(c.subprojectId)?.end || '') >= now);
+  const conflicts = upcomingShortages(av.conflicts(), now).filter((c) => !pMap.get(c.projectId)?.isTemplate);
+  const firmShort = conflicts.filter((c) => c.level === 'ferme').length;
   const dueInspections = inspectionsDue(equipment, units, inspections).filter((d) => d.due <= in30.slice(0, 10)).length;
   const openRepairs = av.repairs.filter((r) => r.status === 'ouvert').length;
   const overdue = useOverdue();
@@ -35,7 +37,7 @@ export default function Dashboard() {
   const expiringDocs = personFiles.filter((f) => f.expires && f.expires <= new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10)).length;
   const pendingSubrentals = subrentals.filter((s) => s.status === 'demande').length;
   const unstaffed = crew.filter((c) => !c.personId && c.end >= now && sMap.get(c.subprojectId)?.status !== 'annule');
-  const pendingQuotes = projects.filter((p) => !p.isTemplate && (p.status === 'option' || p.status === 'demande')).length;
+  const pendingQuotes = projects.filter((p) => !p.isTemplate && ['demande', 'brouillon', 'option'].includes(p.status)).length;
 
   return (
     <>
@@ -44,8 +46,8 @@ export default function Dashboard() {
       </PageHead>
       <div className="stats">
         <div className="stat"><b>{upcoming.length}</b><span>prestations dans les 30 j</span></div>
-        <div className="stat"><b>{pendingQuotes}</b><span>demandes / options en cours</span></div>
-        <div className="stat"><b style={{ color: conflicts.length ? 'var(--danger)' : undefined }}>{conflicts.length}</b><span>manques de matériel</span></div>
+        <div className="stat"><b>{pendingQuotes}</b><span>demandes et devis en attente</span></div>
+        <div className="stat" onClick={() => nav('/penuries')} style={{ cursor: 'pointer' }}><b style={{ color: firmShort ? 'var(--danger)' : undefined }}>{conflicts.length}</b><span>manques de matériel{conflicts.length ? ` (${firmShort} réels)` : ''}</span></div>
         <div className="stat"><b style={{ color: unstaffed.length ? 'var(--danger)' : undefined }}>{unstaffed.length}</b><span>postes à pourvoir</span></div>
         <div className="stat" onClick={() => nav('/maintenance')} style={{ cursor: 'pointer' }}><b style={{ color: dueInspections ? 'var(--danger)' : undefined }}>{dueInspections}</b><span>contrôles à faire (30 j)</span></div>
         <div className="stat" onClick={() => nav('/maintenance')} style={{ cursor: 'pointer' }}><b>{openRepairs}</b><span>réparations en cours</span></div>
@@ -56,14 +58,14 @@ export default function Dashboard() {
 
       {conflicts.length > 0 && (
         <div className="card">
-          <h2>⚠ Manques de matériel</h2>
+          <h2>⚠ Manques de matériel <button className="secondary small" onClick={() => nav('/penuries')}>Tout voir</button></h2>
           <table className="list">
             <tbody>
-              {conflicts.map((c, i) => {
+              {conflicts.slice(0, 8).map((c, i) => {
                 const s = sMap.get(c.subprojectId);
                 return (
                   <tr key={i} className="click" onClick={() => nav('/projets/' + c.projectId)}>
-                    <td><strong>{c.equipment.name}</strong></td><td className="avail ko">manque {c.shortage}</td>
+                    <td><strong>{c.equipment.name}</strong></td><td className="avail ko">manque {c.shortage}</td><td className="muted">{shortageLabel(c, s)}</td>
                     <td>{pMap.get(c.projectId)?.name} · {s?.name}</td><td>{fmtRange(s?.start, s?.end)}</td>
                   </tr>
                 );

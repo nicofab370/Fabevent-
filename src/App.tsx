@@ -23,6 +23,7 @@ import ProjectDetail from './pages/ProjectDetail';
 import Projects from './pages/Projects';
 import SettingsPage from './pages/Settings';
 import Vehicles from './pages/Vehicles';
+import Shortages from './pages/Shortages';
 
 const NAV = [
   ['/', 'Tableau de bord', '◧'],
@@ -30,6 +31,7 @@ const NAV = [
   ['/planning', 'Planning', '▦'],
   ['/materiel', 'Matériel', '◫'],
   ['/entrepot', 'Entrepôt', '⇄'],
+  ['/penuries', 'Pénuries', '⚠'],
   ['/souslocations', 'Sous-locations', '⇆'],
   ['/transferts', 'Transferts', '⇵'],
   ['/maintenance', 'Maintenance', '⚒'],
@@ -90,6 +92,7 @@ export default function App() {
           <Route path="/rapports" element={<Reports />} />
           <Route path="/entrepot" element={<Warehouse />} />
           <Route path="/entrepot/:id" element={<WarehouseScan />} />
+          <Route path="/penuries" element={<Shortages />} />
           <Route path="/souslocations" element={<Subrentals />} />
           <Route path="/souslocations/:id" element={<SubrentalDetail />} />
           <Route path="/maintenance" element={<Maintenance />} />

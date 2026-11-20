@@ -1,5 +1,5 @@
 import { db, DEFAULT_DOC_STYLE, getSettings, nextNumber } from './db';
-import type { Doc, DocSnapshot, DocType, Lang, Settings, SnapshotSub, VatRegime } from './types';
+import type { Doc, DocSnapshot, DocType, Lang, ProjectStatus, Settings, SnapshotSub, VatRegime } from './types';
 import { VAT_MENTIONS_I18N } from './i18n';
 import { DEFAULT_VAT_MENTIONS, structuredCommunication } from './payment';
 import { INVOICE_TYPES } from './types';
@@ -31,6 +31,8 @@ export interface DocOptions {
   /** facture partielle : uniquement ces salles */
   subIds?: string[];
   note?: string;
+  /** libellé de la ligne d'acompte (ex. moment de facturation) */
+  label?: string;
 }
 
 /** Construit une photo figée du projet à l'instant T. */
@@ -65,6 +67,7 @@ export async function buildSnapshot(projectId: string, type: DocType, only?: { i
           const e = l.equipmentId ? eMap.get(l.equipmentId) : undefined;
           const perPiece = e?.kind === 'vente';
           const days = lineDays(l, sp);
+          const own = l.periodIds?.length ? (sp.periods || []).filter((p) => l.periodIds!.includes(p.id)).map((p) => p.name).join(', ') : '';
           return {
             name: l.name,
             code: e?.code,
@@ -77,6 +80,8 @@ export async function buildSnapshot(projectId: string, type: DocType, only?: { i
             group: (l.groupId && groupName.get(l.groupId)) || l.group,
             optional: !!l.optional,
             unit: perPiece ? 'pièce' as const : 'jour' as const,
+            remark: (isPacking ? l.internalRemark || l.remark : l.remark) || undefined,
+            periods: own || undefined,
           };
         });
       const cr = crew
@@ -112,6 +117,10 @@ export async function buildSnapshot(projectId: string, type: DocType, only?: { i
   const costs = await db.costs.where({ projectId }).toArray();
   // les frais supplémentaires vont sur la facture finale, pas sur une facture partielle par salle
   const extras = only?.include ? [] : costs.filter((c) => c.billable && c.price).map((c) => ({ label: c.label, qty: c.qty || 1, unitPrice: c.price!, total: round2((c.qty || 1) * c.price!) }));
+  // assurance du matériel loué (sur les salles du document)
+  const insPct = project.insurancePct ?? s.insurancePct ?? 0;
+  const rentalHT = snapSubs.reduce((a, sp) => a + sp.equipment.filter((l) => !l.optional && l.unit === 'jour').reduce((b, l) => b + l.total, 0), 0);
+  if (insPct > 0 && rentalHT > 0) extras.push({ label: `Assurance du matériel (${insPct} %)`, qty: 1, unitPrice: round2(rentalHT * insPct / 100), total: round2(rentalHT * insPct / 100) });
   const gross = round2(snapSubs.reduce((a, sp) => a + sp.subtotal, 0) + extras.reduce((a, x) => a + x.total, 0));
   const discountAmount = round2(gross * (project.discount || 0) / 100);
   const totalHT = round2(gross - discountAmount);
@@ -134,7 +143,10 @@ export async function buildSnapshot(projectId: string, type: DocType, only?: { i
     totalHT, discountAmount, vatRate, vat, totalTTC: round2(totalHT + vat), vatRegime: regime, vatMention, lang, customFields,
     issuedAt: issued.toISOString(),
     validUntil: isQuote ? new Date(issued.getTime() + s.quoteValidityDays * 86400000).toISOString() : undefined,
-    dueDate: INVOICE_TYPES.includes(type) ? new Date(issued.getTime() + s.paymentDays * 86400000).toISOString() : undefined,
+    dueDate: INVOICE_TYPES.includes(type) ? new Date(issued.getTime() + (client?.paymentDays ?? s.paymentDays) * 86400000).toISOString() : undefined,
+    notes: (() => { const n = (project.noteList || []).filter((x) => x.on.includes(type) && x.text.trim()).map(({ title, text }) => ({ title, text })); return n.length ? n : undefined; })(),
+    deposit: project.deposit?.amount && project.deposit.status !== 'aucune' && (isQuote || type === 'facture' || type === 'bon_sortie') ? project.deposit : undefined,
+    terms: s.terms?.trim() && (isQuote || (s.termsOnInvoices && (type === 'facture' || type === 'acompte'))) ? s.terms : undefined,
     footer: s.footer,
     hidePrices: isPacking,
     template: { style: { ...DEFAULT_DOC_STYLE, ...s.templates?.style }, html: s.templates?.html, ...s.templates?.types?.[type] },
@@ -181,7 +193,7 @@ export async function createDocument(projectId: string, type: DocType, opts: Doc
     const baseHT = quote ? quote.snapshot.totalHT : snapshot.totalHT;
     const pct = opts.percent ?? 30;
     const ht = opts.amountHT ?? baseHT * pct / 100;
-    const label = opts.amountHT != null
+    const label = opts.label ? `${opts.label} — projet ${snapshot.project.number} ${snapshot.project.name}` : opts.amountHT != null
       ? `Acompte — projet ${snapshot.project.number} ${snapshot.project.name}`
       : `Acompte de ${pct} % — projet ${snapshot.project.number} ${snapshot.project.name}`;
     snapshot = { ...simple(snapshot, label, ht), refNumber: quote?.number };
@@ -229,8 +241,20 @@ export async function createDocument(projectId: string, type: DocType, opts: Doc
     snapshot = { ...snapshot, payment: st.structuredComm !== false ? { communication: structuredCommunication(number), structured: true } : { communication: number, structured: false } };
   }
   const project = await db.projects.get(projectId);
+  // un devis émis fait passer le projet « en attente » de la réponse du client
+  if (type === 'devis' && project && (project.status === 'demande' || project.status === 'brouillon')) await setStatusDeep(projectId, 'option');
   return save(db.docs, {
     projectId, type, number, version, status: 'brouillon', note: opts.note, contactPerson: project?.contactPerson, snapshot,
     subprojectIds: type === 'facture' && only?.include ? only.include : undefined,
+  });
+}
+
+/** Change le statut du projet et de ses salles non annulées (sans autre effet). */
+export async function setStatusDeep(projectId: string, status: ProjectStatus, onlyFrom?: ProjectStatus[]) {
+  const p = await db.projects.get(projectId);
+  if (!p || (onlyFrom && !onlyFrom.includes(p.status))) return;
+  await db.projects.update(projectId, { status, updatedAt: new Date().toISOString(), ...(status === 'confirme' && !p.confirmedAt ? { confirmedAt: new Date().toISOString() } : {}) });
+  await db.subprojects.where({ projectId }).modify((sp) => {
+    if (sp.status !== 'annule' && (!onlyFrom || onlyFrom.includes(sp.status))) { sp.status = status; sp.updatedAt = new Date().toISOString(); }
   });
 }

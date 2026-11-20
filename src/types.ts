@@ -23,7 +23,11 @@ export interface CustomField {
   id: ID;
   label: string;
   entity: 'projet' | 'contact' | 'materiel';
-  type: 'texte' | 'oui_non' | 'nombre' | 'date';
+  type: 'texte' | 'oui_non' | 'nombre' | 'date' | 'liste';
+  /** valeurs proposées (type liste) */
+  choices?: string[];
+  /** affiché en colonne et en filtre dans la liste */
+  inList?: boolean;
 }
 export type CustomValues = Record<ID, string | number | boolean | undefined>;
 
@@ -70,6 +74,10 @@ export interface Contact extends Base {
   tags?: string[];
   custom?: CustomValues;
   notes?: string;
+  /** délai de paiement propre au client (jours) */
+  paymentDays?: number;
+  /** moments de facturation par défaut de ses projets */
+  moments?: ID[];
 }
 
 export interface ContactPerson {
@@ -156,17 +164,58 @@ export interface Equipment extends Base {
   notes?: string;
 }
 
-export type ProjectStatus = 'demande' | 'option' | 'confirme' | 'en_cours' | 'termine' | 'annule';
+/**
+ * Statuts de gestion de projet (comme Rentman depuis 2026) :
+ * demande → brouillon → en attente (devis envoyé) → confirmé → en cours (1er article sorti)
+ * → exécution terminée (tout est rentré) → terminé (tout est bouclé). Annulé à tout moment.
+ * L'état du matériel (préparé, sorti, rentré) est suivi ligne par ligne dans l'entrepôt.
+ */
+export type ProjectStatus = 'demande' | 'brouillon' | 'option' | 'confirme' | 'en_cours' | 'execute' | 'termine' | 'annule';
 export const STATUS_LABELS: Record<ProjectStatus, string> = {
   demande: 'Demande',
-  option: 'Option',
+  brouillon: 'Brouillon',
+  option: 'En attente',
   confirme: 'Confirmé',
   en_cours: 'En cours',
+  execute: 'Exécution terminée',
   termine: 'Terminé',
   annule: 'Annulé',
 };
-/** Statuts qui bloquent réellement le matériel / les personnes. */
-export const RESERVING: ProjectStatus[] = ['option', 'confirme', 'en_cours'];
+/** Statuts dont le matériel et les personnes sont décomptés des disponibilités. */
+export const RESERVING: ProjectStatus[] = ['demande', 'brouillon', 'option', 'confirme', 'en_cours', 'execute'];
+/** Statuts où le matériel est réservé ferme (prioritaire sur les demandes et projets en attente). */
+export const FIRM: ProjectStatus[] = ['confirme', 'en_cours', 'execute'];
+/** Projet accepté par le client (apparaît dans « À facturer »). */
+export const CONFIRMED: ProjectStatus[] = ['confirme', 'en_cours', 'execute', 'termine'];
+
+export type DepositStatus = 'aucune' | 'demandee' | 'payee' | 'remboursee';
+export const DEPOSIT_LABELS: Record<DepositStatus, string> = {
+  aucune: 'Pas de caution', demandee: 'Demandée', payee: 'Payée', remboursee: 'Remboursée',
+};
+
+/** Note de projet et documents sur lesquels elle s'imprime. */
+export interface ProjectNote {
+  id: ID;
+  title: string;
+  text: string;
+  /** types de documents qui affichent la note (vide = note interne) */
+  on: DocType[];
+}
+
+/** Moment de facturation : quand et quelle part du projet facturer. */
+export interface InvoiceMoment {
+  id: ID;
+  name: string;
+  /** part du total du projet (%) */
+  percent: number;
+  /** accord = à la confirmation ; avant = avant le premier jour ; fin = après le dernier jour */
+  trigger: 'accord' | 'avant' | 'fin';
+  /** décalage en jours (ex. 14 jours avant le premier jour) */
+  days?: number;
+}
+export const MOMENT_TRIGGERS: Record<InvoiceMoment['trigger'], string> = {
+  accord: 'À la confirmation', avant: 'Avant le premier jour', fin: 'À la fin du projet',
+};
 
 export interface Project extends Base {
   number: string;
@@ -200,6 +249,20 @@ export interface Project extends Base {
   travelMinutes?: number;
   tasks?: Task[];
   notes?: string;
+  /** notes imprimées sur certains documents */
+  noteList?: ProjectNote[];
+  /** caution demandée au client (non soumise à TVA) */
+  deposit?: { amount: number; status: DepositStatus };
+  /** assurance du matériel loué, en % du prix de location */
+  insurancePct?: number;
+  /** moments de facturation choisis (sinon ceux du client ou du type de projet) */
+  moments?: ID[];
+  /** facturé en dehors de FabEvent : n'apparaît plus dans « À facturer » */
+  externalInvoiced?: boolean;
+  /** date de confirmation (moment « à la confirmation ») */
+  confirmedAt?: string;
+  /** coûts réels saisis après le projet, par catégorie de l'onglet Finances */
+  actualCosts?: Record<string, number>;
 }
 
 export interface Task {
@@ -271,6 +334,10 @@ export interface Subproject extends Base {
   groups?: EquipGroup[];
   order: number;
   notes?: string;
+  /** l'entrepôt peut commencer la préparation */
+  readyToPack?: boolean;
+  /** réserve le matériel même si le projet est encore en attente */
+  reserve?: boolean;
 }
 
 export interface EquipmentLine extends Base {
@@ -292,6 +359,12 @@ export interface EquipmentLine extends Base {
   parentLineId?: ID;
   /** consommable déjà déduit du stock */
   consumed?: boolean;
+  /** créneaux propres à la ligne (prioritaires sur ceux du groupe) */
+  periodIds?: ID[];
+  /** remarque imprimée sur le devis et la facture */
+  remark?: string;
+  /** remarque pour l'entrepôt (bon de sortie) */
+  internalRemark?: string;
   /** entrepôt */
   outQty?: number;
   inQty?: number;
@@ -481,6 +554,8 @@ export interface SnapshotLine {
   group?: string;
   optional?: boolean;
   unit?: 'jour' | 'pièce';
+  remark?: string;
+  periods?: string;
 }
 
 export interface SnapshotSub {
@@ -573,6 +648,12 @@ export interface DocSnapshot {
   partialInvoices?: { number: string; rooms: string[]; ht: number }[];
   /** rappel de paiement */
   reminder?: { level: number; invoiceNumber: string; invoiceDate: string; invoiceDue?: string; amount: number };
+  /** notes du projet prévues pour ce type de document */
+  notes?: { title: string; text: string }[];
+  /** caution à verser (hors TVA) */
+  deposit?: { amount: number; status: DepositStatus };
+  /** conditions générales */
+  terms?: string;
   /** modèle figé au moment de la génération */
   template?: DocTypeTemplate & { style: DocStyle; html?: DocHtml };
 }
@@ -634,7 +715,14 @@ export interface Settings {
   footer: string;
   appUrl: string;
   counters: Record<string, number>;
-  projectTypes?: { name: string; color: string }[];
+  projectTypes?: { name: string; color: string; moments?: ID[] }[];
+  /** moments de facturation (au plus 3 par projet) */
+  invoiceMoments?: InvoiceMoment[];
+  /** assurance matériel par défaut (% du prix de location, 0 = aucune) */
+  insurancePct?: number;
+  /** conditions générales imprimées après les devis (et les factures si coché) */
+  terms?: string;
+  termsOnInvoices?: boolean;
   /** catalogue des fonctions : tarif facturé au client, quel que soit le prestataire */
   crewFunctions?: CrewFunction[];
   depots?: Depot[];
