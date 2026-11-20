@@ -316,6 +316,57 @@ await step('Étiquettes QR imprimables', async () => {
   await popup.close();
 });
 
+await step('Étiqueteuse Brother PT-P750W : impression directe USB (simulée), ruban vérifié, PNG', async () => {
+  await go('etiquettes');
+  // étiqueteuse simulée : répond au statut (ruban 12 mm laminé) et signale chaque étiquette imprimée
+  await page.evaluate(() => {
+    const w = window;
+    w.__pt = { tape: 12, sent: [], queue: [] };
+    const reply = (patch) => { const b = new Uint8Array(32); b[0] = 0x80; b[1] = 0x20; b[10] = w.__pt.tape; b[11] = 1; b[24] = 1; b[25] = 8; for (const k in patch) b[k] = patch[k]; return b; };
+    const ep = (n, d) => ({ endpointNumber: n, direction: d, type: 'bulk' });
+    const dev = {
+      productName: 'PT-P750W', vendorId: 0x04f9, productId: 0x2062, opened: false,
+      configuration: { interfaces: [{ interfaceNumber: 0, alternate: { interfaceClass: 7, endpoints: [ep(2, 'out'), ep(1, 'in')] }, alternates: [] }] },
+      async open() { this.opened = true; }, async close() { this.opened = false; }, async selectConfiguration() {},
+      async claimInterface() {}, async releaseInterface() {},
+      async transferOut(_ep, data) {
+        const a = new Uint8Array(data);
+        w.__pt.sent.push(...a);
+        if (a[a.length - 3] === 0x1b && a[a.length - 2] === 0x69 && a[a.length - 1] === 0x53) w.__pt.queue.push(reply({}));
+        if (a[a.length - 1] === 0x1a) { const t = w.__pt.sent; let n = 0; for (let i = t.lastIndexOf(0x53); i < t.length - 2; i++) if (t[i] === 0x1b && t[i + 1] === 0x69 && t[i + 2] === 0x7a) n++; for (let i = 0; i < n; i++) w.__pt.queue.push(reply({ 18: 1 })); }
+        return { status: 'ok', bytesWritten: a.length };
+      },
+      async transferIn() {
+        while (!w.__pt.queue.length) await new Promise((r) => setTimeout(r, 20));
+        const b = w.__pt.queue.shift();
+        return { status: 'ok', data: new DataView(b.buffer) };
+      },
+    };
+    Object.defineProperty(navigator, 'usb', { configurable: true, value: { requestDevice: async () => dev, getDevices: async () => [] } });
+  });
+  await page.selectOption('select[aria-label="Format d\'étiquette"]', 'ptouch');
+  await page.waitForSelector('.ptouch-preview img');
+  await page.click('text=Tout cocher');
+  await page.click('button:text-is("Connecter en USB")');
+  await page.waitForSelector('.ptouch [role=status]:has-text("ruban 12 mm")');
+  await page.click('.ptouch button:has-text("sur la PT-P750W")');
+  await page.waitForSelector('.ptouch [role=status]:has-text("imprimée(s)")', { timeout: 20000 }).catch(async (e) => { throw new Error(e.message.split('\n')[0] + ' — état : ' + (await page.locator('.ptouch [role=status]').innerText().catch(() => 'aucun'))); });
+  const sent = await page.evaluate(() => window.__pt.sent);
+  const job = sent.slice(sent.lastIndexOf(0x53) + 1); // après la dernière demande de statut
+  expect(job.slice(0, 100).every((v) => v === 0) && job[100] === 0x1b && job[101] === 0x40, 'travail : 100 NUL puis ESC @');
+  expect(job[job.length - 1] === 0x1a, 'travail terminé par Ctrl-Z (imprime et coupe)');
+  const z = job.findIndex((v, i) => v === 0x1b && job[i + 1] === 0x69 && job[i + 2] === 0x7a);
+  expect(job[z + 5] === 12, 'largeur 12 mm envoyée');
+  expect(job.some((v, i) => v === 0x47 && job[i + 3] !== undefined), 'lignes raster envoyées');
+  // mauvais ruban : refusé avant d'imprimer
+  await page.evaluate(() => { window.__pt.tape = 24; });
+  await page.click('.ptouch button:has-text("sur la PT-P750W")');
+  await page.waitForSelector('.ptouch [role=status]:has-text("Le ruban en place fait 24 mm")');
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('button:has-text("Image PNG")')]);
+  expect(dl.suggestedFilename().endsWith('_12mm.zip'), 'images PNG au format du ruban : ' + dl.suggestedFilename());
+  await page.selectOption('select[aria-label="Format d\'étiquette"]', 'a4-24');
+});
+
 await step('Inventaire : scan inconnu refusé, écart appliqué au stock', async () => {
   await go('inventaire');
   await page.fill('.scan-input', 'CODE-INCONNU');
