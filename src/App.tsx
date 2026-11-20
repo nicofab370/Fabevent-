@@ -18,7 +18,8 @@ import Inventory from './pages/Inventory';
 import Labels from './pages/Labels';
 import Templates from './pages/Templates';
 import Transfers from './pages/Transfers';
-import Warehouse, { WarehouseScan } from './pages/Warehouse';
+import Warehouse from './pages/Warehouse';
+import FreeChecklists, { FreeChecklistPage, ProjectChecklist } from './pages/Checklist';
 import ProjectDetail from './pages/ProjectDetail';
 import Projects from './pages/Projects';
 import SettingsPage from './pages/Settings';
@@ -98,7 +99,9 @@ export default function App() {
           <Route path="/comptabilite" element={<Accounting />} />
           <Route path="/rapports" element={<Reports />} />
           <Route path="/entrepot" element={<Warehouse />} />
-          <Route path="/entrepot/:id" element={<WarehouseScan />} />
+          <Route path="/entrepot/:id" element={<ProjectChecklist />} />
+          <Route path="/checklists" element={<FreeChecklists />} />
+          <Route path="/checklists/:id" element={<FreeChecklistPage />} />
           <Route path="/penuries" element={<Shortages />} />
           <Route path="/souslocations" element={<Subrentals />} />
           <Route path="/souslocations/:id" element={<SubrentalDetail />} />

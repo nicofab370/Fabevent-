@@ -3,7 +3,7 @@
  * Lancement : npm run test:e2e  (construit l'application, la sert, puis déroule les scénarios).
  */
 import { spawn } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
@@ -826,7 +826,7 @@ await step('Entrepôt : 1re sortie → En cours, tout rentré → Exécution ter
   await go('entrepot');
   await page.locator('table.list tr.click', { hasText: 'Beurs Maastricht' }).click();
   await page.waitForSelector('.scan-input');
-  await page.click('.tabs button:text-is("Retour")');
+  await page.click('.tabs button:has-text("Retour")');
   for (let i = 0; i < 10 && await page.locator('button:text-is("Tout")').count(); i++) { await page.locator('button:text-is("Tout")').first().click(); await page.waitForTimeout(250); }
   expect(await statusOf('Beurs Maastricht') === 'execute', 'exécution terminée au retour complet');
 });
@@ -1111,6 +1111,90 @@ await step('Email : bon de commande RH et planning du technicien (.ics) joints',
   await page.waitForSelector('.modal .attachments li', { timeout: 10000 });
   expect((await page.locator('.modal .attachments').innerText()).includes('.ics'), 'agenda .ics joint');
   await page.click('.modal button:text-is("Fermer")');
+});
+
+console.log('\n  — checklist et inventaire (FABRI.live intégré) —');
+const scan = async (c) => { await page.fill('.checklist-scan .scan-input', c); await page.press('.checklist-scan .scan-input', 'Enter'); await page.waitForTimeout(350); return page.locator('.checklist-scan .flash').innerText(); };
+const openChecklist = async (name) => { await go('entrepot'); await page.locator('table.list tr.click', { hasText: name }).click(); await page.waitForSelector('.checklist-scan'); };
+
+await step('Checklist : unité scannée, doublon refusé, « ajouter en plus », code inconnu associé', async () => {
+  await resetDemo();
+  await openChecklist('Mariage Dupont-Lemaire');
+  expect((await scan('SN-LA4X-1001')).includes('Sortie : Amplificateur LA4X n° LA4X-1001'), 'unité sortie');
+  expect((await scan('SN-LA4X-1001')).includes('déjà sorti'), 'doublon refusé');
+  expect((await scan('DEMO-SM58')).includes('pas prévu'), 'article hors liste signalé');
+  await page.locator('.checklist-scan .flash button:has-text("Ajouter en plus")').click();
+  await page.waitForTimeout(400);
+  expect((await scan('DEMO-SM58')).includes('Sortie : Micro Shure SM58'), 'ajouté en plus puis sorti');
+  expect((await scan('FAB-77777')).includes('Code inconnu'), 'code inconnu');
+  await page.locator('.checklist-scan .flash button:has-text("Associer")').click();
+  await page.fill('.modal input', 'Caisson');
+  await page.locator('.modal button', { hasText: 'Caisson SB18' }).click();
+  await page.click('.modal button:text-is("Associer")');
+  await page.waitForTimeout(300);
+  expect((await scan('FAB-77777')).includes('Sortie : Caisson SB18'), 'code fabricant associé puis reconnu');
+});
+
+await step('Checklist : retour, unité abîmée, bilan, déclarer perdu puis retrouver', async () => {
+  for (const sn of ['SN-ULXD-1001', 'SN-ULXD-1002', 'SN-QU16-1001']) await scan(sn);
+  for (let i = 0; i < 12 && await page.locator('.cl-line button:text-is("Tout")').count(); i++) { await page.locator('.cl-line button:text-is("Tout")').first().click(); await page.waitForTimeout(150); }
+  await page.click('.tabs button:has-text("Retour")');
+  await page.waitForTimeout(300);
+  for (const sn of ['SN-LA4X-1001', 'SN-ULXD-1001']) await scan(sn);
+  // tout le vrac rentre, sauf les enceintes X12
+  for (let i = 0; i < 12; i++) {
+    const b = page.locator('.cl-line', { hasNotText: 'L-Acoustics X12' }).locator('button:text-is("Tout")');
+    if (!(await b.count())) break;
+    await b.first().click(); await page.waitForTimeout(150);
+  }
+  await page.locator('.cl-line', { hasText: 'Micro HF' }).locator('button:text-is("Cassé")').click();
+  await page.fill('.modal .field input', 'Antenne tordue');
+  await page.click('.modal button[type=submit]');
+  await page.waitForTimeout(300);
+  await page.click('button:text-is("Bilan du retour")');
+  const bilan = await page.locator('.modal').innerText();
+  expect(bilan.includes('L-Acoustics X12') && bilan.includes('ULXD-1002') && bilan.includes('QU16-1001'), `manquants listés : ${bilan.slice(0, 200)}`);
+  await page.click('.modal button:text-is("Déclarer perdu")');
+  await page.waitForTimeout(600);
+  expect((await page.locator('.modal').innerText()).includes('déclaré(s) perdu(s)'), 'pertes déclarées');
+  await page.click('.modal button:text-is("Fermer")');
+  // l'unité perdue, rescannée, est proposée à la remise en stock
+  await page.click('.tabs button:has-text("Sortie")');
+  expect((await scan('SN-QU16-1001')).includes('déclarée perdue'), 'unité perdue reconnue');
+  await page.locator('.checklist-scan .flash button:has-text("Retrouvée")').click();
+  await page.waitForTimeout(400);
+  expect((await page.locator('.checklist-scan .flash').innerText()).includes('Remise en stock'), 'unité remise en stock');
+});
+
+await step('Checklist libre : bon collé, articles reconnus et scannés', async () => {
+  await go('checklists');
+  await page.click('button:text-is("Coller du texte")');
+  await page.fill('.modal textarea', 'Son\n2   Enceinte L-Acoustics X12   SON-12   2\n4   Micro Shure SM58   MIC-58   4\nDivers\n1   Rouleau de scotch   AB-99   1');
+  await page.click('.modal button:text-is("Créer la checklist")');
+  await page.waitForSelector('.checklist-scan');
+  expect((await page.locator('.checklist-cat').count()) === 2, 'deux catégories');
+  expect((await scan('DEMO-X12')).includes('Sortie : Enceinte L-Acoustics X12 — 1/2'), 'article du catalogue scanné');
+  await page.locator('.cl-line', { hasText: 'Rouleau de scotch' }).locator('.cl-check').click();
+  await page.waitForTimeout(300);
+  expect((await page.locator('.cl-line', { hasText: 'Rouleau de scotch' }).getAttribute('class')).includes('done'), 'ligne libre cochée');
+});
+
+await step('Checklist libre : import d’un bon PDF', async () => {
+  const { jsPDF } = require('jspdf');
+  const pdf = new jsPDF();
+  pdf.setFontSize(10);
+  pdf.text('Document et bon : Bon de préparation test', 10, 15);
+  pdf.text('Client : Société test', 10, 22);
+  pdf.text('Lumière', 10, 32);
+  const row = (y, q, n, c, t, x = 10) => { pdf.text(q, x, y); pdf.text(n, x + 15, y); pdf.text(c, 140, y); pdf.text(t, 180, y); };
+  row(40, '8', 'Projecteur PAR LED 18x10 W', 'LUM-18', '8');
+  row(47, '2', 'Pack ambiance 8 PAR LED', 'KIT-02', '2');
+  writeFileSync('tests/e2e/bon-test.pdf', Buffer.from(pdf.output('arraybuffer')));
+  await go('checklists');
+  await page.setInputFiles('.drop input[type=file]', 'tests/e2e/bon-test.pdf');
+  await page.waitForSelector('.checklist-scan', { timeout: 20000 });
+  const txt = await page.locator('body').innerText();
+  expect(txt.includes('Bon de préparation test') && txt.includes('Pack ambiance 8 PAR LED') && txt.includes('Client : Société test'), 'bon PDF lu (titre, client, lignes)');
 });
 
 await ctx.close();
