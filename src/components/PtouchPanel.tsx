@@ -103,7 +103,8 @@ export default function PtouchPanel({ total, collect, linkFor, company }: {
     }
   };
 
-  const printUsb = async () => {
+  /** test = une seule étiquette d'exemple, sans rien enregistrer */
+  const printUsb = async (test = false) => {
     setState(null);
     let d = printer;
     try {
@@ -111,7 +112,7 @@ export default function PtouchPanel({ total, collect, linkFor, company }: {
     } catch (e) { setState({ kind: 'error', text: usbErrorText(e) }); return; }
     setBusy(true);
     try {
-      const { bmps } = await pages();
+      const bmps = test ? [render(SAMPLE).bmp] : (await pages()).bmps;
       if (!bmps.length) return;
       await d.open();
       setState({ kind: 'info', text: 'Vérification du ruban…' });
@@ -205,13 +206,15 @@ export default function PtouchPanel({ total, collect, linkFor, company }: {
         <div className="ptouch-preview">
           <div className="muted">Aperçu — {preview.mm.toFixed(0)} × {p.tapeMm} mm{total ? '' : ' (exemple)'}</div>
           <img alt="Aperçu de l'étiquette" src={preview.url} style={{ width: `${preview.mm * 8}px`, height: `${p.tapeMm * 8}px` }} />
+          {preview.mm < 24.5 && <div className="muted">La PT-P750W sort toujours au moins 24,5 mm de ruban (position du coupe-ruban) : l'étiquette coupée fera 24,5 mm.</div>}
           {preview.note && <div className="muted">{preview.note}</div>}
         </div>
       )}
 
       <div className="toolbar">
-        <button disabled={!total || busy || !usbOk} onClick={printUsb}>🖨 Imprimer {total || ''} étiquette(s) sur la PT-P750W</button>
+        <button disabled={!total || busy || !usbOk} onClick={() => printUsb()}>🖨 Imprimer {total || ''} étiquette(s) sur la PT-P750W</button>
         {usbOk && <button className="secondary" disabled={busy} onClick={() => (printer ? detect() : connect())}>{printer ? 'Lire le ruban' : 'Connecter en USB'}</button>}
+        {usbOk && <button className="secondary" disabled={busy} onClick={() => printUsb(true)} title="Imprime une seule étiquette d'exemple pour vérifier le rendu">Étiquette d'essai</button>}
         <button className="secondary" disabled={!total || busy} onClick={downloadPng}>Image PNG (iPrint&Label)</button>
         <button className="secondary" disabled={!total || busy} onClick={printDriver}>Via le pilote Brother</button>
       </div>

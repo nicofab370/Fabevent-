@@ -333,7 +333,8 @@ await step('Étiqueteuse Brother PT-P750W : impression directe USB (simulée), r
         const a = new Uint8Array(data);
         w.__pt.sent.push(...a);
         if (a[a.length - 3] === 0x1b && a[a.length - 2] === 0x69 && a[a.length - 1] === 0x53) w.__pt.queue.push(reply({}));
-        if (a[a.length - 1] === 0x1a) { const t = w.__pt.sent; let n = 0; for (let i = t.lastIndexOf(0x53); i < t.length - 2; i++) if (t[i] === 0x1b && t[i + 1] === 0x69 && t[i + 2] === 0x7a) n++; for (let i = 0; i < n; i++) w.__pt.queue.push(reply({ 18: 1 })); }
+        // fin d'une étiquette (FF ou Ctrl-Z) : « changement de phase » puis « impression terminée », comme la vraie machine
+        if (a[a.length - 1] === 0x1a || a[a.length - 1] === 0x0c) { w.__pt.pages = (w.__pt.pages || 0) + 1; w.__pt.queue.push(reply({ 18: 6, 19: 1 }), reply({ 18: 1 })); }
         return { status: 'ok', bytesWritten: a.length };
       },
       async transferIn() {
@@ -352,12 +353,17 @@ await step('Étiqueteuse Brother PT-P750W : impression directe USB (simulée), r
   await page.click('.ptouch button:has-text("sur la PT-P750W")');
   await page.waitForSelector('.ptouch [role=status]:has-text("imprimée(s)")', { timeout: 20000 }).catch(async (e) => { throw new Error(e.message.split('\n')[0] + ' — état : ' + (await page.locator('.ptouch [role=status]').innerText().catch(() => 'aucun'))); });
   const sent = await page.evaluate(() => window.__pt.sent);
-  const job = sent.slice(sent.lastIndexOf(0x53) + 1); // après la dernière demande de statut
-  expect(job.slice(0, 100).every((v) => v === 0) && job[100] === 0x1b && job[101] === 0x40, 'travail : 100 NUL puis ESC @');
+  const job = sent.slice(sent.lastIndexOf(0x53) - 104); // 100 NUL + ESC @ + ESC i S, puis l'étiquette
+  expect(job.slice(0, 100).every((v) => v === 0) && job[100] === 0x1b && job[101] === 0x40 && job[104] === 0x53, 'travail : 100 NUL, ESC @, statut');
+  expect(job[105] === 0x1b && job[106] === 0x69 && job[107] === 0x61, 'puis mode raster');
   expect(job[job.length - 1] === 0x1a, 'travail terminé par Ctrl-Z (imprime et coupe)');
   const z = job.findIndex((v, i) => v === 0x1b && job[i + 1] === 0x69 && job[i + 2] === 0x7a);
   expect(job[z + 5] === 12, 'largeur 12 mm envoyée');
   expect(job.some((v, i) => v === 0x47 && job[i + 3] !== undefined), 'lignes raster envoyées');
+  const pagesSent = await page.evaluate(() => window.__pt.pages);
+  expect(pagesSent > 1, 'une étiquette envoyée à la fois, après confirmation de la précédente');
+  await page.click('button:text-is("Étiquette d\'essai")');
+  await page.waitForSelector('.ptouch [role=status]:has-text("1 étiquette(s) imprimée(s)")');
   // mauvais ruban : refusé avant d'imprimer
   await page.evaluate(() => { window.__pt.tape = 24; });
   await page.click('.ptouch button:has-text("sur la PT-P750W")');

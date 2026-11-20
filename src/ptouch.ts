@@ -22,18 +22,22 @@ export const BROTHER_VENDOR = 0x04f9;
 export const PT_P750W_PRODUCT = 0x2062;
 
 /**
- * Rubans TZe : points imprimables en travers (valeurs prudentes, centrées sur la tête).
- * Les tables publiées diffèrent de quelques points (ex. 64 à 76 pour le 12 mm) : on garde la plus
- * petite pour que rien ne soit jamais coupé, le reste du ruban sert de marge blanche.
+ * Rubans TZe : points imprimables en travers, d'après la table officielle Brother (Raster Command Reference
+ * PT-E550W/P750W/P710BT v1.01, § 2.3.5) : marge gauche = marge droite = (128 − points) / 2.
+ *   6 mm : 32 (marges 48) · 9 mm : 50 (39) · 12 mm : 70 (29) · 18 mm : 112 (8) · 24 mm : 128 (0)
  */
 export const TAPES: { mm: number; dots: number; label: string }[] = [
   { mm: 6, dots: 32, label: '6 mm' },
-  { mm: 9, dots: 48, label: '9 mm' },
-  { mm: 12, dots: 64, label: '12 mm' },
+  { mm: 9, dots: 50, label: '9 mm' },
+  { mm: 12, dots: 70, label: '12 mm' },
   { mm: 18, dots: 112, label: '18 mm' },
   { mm: 24, dots: 128, label: '24 mm' },
 ];
-export const tapeDots = (mm: number) => TAPES.find((t) => t.mm === mm)?.dots ?? 64;
+export const tapeDots = (mm: number) => TAPES.find((t) => t.mm === mm)?.dots ?? 70;
+/** Longueur minimale de ruban sortie par la machine (position du coupe-ruban) : 24,5 mm. */
+export const MIN_FEED_MM = 24.5;
+/** Marge d'avance minimale avant et après l'étiquette : 2 mm = 14 points (§ 2.3.3). */
+export const MIN_MARGIN_DOTS = 14;
 
 /** Image 1 bit : width = longueur (lignes raster), height = points en travers ; data[y * width + x] = 1 si noir. */
 export interface Bitmap { width: number; height: number; data: Uint8Array }
@@ -72,8 +76,6 @@ export function unpackBits(src: Uint8Array): Uint8Array {
 
 export interface JobOptions {
   tapeMm: number;
-  /** type de support lu dans le statut (01 = ruban laminé) ; sinon non contrôlé */
-  mediaType?: number;
   /** couper après chaque étiquette (défaut : oui) */
   autoCut?: boolean;
   /** demi-découpe entre les étiquettes : elles restent sur une bande, faciles à décoller */
@@ -96,33 +98,55 @@ export function rasterLine(b: Bitmap, x: number): Uint8Array {
   return line;
 }
 
-/** Travail d'impression complet (une page par étiquette). */
-export function encodeJob(pages: Bitmap[], o: JobOptions): Uint8Array {
+/**
+ * Ligne compressée pour la commande G. La doc Brother (§ 4, « M ») impose au plus 17 octets :
+ * si la compression dépasse 16 octets, on envoie la ligne telle quelle (0F + 16 octets).
+ */
+export function compressLine(line: Uint8Array): Uint8Array {
+  const c = packBits(line);
+  return c.length > 16 ? Uint8Array.from([line.length - 1, ...line]) : c;
+}
+
+/** Début du travail : vide le tampon (100 × NUL) et initialise (ESC @). Une seule fois par travail. */
+export function jobStart(): Uint8Array {
+  return Uint8Array.from([...new Array(100).fill(0), 0x1b, 0x40]);
+}
+
+/**
+ * Une étiquette (page) : codes de contrôle + lignes raster + commande d'impression.
+ * FF si d'autres étiquettes suivent, Ctrl-Z (imprime, avance et coupe) pour la dernière.
+ */
+export function encodePage(p: Bitmap, page: number, last: boolean, o: JobOptions): Uint8Array {
   const out: number[] = [];
   const push = (...b: number[]) => { for (const v of b) out.push(v & 0xff); };
   const autoCut = o.autoCut ?? true;
-  const margin = Math.max(0, Math.min(0xffff, o.marginDots ?? 14));
-  for (let i = 0; i < 100; i++) out.push(0); // invalide le tampon
-  push(0x1b, 0x40); // ESC @
+  const margin = Math.max(MIN_MARGIN_DOTS, Math.min(900, o.marginDots ?? MIN_MARGIN_DOTS));
+  const n = p.width;
   push(0x1b, 0x69, 0x61, 0x01); // ESC i a 01 : mode raster
-  pages.forEach((p, page) => {
-    const n = p.width;
-    const flags = 0x80 | 0x04 | (o.mediaType ? 0x02 : 0); // reprise auto + largeur (+ type) à vérifier
-    push(0x1b, 0x69, 0x7a, flags, o.mediaType || 0, o.tapeMm, 0, n, n >> 8, n >> 16, n >>> 24, page === 0 ? 0 : 1, 0);
-    push(0x1b, 0x69, 0x4d, autoCut ? 0x40 : 0x00); // ESC i M : découpe auto
-    if (autoCut) push(0x1b, 0x69, 0x41, 0x01); // ESC i A 01 : couper chaque étiquette
-    push(0x1b, 0x69, 0x4b, (o.halfCut ? 0x04 : 0) | (o.chain ? 0 : 0x08)); // ESC i K
-    push(0x1b, 0x69, 0x64, margin, margin >> 8); // ESC i d : marge
-    push(0x4d, 0x02); // compression PackBits
-    for (let x = 0; x < n; x++) {
-      const line = rasterLine(p, x);
-      if (line.every((v) => v === 0)) { push(0x5a); continue; } // Z : ligne blanche
-      const c = packBits(line);
-      push(0x47, c.length, c.length >> 8, ...c);
-    }
-    push(page === pages.length - 1 ? 0x1a : 0x0c);
-  });
+  // ESC i z : comme l'exemple Brother (84h = reprise auto + largeur vérifiée), nombre de lignes, page
+  push(0x1b, 0x69, 0x7a, 0x84, 0x00, o.tapeMm, 0x00, n, n >> 8, n >> 16, n >>> 24, page === 0 ? 0 : 1, 0x00);
+  push(0x1b, 0x69, 0x4d, autoCut ? 0x40 : 0x00); // ESC i M : découpe auto
+  if (autoCut) push(0x1b, 0x69, 0x41, 0x01); // ESC i A 01 : couper chaque étiquette
+  push(0x1b, 0x69, 0x4b, (o.halfCut ? 0x04 : 0) | (o.chain ? 0 : 0x08)); // ESC i K
+  push(0x1b, 0x69, 0x64, margin, margin >> 8); // ESC i d : marge (2 mm minimum)
+  push(0x4d, 0x02); // compression TIFF (PackBits)
+  for (let x = 0; x < n; x++) {
+    const line = rasterLine(p, x);
+    if (line.every((v) => v === 0)) { push(0x5a); continue; } // Z : ligne blanche
+    const c = compressLine(line);
+    push(0x47, c.length, c.length >> 8, ...c);
+  }
+  push(last ? 0x1a : 0x0c);
   return Uint8Array.from(out);
+}
+
+/** Travail complet d'un bloc (aperçu, tests) : début + une page par étiquette. */
+export function encodeJob(pages: Bitmap[], o: JobOptions): Uint8Array {
+  const parts = [jobStart(), ...pages.map((p, i) => encodePage(p, i, i === pages.length - 1, o))];
+  const out = new Uint8Array(parts.reduce((a, b) => a + b.length, 0));
+  let k = 0;
+  for (const part of parts) { out.set(part, k); k += part.length; }
+  return out;
 }
 
 /** Demande de statut (à faire précéder d'une initialisation). */
@@ -219,7 +243,8 @@ export function renderLabel(spec: LabelSpec, o: LayoutOptions, qr: QrMatrix | nu
   };
   const texts = lines.map((l) => ({ ...l, text: fit(l) }));
   const textW = Math.ceil(Math.max(...texts.map((l) => { ctx.font = font(l); return ctx.measureText(l.text).width; })));
-  const W = Math.max(lead + qrDots + gap + textW + mm(1.5), mm(o.minLengthMm || 0), 31);
+  // fin : 1,5 mm après le texte + 3 mm blancs de sécurité (certaines P-touch rognent la fin des données)
+  const W = Math.max(lead + qrDots + gap + textW + mm(4.5), mm(o.minLengthMm || 0), 31);
 
   c.width = W;
   c.height = H;
@@ -348,8 +373,8 @@ export class PtouchUsb {
   }
 
   async write(data: Uint8Array) {
-    for (let i = 0; i < data.length; i += 16384) {
-      const r = await this.device.transferOut(this.out, data.slice(i, i + 16384));
+    for (let i = 0; i < data.length; i += 65536) {
+      const r = await this.device.transferOut(this.out, data.slice(i, i + 65536));
       if (r.status !== 'ok') throw new Error(`Envoi USB interrompu (${r.status}).`);
     }
   }
@@ -373,32 +398,49 @@ export class PtouchUsb {
 
   async status(): Promise<PtStatus> {
     await this.write(STATUS_REQUEST);
-    const st = await this.readStatus(3000);
-    if (!st) throw new Error("L'étiqueteuse ne répond pas. Vérifie qu'elle est allumée et que le mode « Editor Lite » est éteint (voyant vert du bouton éteint).");
-    return st;
+    // on saute les messages restés d'une impression précédente (fin, changement de phase) jusqu'à la réponse
+    const deadline = Date.now() + 3000;
+    while (Date.now() < deadline) {
+      const st = await this.readStatus(deadline - Date.now());
+      if (!st) break;
+      if (st.type === 0) return st;
+    }
+    throw new Error("L'étiqueteuse ne répond pas. Vérifie qu'elle est allumée et que le mode « Editor Lite » est éteint (voyant vert du bouton éteint).");
   }
 
-  /** Vérifie le ruban, envoie le travail et attend la fin de l'impression. */
-  async print(pages: Bitmap[], o: Omit<JobOptions, 'mediaType'>, onStep?: (s: string) => void): Promise<PtStatus> {
-    const st = await this.status();
+  /**
+   * Suit le déroulement officiel Brother (§ 1 et § 5) : statut → si tout va bien, envoi d'UNE étiquette →
+   * attente du statut « impression terminée » → étiquette suivante. Rien n'est envoyé tant que la machine
+   * n'a pas confirmé : en cas d'erreur ou de silence, on s'arrête (pas de ruban qui défile pour rien).
+   */
+  async print(pages: Bitmap[], o: JobOptions, onStep?: (s: string) => void): Promise<PtStatus> {
+    const st = await this.status(); // vide le tampon, initialise, lit le statut
     if (st.errors.length) throw new Error(`Étiqueteuse : ${st.errors.join(', ')}.`);
     if (!st.tapeMm) throw new Error('Aucun ruban détecté.');
     if (st.tapeMm !== o.tapeMm) throw new Error(`Le ruban en place fait ${st.tapeMm} mm, l'étiquette est prévue pour ${o.tapeMm} mm. Change de ruban ou de largeur.`);
-    onStep?.(`Envoi de ${pages.length} étiquette(s)…`);
-    await this.write(encodeJob(pages, { ...o, mediaType: st.mediaType }));
-    // la machine signale « impression terminée » (type 1) ou une erreur (type 2)
-    const deadline = Date.now() + 15000 + pages.length * 4000;
-    let done = 0;
-    let last = Date.now();
-    while (Date.now() < deadline) {
-      const s = await this.readStatus(Math.min(5000, deadline - Date.now()));
-      // plus aucun message : fini (ou machine qui ne confirme pas la fin)
-      if (!s) { if (done || Date.now() - last > 12000) return st; continue; }
-      last = Date.now();
-      if (s.type === 2 || s.errors.length) throw new Error(`Étiqueteuse : ${s.errors.join(', ') || 'erreur pendant l\'impression'}.`);
-      if (s.type === 1 && ++done >= pages.length) return s;
-      if (s.type === 1) onStep?.(`${done} / ${pages.length} imprimée(s)…`);
+    if (st.mediaType !== 0x01 && st.mediaType !== 0x03) throw new Error(`Support non prévu pour les étiquettes : ${mediaName(st.mediaType)}.`);
+    let last = st;
+    for (let i = 0; i < pages.length; i++) {
+      onStep?.(pages.length > 1 ? `Impression ${i + 1} / ${pages.length}…` : 'Impression…');
+      await this.write(encodePage(pages[i], i, i === pages.length - 1, o));
+      last = await this.waitPrinted(i + 1, pages.length);
     }
-    return st; // envoyé, sans confirmation de fin (certaines versions ne la renvoient qu'une fois)
+    return last;
+  }
+
+  /** Attend « impression terminée » (les messages « changement de phase » sont ignorés). */
+  private async waitPrinted(n: number, total: number): Promise<PtStatus> {
+    const deadline = Date.now() + 30000;
+    while (Date.now() < deadline) {
+      const s = await this.readStatus(deadline - Date.now());
+      if (!s) break;
+      if (s.type === 2 || s.errors.length) {
+        await this.write(jobStart()).catch(() => undefined); // annule le reste et remet la machine en attente
+        throw new Error(`Étiqueteuse : ${s.errors.join(', ') || 'erreur pendant l\'impression'}${n > 1 ? ` (après ${n - 1} étiquette(s) réussie(s))` : ''}.`);
+      }
+      if (s.type === 4) throw new Error("L'étiqueteuse s'est éteinte.");
+      if (s.type === 1) return s;
+    }
+    throw new Error(`L'étiqueteuse n'a pas confirmé la fin de l'étiquette ${n} / ${total} : impression arrêtée par sécurité.`);
   }
 }
