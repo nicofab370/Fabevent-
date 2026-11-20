@@ -87,6 +87,8 @@ pour une unité) + code + nom, sur ruban de 6 à 24 mm.
 
   Le bouton Editor Lite doit être éteint.
   Sous Windows, le pilote Brother garde la machine : installer WinUSB avec Zadig, ou utiliser l'impression via le pilote.
+- *Depuis l'article* : « 🏷 Imprimer l'étiquette » sur la fiche, « 🏷 Étiquette » sur chaque unité, et « Enregistrer et
+  imprimer l'étiquette » dans la modification (aussi à la création) : choix des unités et du nombre d'exemplaires.
 - *Image PNG au format exact du ruban* (180 dpi) pour l'app Brother iPrint&Label (iPhone, Wi-Fi Direct) ou P-touch Editor.
 - *Impression via le pilote Brother* (page au format longueur × largeur du ruban).
 

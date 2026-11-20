@@ -19,8 +19,10 @@ const SAMPLE: LabelData = { code: 'F-S-0010-03', title: 'Exemple — Table de mi
  * directe en USB (WebUSB, Chrome / Edge), ou image PNG au format exact du ruban (iPrint&Label, P-touch Editor),
  * ou impression via le pilote Brother installé sur l'ordinateur.
  */
-export default function PtouchPanel({ total, collect, linkFor, company }: {
+export default function PtouchPanel({ total, collect, linkFor, company, sig = '' }: {
   total: number;
+  /** change quand la sélection change (rafraîchit l'aperçu) */
+  sig?: string;
   collect: (persist: boolean) => Promise<LabelData[]>;
   /** lien vers la fiche si l'option « QR = lien » est active */
   linkFor?: (code: string) => string;
@@ -69,7 +71,7 @@ export default function PtouchPanel({ total, collect, linkFor, company }: {
     });
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [p, total, !!linkFor, company]);
+  }, [p, total, !!linkFor, company, sig]);
 
   const pages = async (): Promise<{ bmps: Bitmap[]; labels: LabelData[] }> => {
     const labels = await collect(true);

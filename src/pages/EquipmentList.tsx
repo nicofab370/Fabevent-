@@ -9,11 +9,12 @@ import { useAvailability } from '../data';
 import { resizeImage } from '../image';
 import { CsvButton, CustomFieldsEditor, exportCsv, TagInput, Tags } from '../components/extra';
 import { availableQty, money, save, stockIn, toLocalInput } from '../utils';
+import PrintLabelModal from '../components/PrintLabelModal';
 
 type Draft = Omit<Equipment, 'id' | 'createdAt' | 'updatedAt'> & Partial<Equipment>;
 const blank = (): Draft => ({ name: '', quantity: 1, dailyPrice: 0, isKit: false, kitItems: [] });
 
-export function EquipmentForm({ initial, onDone }: { initial?: Draft; onDone: () => void }) {
+export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; onDone: () => void; /** « Enregistrer et imprimer l'étiquette » */ onPrint?: (equipmentId: string) => void }) {
   const [e, setE] = useState<Draft>(initial || blank());
   const [newCat, setNewCat] = useState('');
   const [newLetter, setNewLetter] = useState('');
@@ -29,13 +30,15 @@ export function EquipmentForm({ initial, onDone }: { initial?: Draft; onDone: ()
 
   const submit = async (ev: React.FormEvent) => {
     ev.preventDefault();
+    const print = (ev.nativeEvent as SubmitEvent).submitter?.getAttribute('data-print') === '1';
     let categoryId = e.categoryId;
     if (newCat.trim()) categoryId = (await save(db.categories, { name: newCat.trim(), letter: cleanLetter(newLetter) || letterSuggest })).id;
     let code = e.code?.trim();
     if (!code && codeAuto) code = newArticleCode({ ...e, categoryId }, settings, await db.categories.toArray(), await db.equipment.toArray());
     const contents = (e.contents || []).filter((c) => c.name.trim()).map((c) => ({ name: c.name.trim(), qty: c.qty || 1 }));
-    await save(db.equipment, { ...e, categoryId, code, contents: contents.length ? contents : undefined } as Equipment);
+    const rec = await save(db.equipment, { ...e, categoryId, code, contents: contents.length ? contents : undefined } as Equipment);
     onDone();
+    if (print) onPrint?.(rec.id);
   };
 
   return (
@@ -198,6 +201,10 @@ export function EquipmentForm({ initial, onDone }: { initial?: Draft; onDone: ()
       <div className="form-actions">
         <button type="button" className="secondary" onClick={onDone}>Annuler</button>
         <button type="submit">Enregistrer</button>
+        {/* après « Enregistrer » dans le code (Entrée enregistre sans imprimer), affiché à gauche */}
+        {onPrint && !e.isKit && !e.accessoryOnly && (
+          <button type="submit" className="secondary" data-print="1" style={{ order: -1, marginRight: 'auto' }} title="Enregistre l'article puis ouvre l'impression de son étiquette (Brother PT-P750W)">🏷 Enregistrer et imprimer l'étiquette</button>
+        )}
       </div>
     </form>
   );
@@ -212,6 +219,7 @@ export default function EquipmentList() {
   const [cat, setCat] = useState('');
   const [tag, setTag] = useState('');
   const [creating, setCreating] = useState(false);
+  const [printId, setPrintId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulk, setBulk] = useState(false);
   const now = new Date();
@@ -302,7 +310,8 @@ export default function EquipmentList() {
           </div>
         )}
       </div>
-      {creating && <Modal title="Nouvel article" onClose={() => setCreating(false)} wide><EquipmentForm onDone={() => setCreating(false)} /></Modal>}
+      {creating && <Modal title="Nouvel article" onClose={() => setCreating(false)} wide><EquipmentForm onDone={() => setCreating(false)} onPrint={setPrintId} /></Modal>}
+      {printId && <PrintLabelModal equipmentId={printId} onClose={() => setPrintId(null)} />}
       {bulk && <BulkEdit ids={[...selected]} onClose={(done) => { setBulk(false); if (done) setSelected(new Set()); }} />}
     </>
   );

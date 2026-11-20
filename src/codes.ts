@@ -15,6 +15,11 @@ export function codeFromScan(raw: string): string {
   return m ? decodeURIComponent(m[1]) : raw.trim();
 }
 
+/** Code imprimé sur l'étiquette d'un article en vrac : code-barres existant, sinon son code (F-S-0010), sinon un code généré. */
+export function labelCode(e: { id: string; code?: string; barcode?: string }): string {
+  return e.barcode || e.code?.replace(/\s+/g, '') || `FE-${e.id.slice(0, 8).toUpperCase()}`;
+}
+
 /** « Chargeur 65 W, 2 × Câble USB-C » */
 export function contentsText(e?: Pick<Equipment, 'contents'>): string {
   return (e?.contents || []).map((c) => (c.qty > 1 ? `${c.qty} × ${c.name}` : c.name)).join(', ');
