@@ -5,6 +5,7 @@ import { currentWorkspace, db, switchWorkspace } from '../db';
 import { DEMO_WORKSPACE } from '../demo';
 import { DOC_LABELS, DOC_STATUS_LABELS, INVOICE_TYPES } from '../types';
 import { useAvailability } from '../data';
+import { useOverdue } from './Overdue';
 import { fmtDate, fmtRange, inspectionsDue, money, toLocalInput } from '../utils';
 
 export default function Dashboard() {
@@ -24,14 +25,17 @@ export default function Dashboard() {
   const now = toLocalInput(new Date());
   const in30 = toLocalInput(new Date(Date.now() + 30 * 86400000));
   const upcoming = subs
-    .filter((s) => s.end >= now && s.start <= in30 && s.status !== 'annule')
+    .filter((s) => s.end >= now && s.start <= in30 && s.status !== 'annule' && !pMap.get(s.projectId)?.isTemplate)
     .sort((a, b) => a.start.localeCompare(b.start));
   const conflicts = av.conflicts().filter((c) => (sMap.get(c.subprojectId)?.end || '') >= now);
   const dueInspections = inspectionsDue(equipment, units, inspections).filter((d) => d.due <= in30.slice(0, 10)).length;
   const openRepairs = av.repairs.filter((r) => r.status === 'ouvert').length;
+  const overdue = useOverdue();
+  const personFiles = useLiveQuery(() => db.files.where('personId').above('').toArray(), []) || [];
+  const expiringDocs = personFiles.filter((f) => f.expires && f.expires <= new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10)).length;
   const pendingSubrentals = subrentals.filter((s) => s.status === 'demande').length;
   const unstaffed = crew.filter((c) => !c.personId && c.end >= now && sMap.get(c.subprojectId)?.status !== 'annule');
-  const pendingQuotes = projects.filter((p) => p.status === 'option' || p.status === 'demande').length;
+  const pendingQuotes = projects.filter((p) => !p.isTemplate && (p.status === 'option' || p.status === 'demande')).length;
 
   return (
     <>
@@ -45,6 +49,8 @@ export default function Dashboard() {
         <div className="stat"><b style={{ color: unstaffed.length ? 'var(--danger)' : undefined }}>{unstaffed.length}</b><span>postes à pourvoir</span></div>
         <div className="stat" onClick={() => nav('/maintenance')} style={{ cursor: 'pointer' }}><b style={{ color: dueInspections ? 'var(--danger)' : undefined }}>{dueInspections}</b><span>contrôles à faire (30 j)</span></div>
         <div className="stat" onClick={() => nav('/maintenance')} style={{ cursor: 'pointer' }}><b>{openRepairs}</b><span>réparations en cours</span></div>
+        {expiringDocs > 0 && <div className="stat" onClick={() => nav('/equipe')} style={{ cursor: 'pointer' }}><b style={{ color: 'var(--danger)' }}>{expiringDocs}</b><span>documents du personnel à renouveler</span></div>}
+        <div className="stat" onClick={() => nav('/comptabilite')} style={{ cursor: 'pointer' }}><b style={{ color: overdue.length ? 'var(--danger)' : undefined }}>{overdue.length}</b><span>factures échues</span></div>
         <div className="stat" onClick={() => nav('/souslocations')} style={{ cursor: 'pointer' }}><b>{pendingSubrentals}</b><span>sous-locations à confirmer</span></div>
       </div>
 

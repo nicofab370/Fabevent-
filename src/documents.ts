@@ -1,11 +1,18 @@
 import { db, DEFAULT_DOC_STYLE, getSettings, nextNumber } from './db';
-import type { Doc, DocSnapshot, DocType, SnapshotSub } from './types';
+import type { Doc, DocSnapshot, DocType, Settings, SnapshotSub, VatRegime } from './types';
+import { DEFAULT_VAT_MENTIONS, structuredCommunication } from './payment';
 import { INVOICE_TYPES } from './types';
-import { daysBetween, factorFor, lineDays, lineTotal, round2, save, sortPeriods } from './utils';
+import { crewAmount, crewWindow, daysBetween, factorFor, lineDays, lineTotal, round2, save, sortPeriods } from './utils';
 
-const PREFIX: Record<DocType, 'D' | 'F' | 'AV' | 'BS' | 'FR'> = {
-  devis: 'D', facture: 'F', acompte: 'F', avoir: 'AV', bon_sortie: 'BS', feuille_route: 'FR',
+const PREFIX: Record<DocType, 'D' | 'F' | 'AV' | 'BS' | 'FR' | 'RP'> = {
+  devis: 'D', facture: 'F', acompte: 'F', avoir: 'AV', rappel: 'RP', bon_sortie: 'BS', feuille_route: 'FR',
 };
+
+/** Taux et mention selon le régime de TVA du projet (ou, à défaut, du client). */
+function vatFor(regime: VatRegime, s: Settings): { rate: number; mention?: string } {
+  if (regime === 'normal') return { rate: s.vatRate };
+  return { rate: 0, mention: s.vatMentions?.[regime] || DEFAULT_VAT_MENTIONS[regime] };
+}
 
 export interface DocOptions {
   /** acompte : pourcentage du total TTC du projet */
@@ -67,9 +74,14 @@ export async function buildSnapshot(projectId: string, type: DocType): Promise<D
         .filter((c) => c.subprojectId === sp.id)
         .sort((a, b) => a.start.localeCompare(b.start))
         .map((c) => {
-          const d = daysBetween(c.start, c.end);
+          const a = crewAmount(c, s, project.travelMinutes, c.personId ? pMap.get(c.personId)?.costRate : undefined);
+          const [dep, back] = crewWindow(c, project.travelMinutes);
           const p = c.personId ? pMap.get(c.personId) : undefined;
-          return { function: c.function, person: p?.name, phone: p?.phone, start: c.start, end: c.end, days: d, rate: c.rate, total: round2(d * c.rate), billable: c.billable };
+          return {
+            function: c.function, person: p?.name, phone: p?.phone, start: c.start, end: c.end, days: a.unit === 'jour' ? a.qty : 0, rate: c.rate, total: a.billed,
+            billable: c.billable, unit: a.unit, hours: a.unit === 'heure' ? a.hours : undefined, overtime: a.overtime || undefined,
+            departure: dep !== c.start ? dep : undefined, back: back !== c.end ? back : undefined,
+          };
         });
       const vh = vas
         .filter((v) => v.subprojectId === sp.id)
@@ -93,7 +105,9 @@ export async function buildSnapshot(projectId: string, type: DocType): Promise<D
   const gross = round2(snapSubs.reduce((a, sp) => a + sp.subtotal, 0) + extras.reduce((a, x) => a + x.total, 0));
   const discountAmount = round2(gross * (project.discount || 0) / 100);
   const totalHT = round2(gross - discountAmount);
-  const vat = round2(totalHT * s.vatRate / 100);
+  const regime: VatRegime = project.vatRegime || client?.vatRegime || 'normal';
+  const { rate: vatRate, mention: vatMention } = vatFor(regime, s);
+  const vat = round2(totalHT * vatRate / 100);
   const issued = new Date();
   const optionalTotal = round2(snapSubs.reduce((a, sp) => a + sp.equipment.filter((l) => l.optional).reduce((b, l) => b + l.total, 0), 0));
   return {
@@ -102,13 +116,13 @@ export async function buildSnapshot(projectId: string, type: DocType): Promise<D
     project: { number: project.number, name: project.name, venue: project.venue, start: project.start, end: project.end, notes: project.notes, discount: project.discount, externalRef: project.externalRef },
     subprojects: snapSubs,
     extras: isPacking || !extras.length ? undefined : extras,
-    totalHT, discountAmount, vatRate: s.vatRate, vat, totalTTC: round2(totalHT + vat),
+    totalHT, discountAmount, vatRate, vat, totalTTC: round2(totalHT + vat), vatRegime: regime, vatMention,
     issuedAt: issued.toISOString(),
     validUntil: isQuote ? new Date(issued.getTime() + s.quoteValidityDays * 86400000).toISOString() : undefined,
     dueDate: INVOICE_TYPES.includes(type) ? new Date(issued.getTime() + s.paymentDays * 86400000).toISOString() : undefined,
     footer: s.footer,
     hidePrices: isPacking,
-    template: { style: { ...DEFAULT_DOC_STYLE, ...s.templates?.style }, ...s.templates?.types?.[type] },
+    template: { style: { ...DEFAULT_DOC_STYLE, ...s.templates?.style }, html: s.templates?.html, ...s.templates?.types?.[type] },
     optionalTotal: isQuote && optionalTotal ? optionalTotal : undefined,
   };
 }
@@ -148,7 +162,27 @@ export async function createDocument(projectId: string, type: DocType, opts: Doc
     const inv = opts.invoiceId ? await db.docs.get(opts.invoiceId) : undefined;
     if (!inv) throw new Error('Facture d\'origine introuvable');
     const ht = -(opts.amountHT ?? inv.snapshot.totalHT);
-    snapshot = { ...simple({ ...snapshot, vatRate: inv.snapshot.vatRate }, `Avoir sur ${inv.type === 'acompte' ? "facture d'acompte" : 'facture'} ${inv.number}`, ht), refNumber: inv.number };
+    snapshot = {
+      ...simple({ ...snapshot, vatRate: inv.snapshot.vatRate, vatRegime: inv.snapshot.vatRegime, vatMention: inv.snapshot.vatMention },
+        `Avoir sur ${inv.type === 'acompte' ? "facture d'acompte" : 'facture'} ${inv.number}`, ht),
+      refNumber: inv.number,
+    };
+  }
+  if (type === 'rappel') {
+    const inv = opts.invoiceId ? await db.docs.get(opts.invoiceId) : undefined;
+    if (!inv) throw new Error('Facture introuvable');
+    const st = await getSettings();
+    const level = projectDocs.filter((d) => d.type === 'rappel' && d.snapshot.reminder?.invoiceNumber === inv.number).length + 1;
+    const due = round2(inv.snapshot.totalTTC - (inv.snapshot.deposits || []).reduce((a, x) => a + x.ttc, 0));
+    snapshot = {
+      ...inv.snapshot, subprojects: [], extras: undefined, deposits: undefined, optionalTotal: undefined, hidePrices: false,
+      simpleLines: [{ label: `Facture ${inv.number} du ${new Date(inv.snapshot.issuedAt).toLocaleDateString('fr-FR')}`, ht: due }],
+      totalHT: due, vat: 0, vatRate: 0, discountAmount: 0, totalTTC: due, vatMention: undefined,
+      issuedAt: new Date().toISOString(), dueDate: new Date(Date.now() + (st.reminderDays ?? 10) * 86400000).toISOString(),
+      refNumber: inv.number, template: snapshot.template,
+      reminder: { level, invoiceNumber: inv.number, invoiceDate: inv.snapshot.issuedAt, invoiceDue: inv.snapshot.dueDate, amount: due },
+      payment: inv.snapshot.payment,
+    };
   }
 
   const previous = projectDocs.filter((d) => d.type === type);
@@ -160,6 +194,11 @@ export async function createDocument(projectId: string, type: DocType, opts: Doc
     version = last.version + 1;
   } else {
     number = await nextNumber(PREFIX[type]);
+  }
+  // virement : communication structurée belge (ou numéro de facture)
+  if ((type === 'facture' || type === 'acompte') && !snapshot.payment) {
+    const st = await getSettings();
+    snapshot = { ...snapshot, payment: st.structuredComm !== false ? { communication: structuredCommunication(number), structured: true } : { communication: number, structured: false } };
   }
   const project = await db.projects.get(projectId);
   return save(db.docs, { projectId, type, number, version, status: 'brouillon', note: opts.note, contactPerson: project?.contactPerson, snapshot });

@@ -26,7 +26,7 @@ export default function Calendar() {
   const start = new Date(first); start.setDate(1 - offset);
   const days = Array.from({ length: 42 }, (_, i) => { const d = new Date(start); d.setDate(start.getDate() + i); return d; });
   const today = ymd(new Date());
-  const visible = subs.filter((s) => !(hideCancelled && s.status === 'annule'));
+  const visible = subs.filter((s) => !(hideCancelled && s.status === 'annule') && !pMap.get(s.projectId)?.isTemplate);
   // un événement par créneau (montage, J1, J2, démontage…) ou par salle sans horaires
   const events = visible.flatMap((s) => (s.periods?.length ? s.periods : [{ id: s.id, name: '', kind: undefined, start: s.start, end: s.end }]).map((pe) => ({
     id: pe.id, sub: s, label: pe.name, kind: pe.kind, start: pe.start, end: pe.end,

@@ -88,6 +88,9 @@ export class FabDB extends Dexie {
     this.version(4).stores({
       transfers: 'id, fromDepotId, toDepotId, status, start',
     });
+    this.version(5).stores({
+      files: 'id, projectId, personId',
+    });
   }
 }
 
@@ -127,6 +130,10 @@ export const defaultSettings: Settings = {
   factorExtraPerDay: 0.5,
   quoteValidityDays: 30,
   paymentDays: 30,
+  structuredComm: true,
+  overtimeAfter: 10,
+  overtimeRate: 50,
+  reminderDays: 10,
   pricePerKm: 1,
   defaultTrips: 2,
   footer: 'Conditions générales de location disponibles sur demande.',
@@ -140,7 +147,7 @@ export async function getSettings(): Promise<Settings> {
 }
 
 /** Numérotation : P-2026-001, D-2026-001, F-2026-001… */
-export async function nextNumber(kind: 'P' | 'D' | 'F' | 'AV' | 'BS' | 'FR' | 'SL' | 'TR'): Promise<string> {
+export async function nextNumber(kind: 'P' | 'D' | 'F' | 'AV' | 'BS' | 'FR' | 'SL' | 'TR' | 'RP'): Promise<string> {
   return db.transaction('rw', db.settings, async () => {
     const s = await getSettings();
     const year = new Date().getFullYear();

@@ -62,6 +62,9 @@ export default function DocumentView() {
           <button className="secondary" onClick={mail}>Email</button>
           {isInvoice && <button className="secondary" onClick={exportPeppol}>Peppol (XML)</button>}
           {(doc.type === 'facture' || doc.type === 'acompte') && <button className="secondary" onClick={makeCreditNote}>Créer un avoir</button>}
+          {(doc.type === 'facture' || doc.type === 'acompte') && doc.status !== 'paye' && (doc.snapshot.dueDate || '9') < new Date().toISOString() && (
+            <button className="secondary" onClick={async () => nav('/documents/' + (await createDocument(doc.projectId, 'rappel', { invoiceId: doc.id })).id)}>Envoyer un rappel</button>
+          )}
           {!isInvoice && <button className="secondary" onClick={async () => nav('/documents/' + (await createDocument(doc.projectId, doc.type)).id)}>Régénérer (nouvelle version)</button>}
         </PageHead>
         <div className="info">

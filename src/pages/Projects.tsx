@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Empty, Field, Modal, NumInput, PageHead, StatusBadge, useSettings } from '../components/ui';
 import { DEFAULT_PROJECT_TYPES, db, nextNumber } from '../db';
+import { copyProject, shiftBetween } from '../projectOps';
 import type { Project, ProjectStatus } from '../types';
 import { STATUS_LABELS } from '../types';
 import { fmtRange, save, toLocalInput } from '../utils';
@@ -27,7 +28,11 @@ export function ProjectForm({ initial, onDone }: { initial?: Draft; onDone: (p?:
     if (p.end < p.start) return alert('La fin doit être après le début.');
     const isNew = !p.id;
     const number = p.number || (await nextNumber('P'));
-    const saved = await save(db.projects, { ...p, number } as Project);
+    // nouveau projet : régime de TVA et remise globale par défaut du client
+    const client = isNew && p.clientId ? clients.find((c) => c.id === p.clientId) : undefined;
+    const saved = await save(db.projects, {
+      ...p, number, vatRegime: p.vatRegime ?? client?.vatRegime, discount: p.discount || client?.discounts?.total || 0,
+    } as Project);
     if (isNew) {
       // Un premier sous-projet est créé automatiquement
       await save(db.subprojects, { projectId: saved.id, name: 'Principal', venue: saved.venue, status: saved.status, start: saved.start, end: saved.end, order: 0 });
@@ -93,14 +98,23 @@ export default function Projects() {
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('');
   const [creating, setCreating] = useState(false);
+  const [fromTemplate, setFromTemplate] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
   const cMap = new Map(contacts.map((c) => [c.id, c.company]));
+  const templates = projects.filter((p) => p.isTemplate);
   const filtered = projects.filter((p) =>
+    !!p.isTemplate === showTemplates &&
     (!status || p.status === status) &&
     [p.number, p.name, p.venue, p.clientId && cMap.get(p.clientId)].join(' ').toLowerCase().includes(q.toLowerCase()));
 
   return (
     <>
-      <PageHead title="Projets"><button onClick={() => setCreating(true)}>+ Nouveau projet</button></PageHead>
+      <PageHead title={showTemplates ? 'Modèles de projet' : 'Projets'}>
+        <button className="secondary" onClick={() => setShowTemplates(!showTemplates)}>{showTemplates ? '← Projets' : `Modèles (${templates.length})`}</button>
+        {templates.length > 0 && <button className="secondary" onClick={() => setFromTemplate(true)}>+ À partir d'un modèle</button>}
+        <button onClick={() => setCreating(true)}>+ Nouveau projet</button>
+      </PageHead>
+      {showTemplates && <div className="info">Un modèle se crée depuis un projet existant (« Enregistrer comme modèle ») : il garde salles, horaires, matériel, postes et coûts, sans rien réserver.</div>}
       <div className="card">
         <div className="toolbar">
           <input placeholder="Rechercher…" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -109,7 +123,7 @@ export default function Projects() {
             {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
         </div>
-        {filtered.length === 0 ? <Empty>Aucun projet.</Empty> : (
+        {filtered.length === 0 ? <Empty>{showTemplates ? 'Aucun modèle.' : 'Aucun projet.'}</Empty> : (
           <div className="table-wrap">
             <table className="list">
               <thead><tr><th>N°</th><th>Projet</th><th>Type</th><th>Client</th><th>Dates</th><th>Lieu</th><th>Statut</th></tr></thead>
@@ -130,11 +144,55 @@ export default function Projects() {
           </div>
         )}
       </div>
+      {fromTemplate && <FromTemplateModal templates={templates} onClose={() => setFromTemplate(false)} />}
       {creating && (
         <Modal title="Nouveau projet" onClose={() => setCreating(false)}>
           <ProjectForm onDone={(p) => { setCreating(false); if (p) nav('/projets/' + p.id); }} />
         </Modal>
       )}
     </>
+  );
+}
+
+/** Nouveau projet à partir d'un modèle : tout est recopié et décalé à la date choisie. */
+function FromTemplateModal({ templates, onClose }: { templates: Project[]; onClose: () => void }) {
+  const nav = useNavigate();
+  const [tplId, setTplId] = useState(templates[0]?.id || '');
+  const tpl = templates.find((t) => t.id === tplId);
+  const [name, setName] = useState('');
+  const [start, setStart] = useState(() => { const d = new Date(); d.setDate(d.getDate() + 7); d.setHours(8, 0, 0, 0); return toLocalInput(d); });
+  const [clientId, setClientId] = useState('');
+  const clients = useLiveQuery(() => db.contacts.where('type').equals('client').sortBy('company'), []) || [];
+  return (
+    <Modal title="Nouveau projet à partir d'un modèle" onClose={onClose}>
+      <form className="form" onSubmit={async (e) => {
+        e.preventDefault();
+        if (!tpl) return;
+        const p = await copyProject(tpl.id, { name: name.trim() || tpl.name, status: 'demande', shift: shiftBetween(tpl.start, start) });
+        const client = clients.find((c) => c.id === clientId);
+        if (client) await save(db.projects, { ...p, clientId: client.id, vatRegime: client.vatRegime, discount: client.discounts?.total || p.discount });
+        onClose();
+        nav('/projets/' + p.id);
+      }}>
+        <Field label="Modèle" full>
+          <select value={tplId} onChange={(e) => setTplId(e.target.value)}>
+            {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Nom du projet" full><input value={name} placeholder={tpl?.name} onChange={(e) => setName(e.target.value)} /></Field>
+        <Field label="Début"><input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
+        <Field label="Client">
+          <select value={clientId} onChange={(e) => setClientId(e.target.value)}>
+            <option value="">Celui du modèle</option>
+            {clients.map((c) => <option key={c.id} value={c.id}>{c.company}</option>)}
+          </select>
+        </Field>
+        <p className="muted field full" style={{ margin: 0 }}>Toutes les dates du modèle (créneaux, postes, véhicules) sont décalées pour commencer à cette date.</p>
+        <div className="form-actions">
+          <button type="button" className="secondary" onClick={onClose}>Annuler</button>
+          <button type="submit" disabled={!tpl}>Créer le projet</button>
+        </div>
+      </form>
+    </Modal>
   );
 }

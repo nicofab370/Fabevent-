@@ -175,21 +175,24 @@ export function buildReservations(lines: EquipmentLine[], subs: Subproject[], eq
   return out;
 }
 
-/** Pic de quantité réservée sur la période (balayage des intervalles). */
+/**
+ * Pic de quantité réservée sur la période. Les apports (sous-locations, transferts entrants)
+ * sont négatifs : le résultat peut donc être négatif si du stock arrive pendant toute la période.
+ */
 export function peakReserved(res: Reservation[], equipmentId: string, start: string, end: string, excludeLineId?: string, depotId?: string): number {
-  const events: [string, number][] = [];
-  for (const r of res) {
-    if (r.equipmentId !== equipmentId || r.lineId === excludeLineId) continue;
-    if (depotId && r.depotId !== depotId) continue;
-    if (!overlaps(r.start, r.end, start, end)) continue;
-    events.push([r.start < start ? start : r.start, r.qty]);
-    events.push([r.end > end ? end : r.end, -r.qty]);
+  const rs = res.filter((r) => r.equipmentId === equipmentId && r.lineId !== excludeLineId && (!depotId || r.depotId === depotId) && overlaps(r.start, r.end, start, end));
+  if (!rs.length) return 0;
+  // le net réservé ne change qu'au début d'une réservation ou à la fin d'un apport : on l'évalue à ces instants
+  const times = new Set([start]);
+  for (const r of rs) {
+    if (r.start > start && r.start < end) times.add(r.start);
+    if (r.qty < 0 && r.end > start && r.end < end) times.add(r.end);
   }
-  events.sort((a, b) => (a[0] === b[0] ? a[1] - b[1] : a[0] < b[0] ? -1 : 1));
-  let cur = 0, peak = 0;
-  for (const [, d] of events) {
-    cur += d;
-    peak = Math.max(peak, cur);
+  let peak = -Infinity;
+  for (const t of times) {
+    let net = 0;
+    for (const r of rs) if (r.start <= t && t < r.end) net += r.qty;
+    peak = Math.max(peak, net);
   }
   return peak;
 }
@@ -435,4 +438,54 @@ export function lineDays(l: Pick<EquipmentLine, 'groupId'>, sp: Subproject): num
   if (!ps) return usageDays(sp);
   const synced = syncPeriods({ start: '', end: '', periods: ps });
   return usageDays({ ...synced, periods: ps.some((p) => p.kind === 'prestation') ? ps : ps.map((p) => ({ ...p, kind: 'prestation' as const })) });
+}
+
+/* ---------- Personnel : montants, heures supplémentaires, trajet ---------- */
+
+export interface CrewAmount { unit: 'jour' | 'heure'; qty: number; hours: number; overtime: number; billed: number; cost: number }
+
+/** Heures par jour calendaire d'un intervalle. */
+export function hoursPerDay(start: string, end: string): number[] {
+  const out: number[] = [];
+  let t = new Date(start).getTime();
+  const e = new Date(end).getTime();
+  while (t < e) {
+    const d = new Date(t);
+    const next = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime();
+    const stop = Math.min(next, e);
+    out.push((stop - t) / 3600000);
+    t = stop;
+  }
+  return out;
+}
+
+/**
+ * Montants d'un poste : à la journée (jours × tarif) ou à l'heure, avec majoration
+ * des heures au-delà du seuil journalier. Le trajet est compté s'il est inclus.
+ */
+export function crewAmount(
+  c: { start: string; end: string; rate: number; cost?: number; rateUnit?: 'jour' | 'heure'; travel?: boolean },
+  s: Pick<Settings, 'overtimeAfter' | 'overtimeRate'>, travelMinutes = 0, costFallback = 0,
+): CrewAmount {
+  const costRate = c.cost ?? costFallback;
+  if (c.rateUnit !== 'heure') {
+    const days = daysBetween(c.start, c.end);
+    return { unit: 'jour', qty: days, hours: 0, overtime: 0, billed: round2(days * c.rate), cost: round2(days * costRate) };
+  }
+  const [a, b] = crewWindow(c, travelMinutes);
+  // un service de 24 h maximum (même à cheval sur minuit) compte comme une seule journée de travail
+  const total = (new Date(b).getTime() - new Date(a).getTime()) / 3600000;
+  const perDay = total <= 24 ? [total] : hoursPerDay(a, b);
+  const limit = s.overtimeAfter ?? 10;
+  const k = 1 + (s.overtimeRate ?? 50) / 100;
+  const hours = round2(perDay.reduce((x, h) => x + h, 0));
+  const overtime = round2(perDay.reduce((x, h) => x + Math.max(0, h - limit), 0));
+  const normal = hours - overtime;
+  return { unit: 'heure', qty: hours, hours, overtime, billed: round2(normal * c.rate + overtime * c.rate * k), cost: round2(normal * costRate + overtime * costRate * k) };
+}
+
+/** Horaires communiqués : trajet aller avant le début et retour après la fin. */
+export function crewWindow(c: { start: string; end: string; travel?: boolean }, travelMinutes = 0): [string, string] {
+  if (!c.travel || !travelMinutes) return [c.start, c.end];
+  return [toLocalInput(new Date(new Date(c.start).getTime() - travelMinutes * 60000)), toLocalInput(new Date(new Date(c.end).getTime() + travelMinutes * 60000))];
 }

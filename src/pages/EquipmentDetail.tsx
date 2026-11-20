@@ -61,6 +61,8 @@ export default function EquipmentDetail() {
           }
         }}>Supprimer</button>
       </PageHead>
+      {eq.archived && <div className="alert">Article archivé : il n'est plus proposé dans les projets.</div>}
+      {eq.photo && <img src={eq.photo} alt="" style={{ maxHeight: 160, borderRadius: 10, marginBottom: 12 }} />}
       <div className="stats">
         <div className="stat"><b>{eq.isKit ? 'Kit' : eq.quantity}</b><span>{eq.isKit ? 'composé' : eq.trackSerials ? 'unités en service' : 'en stock'}</span></div>
         <div className="stat"><b>{money(eq.dailyPrice)}</b><span>{eq.kind === 'vente' ? 'prix de vente / pièce' : 'prix / jour HT'}</span></div>
@@ -139,6 +141,9 @@ export default function EquipmentDetail() {
           <h2>Accessoires automatiques</h2>
           <ul>{eq.accessories!.map((a, i) => <li key={i}>{a.qty} × <Link to={'/materiel/' + a.equipmentId}>{allMap.get(a.equipmentId)?.name || '?'}</Link> {a.free ? '(gratuit)' : '(facturé)'}</li>)}</ul>
         </div>
+      )}
+      {(eq.alternatives || []).length > 0 && (
+        <div className="card"><h2>Articles de remplacement</h2>{eq.alternatives!.map((id) => <Link key={id} to={'/materiel/' + id} style={{ marginRight: 12 }}>{allMap.get(id)?.name || '?'}</Link>)}</div>
       )}
       {usedIn.length > 0 && (
         <div className="card"><h2>Inclus dans les kits</h2>{usedIn.map((k) => <Link key={k.id} to={'/materiel/' + k.id} style={{ marginRight: 12 }}>{k.name}</Link>)}</div>

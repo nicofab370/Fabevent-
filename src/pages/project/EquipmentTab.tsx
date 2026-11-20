@@ -96,6 +96,20 @@ function RoomEquipment({ d, sp }: { d: ProjectData; sp: Subproject }) {
                               {l.parentLineId && <span className="muted">↳ </span>}
                               {eq ? <Link to={'/materiel/' + eq.id}>{l.name}</Link> : <input value={l.name} onChange={(e) => updLine(l, { name: e.target.value })} />}
                               {perPiece && <span className="badge" style={{ marginLeft: 6 }}>vente</span>}
+                            {eq && avail !== null && avail < l.qty && !l.optional && (eq.alternatives || []).map((altId) => {
+                              const alt = eqMap.get(altId);
+                              if (!alt || alt.archived) return null;
+                              const altAvail = availableQty(alt, av.equipment, av.res, b0, b1, undefined, d.depot);
+                              const n = Math.min(l.qty - Math.max(0, avail), altAvail);
+                              return n > 0 ? (
+                                <div key={altId}>
+                                  <button className="secondary small alt-btn" title={`${altAvail} disponible(s)`} onClick={async () => {
+                                    await updLine(l, { qty: l.qty - n });
+                                    await addEquipmentToSub(sp, av.equipment, lines, { [altId]: n }, l.groupId, l.discount);
+                                  }}>↔ Remplacer {n} par {alt.name}</button>
+                                </div>
+                              ) : null;
+                            })}
                             </td>
                             <td className="n">{avail === null ? '—' : <span className={'avail ' + (avail >= l.qty || l.optional ? 'ok' : 'ko')}>{avail}</span>}</td>
                             <td><NumInput className="w-price" value={l.unitPrice} onChange={(n) => updLine(l, { unitPrice: n })} /></td>
@@ -124,7 +138,7 @@ function RoomEquipment({ d, sp }: { d: ProjectData; sp: Subproject }) {
         <p className="muted" style={{ marginBottom: 0 }}>Coefficient de durée : {lineDays({}, sp)} j → ×{factorFor(lineDays({}, sp), settings)} (hors groupes rattachés à des créneaux).</p>
       </div>
       {picking !== undefined && (
-        <EquipmentPicker sp={sp} groupId={picking || undefined} depot={d.depot} equipment={av.equipment} res={av.res} existing={lines} onClose={() => setPicking(undefined)} />
+        <EquipmentPicker sp={sp} groupId={picking || undefined} depot={d.depot} discount={d.client?.discounts?.equipment || 0} equipment={av.equipment} res={av.res} existing={lines} onClose={() => setPicking(undefined)} />
       )}
       {editGroup && <GroupModal sp={sp} group={editGroup} onClose={() => setEditGroup(null)} />}
     </div>
@@ -175,7 +189,7 @@ function GroupModal({ sp, group, onClose }: { sp: Subproject; group: Partial<Equ
 }
 
 /** Ajoute des articles (et leurs accessoires automatiques) à une salle, dans un groupe éventuel. */
-export async function addEquipmentToSub(sp: Subproject, equipment: Equipment[], existing: EquipmentLine[], items: Record<string, number>, groupId?: string) {
+export async function addEquipmentToSub(sp: Subproject, equipment: Equipment[], existing: EquipmentLine[], items: Record<string, number>, groupId?: string, discount = 0) {
   const eqMap = new Map(equipment.map((e) => [e.id, e]));
   let order = existing.length;
   const t = nowIso();
@@ -193,7 +207,7 @@ export async function addEquipmentToSub(sp: Subproject, equipment: Equipment[], 
     } else {
       total = n;
       lineId = uid();
-      await db.lines.put({ id: lineId, createdAt: t, updatedAt: t, projectId: sp.projectId, subprojectId: sp.id, groupId, equipmentId: eqId, name: eq.name, qty: n, unitPrice: eq.dailyPrice, discount: 0, order: order++ });
+      await db.lines.put({ id: lineId, createdAt: t, updatedAt: t, projectId: sp.projectId, subprojectId: sp.id, groupId, equipmentId: eqId, name: eq.name, qty: n, unitPrice: eq.dailyPrice, discount, order: order++ });
     }
     for (const a of eq.accessories || []) {
       const acc = eqMap.get(a.equipmentId);
@@ -205,7 +219,7 @@ export async function addEquipmentToSub(sp: Subproject, equipment: Equipment[], 
   }
 }
 
-function EquipmentPicker({ sp, groupId, depot, equipment, res, existing, onClose }: { sp: Subproject; groupId?: string; depot?: string; equipment: Equipment[]; res: Reservation[]; existing: EquipmentLine[]; onClose: () => void }) {
+function EquipmentPicker({ sp, groupId, depot, discount, equipment, res, existing, onClose }: { sp: Subproject; groupId?: string; depot?: string; discount: number; equipment: Equipment[]; res: Reservation[]; existing: EquipmentLine[]; onClose: () => void }) {
   const [q, setQ] = useState('');
   const [qty, setQty] = useState<Record<string, number>>({});
   const cats = useLiveQuery(() => db.categories.toArray(), []) || [];
@@ -213,7 +227,7 @@ function EquipmentPicker({ sp, groupId, depot, equipment, res, existing, onClose
   const catName = new Map(cats.map((c) => [c.id, c.name]));
   const [bStart, bEnd] = lineBlock({ groupId }, sp);
   const groupName = sp.groups?.find((g) => g.id === groupId)?.name;
-  const list = equipment.filter((e) => [e.name, e.code, e.barcode, e.categoryId && catName.get(e.categoryId)].join(' ').toLowerCase().includes(q.toLowerCase()));
+  const list = equipment.filter((e) => !e.archived && [e.name, e.code, e.barcode, e.categoryId && catName.get(e.categoryId)].join(' ').toLowerCase().includes(q.toLowerCase()));
   const count = Object.values(qty).reduce((a, b) => a + (b || 0), 0);
 
   return (
@@ -237,7 +251,7 @@ function EquipmentPicker({ sp, groupId, depot, equipment, res, existing, onClose
                 const avail = availableQty(e, equipment, res, bStart, bEnd, undefined, depot);
                 return (
                   <tr key={e.id}>
-                    <td>{e.name} {e.isKit && <span className="badge">Kit</span>} {e.kind === 'vente' && <span className="badge">vente</span>} <span className="muted">{e.code}</span>
+                    <td>{e.photo && <img src={e.photo} alt="" className="thumb" />}{e.name} {e.isKit && <span className="badge">Kit</span>} {e.kind === 'vente' && <span className="badge">vente</span>} <span className="muted">{e.code}</span>
                       {e.accessories?.length ? <div className="muted" style={{ fontSize: 11 }}>+ accessoires automatiques</div> : null}</td>
                     <td className="n"><span className={'avail ' + (avail - (qty[e.id] || 0) >= 0 ? 'ok' : 'ko')}>{avail}</span></td>
                     <td className="n">{money(e.dailyPrice)}{e.kind === 'vente' ? '' : '/j'}</td>
@@ -251,7 +265,7 @@ function EquipmentPicker({ sp, groupId, depot, equipment, res, existing, onClose
       </div>
       <div className="form-actions" style={{ marginTop: 12, display: 'flex' }}>
         <button className="secondary" onClick={onClose}>Annuler</button>
-        <button disabled={!count} onClick={async () => { await addEquipmentToSub(sp, equipment, existing, qty, groupId); onClose(); }}>Ajouter {count > 0 ? `(${count})` : ''}</button>
+        <button disabled={!count} onClick={async () => { await addEquipmentToSub(sp, equipment, existing, qty, groupId, discount); onClose(); }}>Ajouter {count > 0 ? `(${count})` : ''}</button>
       </div>
     </Modal>
   );

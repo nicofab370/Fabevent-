@@ -9,6 +9,8 @@ Application web installable (PWA) qui **fonctionne hors ligne** : les données s
 npm install
 npm run dev       # développement : http://localhost:5173
 npm run build     # version de production dans dist/ (hébergeable sur n'importe quel hébergement statique)
+npm test          # tests unitaires des calculs (TVA, disponibilités, heures sup., Peppol…)
+npm run test:e2e  # parcours complet dans un navigateur (nécessite Playwright et Chromium)
 ```
 
 ## Fonctionnalités
@@ -50,8 +52,9 @@ prix d'un véhicule = forfait journalier × jours + km (distance × 2 × allers-
 **Dépôts et transferts** : plusieurs dépôts, stock par dépôt, dépôt de départ par projet, transferts définitifs ou temporaires
 (proposés automatiquement en cas de manque), bon de transfert.
 
-**Modèles de documents** (version simplifiée) : titre et textes d'introduction et de fin par type de document, avec variables ({client}, {projet}…),
-couleur, police, position du logo, colonnes affichées, masquage des lignes à 0 €, aperçu en direct. Le modèle est figé dans chaque document émis.
+**Modèles de documents** : style commun éditable en HTML (en-tête, mise en page, pied de page, CSS) avec une liste de variables
+cliquables ({{client.nom}}, {{total.ttc}}…) et de blocs générés ({{bloc.salles}}, {{bloc.totaux}}…) ; titre et textes par type de document ;
+options d'affichage (couleur, police, colonnes, lignes à 0 €) ; aperçu en direct. Le modèle est figé dans chaque document émis.
 
 **Équipe et véhicules** : postes, tarif facturé / coût, indisponibilités, conflits, agenda personnel `.ics`.
 
@@ -60,6 +63,18 @@ couleur, police, position du logo, colonnes affichées, masquage des lignes à 0
 **Comptabilité et rapports**
 - Toutes les factures d'une période en un seul PDF, journal des ventes en CSV.
 - Chiffre d'affaires par mois, meilleurs clients, matériel le plus rentable et taux d'utilisation.
+
+**Facturation belge** : régimes de TVA (normal, autoliquidation UE, exonéré, hors UE) par client ou par projet, avec mention légale ;
+communication structurée +++…+++ et QR code de virement sur les factures ; factures échues et rappels de paiement (3 niveaux) ;
+remises par défaut du client.
+
+**Planning avancé** : décaler un projet (durée ou nouvelle date), modèles de projet, projets récurrents.
+
+**Matériel** : étiquettes QR imprimables (planches A4, rouleau), articles de remplacement proposés en cas de manque,
+archivage, photos, inventaire par scan avec mise à jour du stock, valeur du parc.
+
+**Équipe** : postes à la journée ou à l'heure avec heures supplémentaires majorées, temps de trajet dans les horaires
+communiqués, documents du personnel avec date d'expiration.
 
 **Démo** : Paramètres → « Ouvrir la base de démo » crée une base séparée avec des clients, du matériel, une équipe et 8 projets fictifs (réinitialisable).
 

@@ -3,6 +3,8 @@ import { Field, PageHead, useSettings } from '../components/ui';
 import { currentWorkspace, db, DEFAULT_PROJECT_TYPES, listWorkspaces, switchWorkspace, TABLES } from '../db';
 import { DEMO_WORKSPACE, seedDemo } from '../demo';
 import type { Settings } from '../types';
+import { VAT_REGIME_LABELS } from '../types';
+import { DEFAULT_VAT_MENTIONS } from '../payment';
 import { download, uid } from '../utils';
 
 export default function SettingsPage() {
@@ -32,6 +34,8 @@ export default function SettingsPage() {
   const backup = async () => {
     const data: Record<string, unknown[]> = {};
     for (const t of TABLES) data[t] = await db.table(t).toArray();
+    // les fichiers joints (Blob) sont convertis en texte pour tenir dans le JSON
+    data.files = await Promise.all((data.files as { blob: Blob }[]).map(async (f) => ({ ...f, blob: { dataUrl: await blobToDataUrl(f.blob), type: f.blob.type } })));
     download(`fabevent-${currentWorkspace()}-${new Date().toISOString().slice(0, 10)}.json`,
       JSON.stringify({ app: 'fabevent', version: 1, exportedAt: new Date().toISOString(), data }), 'application/json');
   };
@@ -44,7 +48,9 @@ export default function SettingsPage() {
       await db.transaction('rw', TABLES.map((t) => db.table(t)), async () => {
         for (const t of TABLES) {
           await db.table(t).clear();
-          if (json.data[t]) await db.table(t).bulkPut(json.data[t]);
+          if (t === 'files' && json.data.files) {
+            await db.files.bulkPut(json.data.files.map((f: { blob: { dataUrl?: string } }) => ({ ...f, blob: f.blob?.dataUrl ? dataUrlToBlob(f.blob.dataUrl) : new Blob() })));
+          } else if (json.data[t]) await db.table(t).bulkPut(json.data[t]);
         }
       });
       alert('Sauvegarde restaurée.');
@@ -127,6 +133,15 @@ export default function SettingsPage() {
           <Field label="Taux de TVA (%)"><input type="number" step="any" value={s.vatRate} onChange={(e) => setS({ ...s, vatRate: parseFloat(e.target.value) || 0 })} /></Field>
           <Field label="Transport : prix au km par défaut (€ HT)"><input type="number" step="any" value={s.pricePerKm ?? 1} onChange={(e) => setS({ ...s, pricePerKm: parseFloat(e.target.value) || 0 })} /></Field>
           <Field label="Transport : allers-retours par défaut"><input type="number" step="1" min={1} value={s.defaultTrips ?? 2} onChange={(e) => setS({ ...s, defaultTrips: parseInt(e.target.value) || 1 })} /></Field>
+          <Field label=" "><label className="check-row"><input type="checkbox" checked={s.structuredComm !== false} onChange={(e) => setS({ ...s, structuredComm: e.target.checked })} /> Communication structurée belge (+++…+++) sur les factures</label></Field>
+          <Field label="Heures sup. au-delà de (heures / jour)"><input type="number" step="0.5" value={s.overtimeAfter ?? 10} onChange={(e) => setS({ ...s, overtimeAfter: parseFloat(e.target.value) || 0 })} /></Field>
+          <Field label="Majoration des heures sup. (%)"><input type="number" value={s.overtimeRate ?? 50} onChange={(e) => setS({ ...s, overtimeRate: parseFloat(e.target.value) || 0 })} /></Field>
+          <Field label="Rappels : nouveau délai accordé (jours)"><input type="number" value={s.reminderDays ?? 10} onChange={(e) => setS({ ...s, reminderDays: parseInt(e.target.value) || 0 })} /></Field>
+          {(['autoliquidation', 'exonere', 'hors_ue'] as const).map((r) => (
+            <Field key={r} label={`Mention légale — ${VAT_REGIME_LABELS[r]}`} full>
+              <input value={s.vatMentions?.[r] ?? DEFAULT_VAT_MENTIONS[r]} onChange={(e) => setS({ ...s, vatMentions: { ...s.vatMentions, [r]: e.target.value } })} />
+            </Field>
+          ))}
           <Field label="Délai de paiement des factures (jours)"><input type="number" value={s.paymentDays} onChange={(e) => setS({ ...s, paymentDays: parseInt(e.target.value) || 0 })} /></Field>
           <Field label="Validité des devis (jours)"><input type="number" value={s.quoteValidityDays} onChange={(e) => setS({ ...s, quoteValidityDays: parseInt(e.target.value) || 0 })} /></Field>
           <Field label="Coefficients par durée (1 j, 2 j, 3 j…) séparés par des « ; »" full>
@@ -199,4 +214,22 @@ export default function SettingsPage() {
       </div>
     </>
   );
+}
+
+function blobToDataUrl(b: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(b);
+  });
+}
+
+function dataUrlToBlob(url: string): Blob {
+  const [head, data] = url.split(',');
+  const type = head.match(/data:([^;]+)/)?.[1] || 'application/octet-stream';
+  const bin = atob(data || '');
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type });
 }

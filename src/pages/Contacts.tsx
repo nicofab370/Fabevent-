@@ -1,14 +1,16 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
-import { Empty, Field, Modal, PageHead } from '../components/ui';
+import { Empty, Field, Modal, PageHead, NumInput, useSettings } from '../components/ui';
 import { db } from '../db';
 import type { Contact, ContactPerson, ContactType } from '../types';
-import { CONTACT_TYPES } from '../types';
+import { CONTACT_TYPES, VAT_REGIME_LABELS, type VatRegime } from '../types';
+import { suggestRegime } from '../payment';
 import { save } from '../utils';
 
 type Draft = Partial<Contact> & { type: ContactType; company: string };
 
 export function ContactForm({ initial, onDone }: { initial?: Draft; onDone: (c?: Contact) => void }) {
+  const settings = useSettings();
   const [c, setC] = useState<Draft>(initial || { type: 'client', company: '' });
   const set = (k: keyof Contact, v: string) => setC({ ...c, [k]: v });
   const submit = async (e: React.FormEvent) => {
@@ -34,6 +36,25 @@ export function ContactForm({ initial, onDone }: { initial?: Draft; onDone: (c?:
       <Field label="N° d'entreprise / SIRET"><input value={c.siret || ''} onChange={(e) => set('siret', e.target.value)} /></Field>
       <Field label="Pays"><input value={c.country || ''} onChange={(e) => set('country', e.target.value)} placeholder="BE, FR…" /></Field>
       <Field label="Identifiant Peppol"><input value={c.peppolId || ''} onChange={(e) => set('peppolId', e.target.value)} placeholder="0208:0123456789" /></Field>
+      {(c.type === 'client' || c.vatRegime) && (
+        <>
+          <Field label="Régime de TVA par défaut">
+            <div style={{ display: 'flex', gap: 6 }}>
+              <select value={c.vatRegime || 'normal'} onChange={(e) => setC({ ...c, vatRegime: e.target.value === 'normal' ? undefined : e.target.value as VatRegime })}>
+                {Object.entries(VAT_REGIME_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+              <button type="button" className="secondary small" title="Déduire du pays et du n° de TVA"
+                onClick={() => { const r = suggestRegime(c.country, c.vatNumber, settings.company.country || 'BE'); setC({ ...c, vatRegime: r === 'normal' ? undefined : r }); }}>Auto</button>
+            </div>
+          </Field>
+          <Field label="Remises par défaut (%)">
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <label className="check-row">Matériel <NumInput className="w-qty" value={c.discounts?.equipment || 0} onChange={(n) => setC({ ...c, discounts: { ...c.discounts, equipment: n || undefined } })} /></label>
+              <label className="check-row">Total <NumInput className="w-qty" value={c.discounts?.total || 0} onChange={(n) => setC({ ...c, discounts: { ...c.discounts, total: n || undefined } })} /></label>
+            </div>
+          </Field>
+        </>
+      )}
       <div className="field full">
         <span>Interlocuteurs</span>
         {(c.persons || []).map((x, i) => {

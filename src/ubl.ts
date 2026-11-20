@@ -30,6 +30,7 @@ export function peppolProblems(doc: Doc): string[] {
   if (!s.company.vatNumber) out.push('Ton numéro de TVA (Paramètres)');
   if (!s.client) out.push('Un client sur le projet');
   else if (!endpoint(s.client.peppolId)) out.push(`L'identifiant Peppol du client « ${s.client.company} » (fiche contact)`);
+  if (s.vatRegime === 'autoliquidation' && !s.client?.vatNumber) out.push('Le numéro de TVA du client (obligatoire en autoliquidation)');
   return out;
 }
 
@@ -81,8 +82,13 @@ export function buildUbl(doc: Doc): string {
   const root = isCredit ? 'CreditNote' : 'Invoice';
   const lineTag = isCredit ? 'CreditNoteLine' : 'InvoiceLine';
   const qtyTag = isCredit ? 'CreditedQuantity' : 'InvoicedQuantity';
-  const cat = s.vatRate > 0 ? 'S' : 'Z';
-  const taxCat = `<cac:TaxCategory><cbc:ID>${cat}</cbc:ID><cbc:Percent>${s.vatRate}</cbc:Percent><cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:TaxCategory>`;
+  // catégorie de TVA EN 16931 : S normal, AE autoliquidation, E exonéré, G export hors UE, Z taux zéro
+  const regime = s.vatRegime || 'normal';
+  const cat = regime === 'autoliquidation' ? 'AE' : regime === 'exonere' ? 'E' : regime === 'hors_ue' ? 'G' : s.vatRate > 0 ? 'S' : 'Z';
+  const exCode = cat === 'AE' ? 'VATEX-EU-AE' : cat === 'G' ? 'VATEX-EU-G' : '';
+  const exemption = ['AE', 'E', 'G'].includes(cat)
+    ? `${exCode ? `<cbc:TaxExemptionReasonCode>${exCode}</cbc:TaxExemptionReasonCode>` : ''}<cbc:TaxExemptionReason>${esc(s.vatMention || 'Exonération de TVA')}</cbc:TaxExemptionReason>` : '';
+  const taxCat = `<cac:TaxCategory><cbc:ID>${cat}</cbc:ID><cbc:Percent>${s.vatRate}</cbc:Percent>${exemption}<cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:TaxCategory>`;
   const lines = collectLines(doc, sign);
   const lineSum = round2(lines.reduce((a, l) => a + l.total, 0));
   const allowance = round2(sign * s.discountAmount);
@@ -130,8 +136,8 @@ export function buildUbl(doc: Doc): string {
     ${customer(s.client, countryCode(s.company.country))}
   </cac:AccountingCustomerParty>
   ${!isCredit && s.company.iban ? `<cac:PaymentMeans>
-    <cbc:PaymentMeansCode>30</cbc:PaymentMeansCode>
-    <cbc:PaymentID>${esc(doc.number)}</cbc:PaymentID>
+    <cbc:PaymentMeansCode>58</cbc:PaymentMeansCode>
+    <cbc:PaymentID>${esc(s.payment?.structured ? s.payment.communication.replace(/\D/g, '') : s.payment?.communication || doc.number)}</cbc:PaymentID>
     <cac:PayeeFinancialAccount><cbc:ID>${esc(s.company.iban.replace(/\s/g, ''))}</cbc:ID></cac:PayeeFinancialAccount>
   </cac:PaymentMeans>` : ''}
   ${allowance ? `<cac:AllowanceCharge>

@@ -4,8 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { Empty, Field, Modal } from '../../components/ui';
 import { DEFAULT_PROJECT_TYPES, db } from '../../db';
 import { createDocument } from '../../documents';
-import type { DocType, Project, ProjectStatus, Task } from '../../types';
-import { STATUS_LABELS } from '../../types';
+import type { DocType, Project, ProjectStatus, Task, VatRegime } from '../../types';
+import { STATUS_LABELS, VAT_REGIME_LABELS } from '../../types';
 import { blockPeriod, fmtDate, fmtRange, save, sortPeriods, uid, usageDays } from '../../utils';
 import { ContactForm } from '../Contacts';
 import { setProjectStatus } from './status';
@@ -52,6 +52,18 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
     { label: 'Payé', state: invoice?.status === 'paye' ? 'done' : 'todo' },
   ];
 
+  /** Changement de client : propose d'appliquer ses remises par défaut. */
+  const changeClient = async (clientId?: string) => {
+    const c = contacts.find((x) => x.id === clientId);
+    await upd({ clientId, contactPerson: undefined });
+    const eqDisc = c?.discounts?.equipment, totDisc = c?.discounts?.total;
+    if (c && (eqDisc || totDisc) && confirm(`Appliquer les remises de ${c.company} (matériel ${eqDisc || 0} %, total ${totDisc || 0} %) à ce projet ?`)) {
+      const fresh = await db.projects.get(project.id);
+      if (fresh) await save(db.projects, { ...fresh, discount: totDisc || 0 });
+      if (eqDisc) for (const l of lines.filter((x) => x.equipmentId)) await save(db.lines, { ...l, discount: eqDisc });
+    }
+  };
+
   const generate = async (type: DocType) => nav('/documents/' + (await createDocument(project.id, type)).id);
 
   return (
@@ -93,12 +105,18 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
           <div className="form">
             <Field label="Client" full>
               <div style={{ display: 'flex', gap: 6 }}>
-                <select value={project.clientId || ''} onChange={(e) => upd({ clientId: e.target.value || undefined, contactPerson: undefined })}>
+                <select value={project.clientId || ''} onChange={(e) => changeClient(e.target.value || undefined)}>
                   <option value="">—</option>
                   {contacts.filter((c) => c.type === 'client' || c.id === project.clientId).map((c) => <option key={c.id} value={c.id}>{c.company}</option>)}
                 </select>
                 <button type="button" className="secondary small" onClick={() => setNewContact('client')}>+</button>
               </div>
+            </Field>
+            <Field label="Régime de TVA" full>
+              <select value={project.vatRegime || ''} onChange={(e) => upd({ vatRegime: (e.target.value || undefined) as VatRegime | undefined })}>
+                <option value="">Selon le client ({VAT_REGIME_LABELS[client?.vatRegime || 'normal']})</option>
+                {Object.entries(VAT_REGIME_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
             </Field>
             {client?.persons?.length ? (
               <Field label="Personne de contact" full>

@@ -7,6 +7,7 @@ import { createDocument } from './documents';
 import type { ContactType, Equipment, PeriodKind, ProjectStatus } from './types';
 import { nowIso, syncPeriods, toLocalInput, uid } from './utils';
 import { tripKm, vehiclePrice } from './geo';
+import { copyProject } from './projectOps';
 
 export const DEMO_WORKSPACE = 'demo';
 
@@ -68,11 +69,12 @@ async function seedAll() {
     await db.contacts.put(c as never);
     return c.id;
   };
-  const cNamur = await contact('client', 'Ville de Namur (démo)', { city: 'Namur', postalCode: '5000', address: 'Hôtel de Ville', email: 'evenements@exemple.be', vatNumber: 'BE0000000196', peppolId: '0208:0000000196', persons: [{ name: 'Julie Martin', role: 'Service événements', phone: '+32 81 00 00 01' }, { name: 'Marc Lambert', role: 'Régie technique' }] });
+  const cNamur = await contact('client', 'Ville de Namur (démo)', { city: 'Namur', postalCode: '5000', address: 'Hôtel de Ville', email: 'evenements@exemple.be', vatNumber: 'BE0000000196', peppolId: '0208:0000000196', persons: [{ name: 'Julie Martin', role: 'Service événements', phone: '+32 81 00 00 01' }, { name: 'Marc Lambert', role: 'Régie technique' }], discounts: { equipment: 10, total: 5 } });
   const cFestival = await contact('client', 'Festival des Lumières ASBL (démo)', { city: 'Liège', postalCode: '4020', email: 'prod@exemple.be', peppolId: '0208:0000000295', persons: [{ name: 'Sophie Renard', role: 'Directrice de production' }] });
   const cHotel = await contact('client', 'Hôtel Le Château (démo)', { city: 'Spa', postalCode: '4900', email: 'seminaires@exemple.be', persons: [{ name: 'Thomas Leclercq', role: 'Responsable séminaires' }] });
   const cAgence = await contact('client', 'Agence EventPro (démo)', { city: 'Bruxelles', postalCode: '1000', email: 'projets@exemple.be', vatNumber: 'BE0000000394', peppolId: '0208:0000000394', persons: [{ name: 'Nadia Benali', role: 'Chef de projet' }] });
   const cEcole = await contact('client', 'Lycée Saint-Jean (démo)', { city: 'Huy', postalCode: '4500' });
+  const cNL = await contact('client', 'Evenementen Limburg BV (démo)', { city: 'Maastricht', postalCode: '6211', country: 'NL', address: 'Markt 1', vatNumber: 'NL000000000B01', peppolId: '0106:00000000', vatRegime: 'autoliquidation', persons: [{ name: 'Joost de Vries', role: 'Productie' }] });
   const cDupont = await contact('client', 'Mariage Dupont-Lemaire (démo)', { firstName: 'Claire', lastName: 'Dupont', phone: '+32 470 00 00 00' });
   const cSono = await contact('fournisseur', 'SonoRent — confrère (démo)', { city: 'Verviers', email: 'location@exemple.be' });
   await contact('fournisseur', 'LightPro Location (démo)', { city: 'Namur', email: 'info@exemple.be' });
@@ -104,6 +106,9 @@ async function seedAll() {
   await item('distro', 'Énergie', 'Armoire de distribution 63 A', 3, 45, { weight: 28, location: 'Rack E3', inspectionMonths: 12, replacementValue: 1800 });
   // Son
   await item('x12', 'Son', 'Enceinte L-Acoustics X12', 8, 45, { weight: 20, replacementValue: 3200, location: 'Rack S1', inspectionMonths: 12, accessories: [{ equipmentId: eq.nl4, qty: 1, free: true }] });
+  await item('dxr', 'Son', 'Enceinte Yamaha DXR12 (remplacement)', 4, 30, { weight: 19, replacementValue: 900, location: 'Rack S5' });
+  await db.equipment.update(eq.x12, { alternatives: [eq.dxr] });
+  await item('mg', 'Son', 'Console analogique Mackie (ancienne)', 1, 20, { archived: true });
   await item('sub', 'Son', 'Caisson SB18', 4, 60, { weight: 52, replacementValue: 4100, location: 'Rack S2', accessories: [{ equipmentId: eq.nl4, qty: 1, free: true }] });
   await item('ampli', 'Son', 'Amplificateur LA4X', 3, 70, { weight: 13, replacementValue: 5500, location: 'Rack S3', inspectionMonths: 12, trackSerials: true });
   await item('cl5', 'Son', 'Console Yamaha CL5', 1, 250, { weight: 36, replacementValue: 22000, location: 'Flight F1', trackSerials: true, inspectionMonths: 12 });
@@ -162,6 +167,7 @@ async function seedAll() {
     return p.id;
   };
   const pLucas = await person('Lucas Dubois (démo)', 'Régisseur son', 380, 0);
+  await db.people.update(pLucas, { hourlyRate: 45, hourlyCost: 0 });
   const pEmma = await person('Emma Petit (démo)', 'Éclairagiste', 360, 0);
   const pHugo = await person('Hugo Laurent (démo)', 'Technicien polyvalent', 280, 0);
   const pLea = await person('Léa Moreau (démo)', 'Technicienne vidéo', 340, 230, true);
@@ -192,7 +198,7 @@ async function seedAll() {
     crew?: [string, string | undefined, number, number?, string?][];
     vehicles?: [string, string | undefined][];
   };
-  type Extra = { depotId?: string; distanceKm?: number; discount?: number; contactPerson?: string; notes?: string; typeName?: string; externalRef?: string; venueId?: string; tasks?: [string, boolean, number?][] };
+  type Extra = { vatRegime?: 'autoliquidation'; depotId?: string; distanceKm?: number; discount?: number; contactPerson?: string; notes?: string; typeName?: string; externalRef?: string; venueId?: string; tasks?: [string, boolean, number?][] };
   const project = async (name: string, clientId: string, status: ProjectStatus, venue: string, defs: SubDef[], extra: Extra = {}) => {
     // les horaires détaillés donnent les dates de la salle
     const subs = defs.map((d) => {
@@ -206,7 +212,7 @@ async function seedAll() {
       ...base(), number: `P-${year}-${String(++counter).padStart(3, '0')}`, name, clientId, status, venue,
       start: starts[0], end: ends[ends.length - 1], discount: extra.discount || 0, contactPerson: extra.contactPerson, notes: extra.notes,
       typeName: extra.typeName || 'Prestation', color: DEFAULT_PROJECT_TYPES.find((t) => t.name === (extra.typeName || 'Prestation'))?.color,
-      externalRef: extra.externalRef, venueId: extra.venueId, depotId: extra.depotId || DEPOT_LIEGE,
+      externalRef: extra.externalRef, venueId: extra.venueId, depotId: extra.depotId || DEPOT_LIEGE, vatRegime: extra.vatRegime,
       distanceKm: extra.distanceKm, travelMinutes: extra.distanceKm ? Math.round(extra.distanceKm / 75 * 60) + 10 : undefined,
       tasks: extra.tasks?.map(([text, done, dueIn]) => ({ id: uid(), text, done, due: dueIn !== undefined ? dayOnly(dueIn) : undefined })),
     };
@@ -255,7 +261,7 @@ async function seedAll() {
     ['prestation', 'Prestation J2', at(7, 8), at(7, 17)],
     ['demontage', 'Démontage', at(7, 17), at(7, 21)],
   ];
-  await project('Conférence annuelle', cHotel, 'confirme', 'Hôtel Le Château, Spa', [
+  const pConf = await project('Conférence annuelle', cHotel, 'confirme', 'Hôtel Le Château, Spa', [
     { name: 'Salle plénière', periods: confPeriods,
       groups: [['Son & vidéo', []], ['Scène', []], ['Soirée de gala J1', ['Prestation J1']]],
       lines: [['kitconf', 1, { group: 'Son & vidéo' }], ['hf', 2, { group: 'Son & vidéo' }], ['vp', 1, { group: 'Son & vidéo' }], ['ecran', 1, { group: 'Son & vidéo' }],
@@ -328,6 +334,11 @@ async function seedAll() {
     { name: 'Journée', start: at(9, 8), end: at(9, 18), lines: [['kitconf', 2], ['vp', 2]] },
   ]);
 
+  // 9. Client néerlandais assujetti : autoliquidation de la TVA
+  await project('Beurs Maastricht', cNL, 'confirme', 'MECC Maastricht', [
+    { name: 'Stand', start: at(10, 8), end: at(11, 18), lines: [['tv', 2], ['kitconf', 1], ['par', 8]], crew: [['Technicien', pLea, 340, 230]], vehicles: [[vFourgon, pHugo]] },
+  ], { contactPerson: 'Joost de Vries', distanceKm: 32, vatRegime: 'autoliquidation' });
+
   // 8. Prestation en cours aujourd'hui
   await project('Salon de l\'emploi', cNamur, 'en_cours', 'Namur Expo', [
     { name: 'Salon', start: at(-1, 8), end: at(1, 19), lines: [['tv', 4], ['kitconf', 1], ['par', 8], ['gaffer', 2]], crew: [['Technicien', pLea, 340, 230]] },
@@ -338,10 +349,22 @@ async function seedAll() {
   const dep = await createDocument(pGala, 'acompte', { percent: 30 });
   await db.docs.update(dep.id, { status: 'paye' });
   const inv = await createDocument(pGala, 'facture');
-  await db.docs.update(inv.id, { status: 'envoye' });
+  // facture du gala envoyée il y a 45 jours, échue depuis 15 jours : à relancer
+  await db.docs.update(inv.id, { status: 'envoye', createdAt: at(-45), 'snapshot.issuedAt': new Date(at(-45)).toISOString(), 'snapshot.dueDate': new Date(at(-15)).toISOString() } as never);
   for (const p of await db.projects.toArray()) {
     if (p.status === 'confirme' || p.status === 'option') await createDocument(p.id, 'devis');
   }
+
+  // Régisseur du festival payé à l'heure (concerts jusqu'à 1 h : heures sup.), trajet inclus pour la conférence
+  for (const c of await db.crew.where({ projectId: pFest }).toArray()) {
+    if (c.function === 'Régisseur son') await db.crew.update(c.id, { rateUnit: 'heure', rate: 45, travel: true });
+  }
+  for (const c of await db.crew.where({ projectId: pConf }).toArray()) await db.crew.update(c.id, { travel: true });
+  // Document du personnel qui expire bientôt
+  await db.files.put({ id: uid(), projectId: '', personId: pKarim, name: 'Certificat travail en hauteur.txt', type: 'text/plain', size: 40, blob: new Blob(['Certificat fictif — travail en hauteur'], { type: 'text/plain' }), createdAt: t, expires: dayOnly(12) });
+
+  // Modèle de projet tiré de la conférence
+  await copyProject(pConf, { name: 'Modèle — Conférence 3 salles', isTemplate: true, status: 'demande' });
 
   // Sous-location déjà demandée pour une partie du manque du festival
   const fSub = (await db.subprojects.where({ projectId: pFest }).toArray()).find((s) => s.name === 'Grande scène')!;

@@ -4,14 +4,20 @@ import { Empty, Field, Modal, StatusBadge } from '../../components/ui';
 import { db } from '../../db';
 import type { Period, PeriodKind, Project, ProjectStatus, Subproject } from '../../types';
 import { PERIOD_LABELS, STATUS_LABELS } from '../../types';
+import { shiftBetween, shiftDate, shiftProject, type Shift } from '../../projectOps';
 import { blockPeriod, deleteSubproject, fmtDate, fmtRange, nowIso, save, sortPeriods, syncPeriods, toLocalInput, uid, usageDays } from '../../utils';
 import type { ProjectData } from './shared';
 
 /** Onglet Planning : toutes les salles et tous leurs créneaux. */
 export default function PlanningTab({ d, onEditSub }: { d: ProjectData; onEditSub: (sp: Partial<Subproject>) => void }) {
   const { project, subs } = d;
+  const [shifting, setShifting] = useState(false);
   return (
     <>
+      <div className="toolbar">
+        <button className="secondary" onClick={() => setShifting(true)}>Décaler le projet…</button>
+      </div>
+      {shifting && <ShiftModal d={d} onClose={() => setShifting(false)} />}
       <div className="info">
         Découpe le projet en salles / zones, puis donne à chacune ses créneaux : montage, jours de prestation, démontage.
         Le matériel est bloqué du premier au dernier créneau ; seuls les jours de prestation sont facturés.
@@ -216,3 +222,55 @@ export function SubprojectModal({ sp, project, onClose }: { sp: Partial<Subproje
   );
 }
 
+
+/** Décale tout le projet (ou certaines salles) : d'une durée ou vers une nouvelle date de début. */
+function ShiftModal({ d, onClose }: { d: ProjectData; onClose: () => void }) {
+  const { project, subs } = d;
+  const [mode, setMode] = useState<'duree' | 'date'>('date');
+  const [days, setDays] = useState(7);
+  const [hours, setHours] = useState(0);
+  const [newStart, setNewStart] = useState(project.start);
+  const [selected, setSelected] = useState<string[]>(subs.map((s) => s.id));
+  const [withOrders, setWithOrders] = useState(true);
+  const sh: Shift = mode === 'duree' ? { days, minutes: Math.round(hours * 60) } : shiftBetween(project.start, newStart);
+  const label = `${sh.days ? `${sh.days > 0 ? '+' : ''}${sh.days} j` : ''} ${sh.minutes ? `${sh.minutes > 0 ? '+' : ''}${Math.round(sh.minutes / 6) / 10} h` : ''}`.trim() || 'aucun décalage';
+  return (
+    <Modal title="Décaler le projet" onClose={onClose}>
+      <form className="form" onSubmit={async (e) => {
+        e.preventDefault();
+        await shiftProject(project.id, sh, { subIds: selected, withOrders });
+        onClose();
+      }}>
+        <Field label="Méthode" full>
+          <div style={{ display: 'flex', gap: 16 }}>
+            <label className="check-row"><input type="radio" checked={mode === 'date'} onChange={() => setMode('date')} /> Nouvelle date de début</label>
+            <label className="check-row"><input type="radio" checked={mode === 'duree'} onChange={() => setMode('duree')} /> D'une durée</label>
+          </div>
+        </Field>
+        {mode === 'date' ? (
+          <Field label="Le projet commencera le" full><input type="datetime-local" value={newStart} onChange={(e) => setNewStart(e.target.value)} /></Field>
+        ) : (
+          <>
+            <Field label="Jours (négatif = avancer)"><input type="number" value={days} onChange={(e) => setDays(parseInt(e.target.value) || 0)} /></Field>
+            <Field label="Heures"><input type="number" step="0.5" value={hours} onChange={(e) => setHours(parseFloat(e.target.value) || 0)} /></Field>
+          </>
+        )}
+        <div className="field full">
+          <span>Salles à décaler</span>
+          {subs.map((s) => (
+            <label key={s.id} className="check-row">
+              <input type="checkbox" checked={selected.includes(s.id)} onChange={(e) => setSelected(e.target.checked ? [...selected, s.id] : selected.filter((x) => x !== s.id))} />
+              {s.name} <span className="muted">{fmtRange(s.start, s.end)} → {fmtRange(shiftDate(s.start, sh), shiftDate(s.end, sh))}</span>
+            </label>
+          ))}
+        </div>
+        <Field label=" " full><label className="check-row"><input type="checkbox" checked={withOrders} onChange={(e) => setWithOrders(e.target.checked)} /> Décaler aussi les sous-locations et transferts planifiés du projet</label></Field>
+        <p className="muted field full" style={{ margin: 0 }}>Décalage : <strong>{label}</strong>. Créneaux, postes et véhicules suivent. Les documents déjà émis ne changent pas : régénère le devis si besoin.</p>
+        <div className="form-actions">
+          <button type="button" className="secondary" onClick={onClose}>Annuler</button>
+          <button type="submit" disabled={!selected.length || (!sh.days && !sh.minutes)}>Décaler</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
