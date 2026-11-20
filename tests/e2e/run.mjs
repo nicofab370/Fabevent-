@@ -316,35 +316,37 @@ await step('Étiquettes QR imprimables', async () => {
   await popup.close();
 });
 
+// étiqueteuse simulée : répond au statut (ruban 12 mm laminé) et signale chaque étiquette imprimée
+const installPtMock = () => page.evaluate(() => {
+  const w = window;
+  w.__pt = { tape: 12, sent: [], queue: [] };
+  const reply = (patch) => { const b = new Uint8Array(32); b[0] = 0x80; b[1] = 0x20; b[10] = w.__pt.tape; b[11] = 1; b[24] = 1; b[25] = 8; for (const k in patch) b[k] = patch[k]; return b; };
+  const ep = (n, d) => ({ endpointNumber: n, direction: d, type: 'bulk' });
+  const dev = {
+    productName: 'PT-P750W', vendorId: 0x04f9, productId: 0x2062, opened: false,
+    configuration: { interfaces: [{ interfaceNumber: 0, alternate: { interfaceClass: 7, endpoints: [ep(2, 'out'), ep(1, 'in')] }, alternates: [] }] },
+    async open() { this.opened = true; }, async close() { this.opened = false; }, async selectConfiguration() {},
+    async claimInterface() {}, async releaseInterface() {},
+    async transferOut(_ep, data) {
+      const a = new Uint8Array(data);
+      w.__pt.sent.push(...a);
+      if (a[a.length - 3] === 0x1b && a[a.length - 2] === 0x69 && a[a.length - 1] === 0x53) w.__pt.queue.push(reply({}));
+      // fin d'une étiquette (FF ou Ctrl-Z) : « changement de phase » puis « impression terminée », comme la vraie machine
+      if (a[a.length - 1] === 0x1a || a[a.length - 1] === 0x0c) { w.__pt.pages = (w.__pt.pages || 0) + 1; w.__pt.queue.push(reply({ 18: 6, 19: 1 }), reply({ 18: 1 })); }
+      return { status: 'ok', bytesWritten: a.length };
+    },
+    async transferIn() {
+      while (!w.__pt.queue.length) await new Promise((r) => setTimeout(r, 20));
+      const b = w.__pt.queue.shift();
+      return { status: 'ok', data: new DataView(b.buffer) };
+    },
+  };
+  Object.defineProperty(navigator, 'usb', { configurable: true, value: { requestDevice: async () => dev, getDevices: async () => [] } });
+});
+
 await step('Étiqueteuse Brother PT-P750W : impression directe USB (simulée), ruban vérifié, PNG', async () => {
   await go('etiquettes');
-  // étiqueteuse simulée : répond au statut (ruban 12 mm laminé) et signale chaque étiquette imprimée
-  await page.evaluate(() => {
-    const w = window;
-    w.__pt = { tape: 12, sent: [], queue: [] };
-    const reply = (patch) => { const b = new Uint8Array(32); b[0] = 0x80; b[1] = 0x20; b[10] = w.__pt.tape; b[11] = 1; b[24] = 1; b[25] = 8; for (const k in patch) b[k] = patch[k]; return b; };
-    const ep = (n, d) => ({ endpointNumber: n, direction: d, type: 'bulk' });
-    const dev = {
-      productName: 'PT-P750W', vendorId: 0x04f9, productId: 0x2062, opened: false,
-      configuration: { interfaces: [{ interfaceNumber: 0, alternate: { interfaceClass: 7, endpoints: [ep(2, 'out'), ep(1, 'in')] }, alternates: [] }] },
-      async open() { this.opened = true; }, async close() { this.opened = false; }, async selectConfiguration() {},
-      async claimInterface() {}, async releaseInterface() {},
-      async transferOut(_ep, data) {
-        const a = new Uint8Array(data);
-        w.__pt.sent.push(...a);
-        if (a[a.length - 3] === 0x1b && a[a.length - 2] === 0x69 && a[a.length - 1] === 0x53) w.__pt.queue.push(reply({}));
-        // fin d'une étiquette (FF ou Ctrl-Z) : « changement de phase » puis « impression terminée », comme la vraie machine
-        if (a[a.length - 1] === 0x1a || a[a.length - 1] === 0x0c) { w.__pt.pages = (w.__pt.pages || 0) + 1; w.__pt.queue.push(reply({ 18: 6, 19: 1 }), reply({ 18: 1 })); }
-        return { status: 'ok', bytesWritten: a.length };
-      },
-      async transferIn() {
-        while (!w.__pt.queue.length) await new Promise((r) => setTimeout(r, 20));
-        const b = w.__pt.queue.shift();
-        return { status: 'ok', data: new DataView(b.buffer) };
-      },
-    };
-    Object.defineProperty(navigator, 'usb', { configurable: true, value: { requestDevice: async () => dev, getDevices: async () => [] } });
-  });
+  await installPtMock();
   await page.selectOption('select[aria-label="Format d\'étiquette"]', 'ptouch');
   await page.waitForSelector('.ptouch-preview img');
   await page.click('text=Tout cocher');
@@ -371,6 +373,30 @@ await step('Étiqueteuse Brother PT-P750W : impression directe USB (simulée), r
   const [dl] = await Promise.all([page.waitForEvent('download'), page.click('button:has-text("Image PNG")')]);
   expect(dl.suggestedFilename().endsWith('_12mm.zip'), 'images PNG au format du ruban : ' + dl.suggestedFilename());
   await page.selectOption('select[aria-label="Format d\'étiquette"]', 'a4-24');
+});
+
+await step('Étiquette depuis la fiche et la modification d\'un article (unités, PT-P750W)', async () => {
+  await go('materiel');
+  await page.locator('table.list tr', { hasText: 'Amplificateur LA4X' }).first().click();
+  await page.waitForSelector('button:has-text("Imprimer l\'étiquette")');
+  await installPtMock();
+  // une unité seulement, depuis sa ligne
+  await page.locator('table.list tr', { hasText: 'En service' }).first().locator('button:has-text("Étiquette")').click();
+  await page.waitForSelector('.modal .unit-picks');
+  expect(await page.locator('.modal .unit-picks input:checked').count() === 1, 'seule l\'unité choisie est cochée');
+  await page.click('.modal .ptouch button:has-text("sur la PT-P750W")');
+  await page.waitForSelector('.modal .ptouch [role=status]:has-text("1 étiquette(s) imprimée(s)")', { timeout: 20000 });
+  await page.click('.modal button[aria-label=Fermer]');
+  // depuis « Modifier » : enregistrer et imprimer → toutes les unités en service, 2 exemplaires
+  await page.click('button:text-is("Modifier")');
+  await page.click('.modal button:has-text("Enregistrer et imprimer l\'étiquette")');
+  await page.waitForSelector('.modal .unit-picks');
+  const n = await page.locator('.modal .unit-picks input:checked').count();
+  expect(n >= 2, 'toutes les unités en service cochées : ' + n);
+  await page.fill('.modal input[aria-label="Nombre d\'exemplaires"]', '2');
+  await page.click('.modal .ptouch button:has-text("sur la PT-P750W")');
+  await page.waitForSelector(`.modal .ptouch [role=status]:has-text("${n * 2} étiquette(s) imprimée(s)")`, { timeout: 30000 });
+  await page.click('.modal button[aria-label=Fermer]');
 });
 
 await step('Inventaire : scan inconnu refusé, écart appliqué au stock', async () => {

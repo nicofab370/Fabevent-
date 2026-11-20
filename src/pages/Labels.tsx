@@ -5,7 +5,7 @@ import { db } from '../db';
 import { qrSvg } from '../payment';
 import { save } from '../utils';
 import { appBaseUrl } from '../db';
-import { contentsText } from '../codes';
+import { contentsText, labelCode } from '../codes';
 import PtouchPanel, { type LabelData } from '../components/PtouchPanel';
 
 const FORMATS = {
@@ -18,9 +18,7 @@ type Format = keyof typeof FORMATS | 'ptouch';
 const esc = (v: unknown) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /** Code imprimé : code-barres existant, sinon un code généré et enregistré sur l'article. */
-function codeFor(e: { id: string; code?: string; barcode?: string }) {
-  return e.barcode || e.code?.replace(/\s+/g, '') || `FE-${e.id.slice(0, 8).toUpperCase()}`;
-}
+const codeFor = labelCode;
 
 /** Impression d'étiquettes QR pour le matériel (articles en vrac et unités numérotées). */
 export default function Labels() {

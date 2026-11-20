@@ -9,6 +9,7 @@ import type { SerialUnit } from '../types';
 import { availableQty, fmtDate, fmtRange, inspectionsDue, money, save, toLocalInput } from '../utils';
 import { EquipmentForm } from './EquipmentList';
 import { InspectionModal, RepairModal } from './Maintenance';
+import PrintLabelModal from '../components/PrintLabelModal';
 
 const UNIT_STATUS: Record<SerialUnit['status'], string> = { ok: 'En service', hs: 'Hors service', perdu: 'Perdu / vendu' };
 
@@ -24,6 +25,8 @@ export default function EquipmentDetail() {
   const [repair, setRepair] = useState<{ unitId?: string } | null>(null);
   const [inspect, setInspect] = useState<{ unitId?: string } | null>(null);
   const [weekOffset, setWeekOffset] = useState(0);
+  /** impression d'étiquette : toutes les unités, ou celles indiquées */
+  const [printing, setPrinting] = useState<{ unitIds?: string[] } | null>(null);
   const eq = av.equipment.find((e) => e.id === id);
   if (!raw || !eq) return <p>Chargement…</p>;
 
@@ -54,6 +57,7 @@ export default function EquipmentDetail() {
         <button className="secondary" onClick={() => nav('/materiel')}>← Retour</button>
         <button className="secondary" onClick={() => setRepair({})}>Déclarer une réparation</button>
         {eq.inspectionMonths ? <button className="secondary" onClick={() => setInspect({})}>Enregistrer un contrôle</button> : null}
+        {!eq.isKit && !eq.accessoryOnly && <button className="secondary" onClick={() => setPrinting({})}>🏷 Imprimer l'étiquette</button>}
         <button onClick={() => setEditing(true)}>Modifier</button>
         <button className="danger" onClick={async () => {
           if (confirm('Supprimer cet article ? Les lignes de projet existantes garderont leur désignation.')) {
@@ -126,6 +130,7 @@ export default function EquipmentDetail() {
                       <td><span className="badge">{UNIT_STATUS[u.status]}</span>{repairs.some((r) => r.unitId === u.id && r.status === 'ouvert') && <span className="badge st-annule" style={{ marginLeft: 4 }}>en réparation</span>}</td>
                       <td>{d ? <span className={d.due <= new Date().toISOString().slice(0, 10) ? 'avail ko' : ''}>{fmtDate(d.due, false)}</span> : '—'}</td>
                       <td style={{ whiteSpace: 'nowrap' }}>
+                        <button className="secondary small" onClick={() => setPrinting({ unitIds: [u.id] })} title="Imprimer l'étiquette de cette unité">🏷 Étiquette</button>{' '}
                         <button className="secondary small" onClick={() => setRepair({ unitId: u.id })}>Réparation</button>{' '}
                         {eq.inspectionMonths ? <button className="secondary small" onClick={() => setInspect({ unitId: u.id })}>Contrôle</button> : null}
                       </td>
@@ -196,7 +201,8 @@ export default function EquipmentDetail() {
       {eq.contents?.length ? <div className="card"><h2>Contenu fourni</h2><ul style={{ margin: 0 }}>{eq.contents.map((c, i) => <li key={i}>{c.qty > 1 ? `${c.qty} × ` : ''}{c.name}</li>)}</ul></div> : null}
       {eq.notes && <div className="card"><h2>Notes</h2><p style={{ whiteSpace: 'pre-wrap' }}>{eq.notes}</p></div>}
 
-      {editing && <Modal title="Modifier l'article" onClose={() => setEditing(false)} wide><EquipmentForm initial={raw} onDone={() => setEditing(false)} /></Modal>}
+      {editing && <Modal title="Modifier l'article" onClose={() => setEditing(false)} wide><EquipmentForm initial={raw} onDone={() => setEditing(false)} onPrint={() => setPrinting({})} /></Modal>}
+      {printing && <PrintLabelModal equipmentId={eq.id} unitIds={printing.unitIds} onClose={() => setPrinting(null)} />}
       {repair && <RepairModal equipmentId={eq.id} unitId={repair.unitId} onClose={() => setRepair(null)} />}
       {inspect && <InspectionModal equipmentId={eq.id} unitId={inspect.unitId} onClose={() => setInspect(null)} />}
       {unitEdit && (
@@ -205,8 +211,9 @@ export default function EquipmentDetail() {
             e.preventDefault();
             // sans n° du fabricant, l'unité est désignée par son code (F-S-0010-03)
             const code = unitEdit.barcode?.trim() || nextUnitCode(eq, av.units.filter((u) => u.equipmentId === eq.id));
-            await save(db.units, { ...unitEdit, barcode: code, serial: unitEdit.serial?.trim() || code } as SerialUnit);
+            const saved = await save(db.units, { ...unitEdit, barcode: code, serial: unitEdit.serial?.trim() || code } as SerialUnit);
             setUnitEdit(null);
+            if ((e.nativeEvent as SubmitEvent).submitter?.getAttribute('data-print') === '1') setPrinting({ unitIds: [saved.id] });
           }}>
             <Field label="Code de l'unité (étiquette)"><input value={unitEdit.barcode || ''} onChange={(e) => setUnitEdit({ ...unitEdit, barcode: e.target.value })} aria-label="Code de l'unité" /></Field>
             <Field label="N° de série du fabricant"><input autoFocus value={unitEdit.serial || ''} onChange={(e) => setUnitEdit({ ...unitEdit, serial: e.target.value })} placeholder="facultatif" /></Field>
@@ -228,6 +235,7 @@ export default function EquipmentDetail() {
               {unitEdit.id && <button type="button" className="danger" style={{ marginRight: 'auto' }} onClick={async () => { if (confirm('Supprimer cette unité ?')) { await db.units.delete(unitEdit.id!); setUnitEdit(null); } }}>Supprimer</button>}
               <button type="button" className="secondary" onClick={() => setUnitEdit(null)}>Annuler</button>
               <button type="submit">Enregistrer</button>
+              <button type="submit" className="secondary" data-print="1" style={{ order: 2 }} title="Enregistre l'unité puis imprime son étiquette">🏷 Enregistrer et imprimer</button>
             </div>
           </form>
         </Modal>

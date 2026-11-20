@@ -390,3 +390,5 @@ button, a, input, select, textarea, label { touch-action: manipulation; }
 .pt-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
 .pt-grid label > span { color: var(--muted, #666); }
 .info.pt-ok { background: #ecfdf5; color: #065f46; }
+.unit-picks { display: grid; gap: 4px 14px; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); max-height: 220px; overflow: auto; }
+.print-label-pick .toolbar { margin-bottom: 6px; }
