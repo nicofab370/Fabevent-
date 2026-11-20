@@ -73,6 +73,23 @@ remises par défaut du client.
 **Matériel** : étiquettes QR imprimables (planches A4, rouleau), articles de remplacement proposés en cas de manque,
 archivage, photos, inventaire par scan avec mise à jour du stock, valeur du parc.
 
+**Étiqueteuse Brother PT-P750W** (Matériel › Étiquettes, format « ruban TZe ») : QR du code interne (ex. `F-S-0010-03`
+pour une unité) + code + nom, sur ruban de 6 à 24 mm.
+- *Impression directe en USB* (WebUSB : Chrome / Edge sur macOS, Linux, ChromeOS, Android avec câble OTG) : FabEvent
+  suit la *Raster Command Reference PT-E550W/P750W/P710BT v1.01* de Brother. Il lit d'abord le statut (largeur du ruban,
+  erreurs) et refuse d'imprimer si quelque chose ne va pas. Les étiquettes partent une par une : la suivante n'est envoyée
+  qu'après le statut « impression terminée », sinon tout s'arrête.
+  - zone imprimable officielle par ruban (12 mm : 70 points centrés) ;
+  - marge d'avance de 2 mm et lignes compressées de 17 octets au plus ;
+  - coupe de chaque étiquette, avec demi-découpe et impression chaînée en option ;
+  - bouton « Étiquette d'essai » ;
+  - la machine sort toujours au moins 24,5 mm de ruban (position du coupe-ruban).
+
+  Le bouton Editor Lite doit être éteint.
+  Sous Windows, le pilote Brother garde la machine : installer WinUSB avec Zadig, ou utiliser l'impression via le pilote.
+- *Image PNG au format exact du ruban* (180 dpi) pour l'app Brother iPrint&Label (iPhone, Wi-Fi Direct) ou P-touch Editor.
+- *Impression via le pilote Brother* (page au format longueur × largeur du ruban).
+
 **Sous-traitants et marge** : le client paie la fonction (catalogue de tarifs dans Paramètres), quel que soit le prestataire ;
 chaque technicien ou sous-traitant a son propre coût, qui ne joue que sur la marge (affichée poste par poste, candidats triés par coût).
 

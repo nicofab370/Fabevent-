@@ -378,3 +378,15 @@ button, a, input, select, textarea, label { touch-action: manipulation; }
 }
 .qr-content { font-size: 16px; padding: 6px 0; }
 .cl-contents { white-space: normal; }
+
+/* Étiqueteuse Brother P-touch */
+.ptouch h3 { margin-top: 0; }
+.ptouch .check-row { margin: 4px 0; }
+.ptouch-preview { margin: 10px 0; overflow-x: auto; }
+.ptouch-preview img { display: block; max-width: 100%; height: auto !important; image-rendering: pixelated; border: 1px solid var(--border, #ccc); border-radius: 3px; margin: 4px 0; background: #fff; }
+.ptouch-help { margin-top: 10px; font-size: 13px; }
+.ptouch-help li { margin: 4px 0; }
+.pt-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); margin-bottom: 8px; }
+.pt-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.pt-grid label > span { color: var(--muted, #666); }
+.info.pt-ok { background: #ecfdf5; color: #065f46; }

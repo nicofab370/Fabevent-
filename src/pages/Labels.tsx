@@ -6,13 +6,14 @@ import { qrSvg } from '../payment';
 import { save } from '../utils';
 import { appBaseUrl } from '../db';
 import { contentsText } from '../codes';
+import PtouchPanel, { type LabelData } from '../components/PtouchPanel';
 
 const FORMATS = {
   'a4-24': { label: 'Planche A4 — 24 étiquettes 70 × 37 mm', page: 'A4', cols: 3, w: 70, h: 37, qr: 26 },
   'a4-65': { label: 'Planche A4 — 65 étiquettes 38 × 21 mm', page: 'A4', cols: 5, w: 38.1, h: 21.2, qr: 17 },
   rouleau: { label: 'Rouleau — 50 × 25 mm (une étiquette par page)', page: '50mm 25mm', cols: 1, w: 50, h: 25, qr: 21 },
 } as const;
-type Format = keyof typeof FORMATS;
+type Format = keyof typeof FORMATS | 'ptouch';
 
 const esc = (v: unknown) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -25,7 +26,8 @@ function codeFor(e: { id: string; code?: string; barcode?: string }) {
 export default function Labels() {
   const av = useAvailability();
   const settings = useSettings();
-  const [format, setFormat] = useState<Format>('a4-24');
+  const [format, setFormat] = useState<Format>(() => { try { return (localStorage.getItem('fab.labels.format') as Format) || 'a4-24'; } catch { return 'a4-24'; } });
+  const pickFormat = (f: Format) => { setFormat(f); try { localStorage.setItem('fab.labels.format', f); } catch { /* stockage indisponible */ } };
   const [q, setQ] = useState('');
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [showContents, setShowContents] = useState(true);
@@ -35,22 +37,29 @@ export default function Labels() {
   const items = av.equipment.filter((e) => !e.isKit && !e.archived && !e.accessoryOnly && [e.name, e.code].join(' ').toLowerCase().includes(q.toLowerCase()));
   const total = Object.values(counts).reduce((a, b) => a + (b || 0), 0);
 
-  const print = async () => {
-    const labels: { code: string; title: string; sub: string; contents?: string }[] = [];
+  /** Étiquettes à imprimer ; `persist` enregistre le code sur les articles / unités qui n'en ont pas encore. */
+  const collect = async (persist: boolean): Promise<LabelData[]> => {
+    const labels: LabelData[] = [];
     for (const e of av.equipment) {
       if (e.trackSerials) {
         for (const u of av.units.filter((x) => x.equipmentId === e.id && x.status === 'ok')) {
           if (!counts['u:' + u.id]) continue;
           const code = u.barcode || u.serial;
-          if (!u.barcode) await save(db.units, { ...u, barcode: code });
-          for (let i = 0; i < counts['u:' + u.id]; i++) labels.push({ code, title: e.name, sub: u.serial === code ? code : `${code} · n° ${u.serial}`, contents: showContents ? contentsText(e) : undefined });
+          if (persist && !u.barcode) await save(db.units, { ...u, barcode: code });
+          for (let i = 0; i < counts['u:' + u.id]; i++) labels.push({ code, title: e.name, sub: u.serial === code ? code : `${code} · n° ${u.serial}`, serial: u.serial === code ? undefined : u.serial, contents: showContents ? contentsText(e) : undefined });
         }
       } else if (counts[e.id]) {
         const code = codeFor(e);
-        if (!e.barcode) { const raw = await db.equipment.get(e.id); if (raw) await save(db.equipment, { ...raw, barcode: code }); }
+        if (persist && !e.barcode) { const raw = await db.equipment.get(e.id); if (raw) await save(db.equipment, { ...raw, barcode: code }); }
         for (let i = 0; i < counts[e.id]; i++) labels.push({ code, title: e.name, sub: e.code || code, contents: showContents ? contentsText(e) : undefined });
       }
     }
+    return labels;
+  };
+
+  const print = async () => {
+    if (format === 'ptouch') return;
+    const labels = await collect(true);
     const f = FORMATS[format];
     const css = `@page{size:${f.page};margin:${format === 'rouleau' ? 0 : '8mm 0 0 4mm'}}body{margin:0;font-family:system-ui,sans-serif}
       .sheet{display:grid;grid-template-columns:repeat(${f.cols},${f.w}mm)}
@@ -69,11 +78,13 @@ export default function Labels() {
   return (
     <>
       <PageHead title="Étiquettes QR">
-        <select value={format} onChange={(e) => setFormat(e.target.value as Format)} style={{ width: 'auto' }}>
+        <select aria-label="Format d'étiquette" value={format} onChange={(e) => pickFormat(e.target.value as Format)} style={{ width: 'auto' }}>
           {Object.entries(FORMATS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+          <option value="ptouch">Étiqueteuse Brother PT-P750W — ruban TZe</option>
         </select>
-        <button disabled={!total} onClick={print}>Imprimer {total || ''} étiquette(s)</button>
+        {format !== 'ptouch' && <button disabled={!total} onClick={print}>Imprimer {total || ''} étiquette(s)</button>}
       </PageHead>
+      {format === 'ptouch' && <PtouchPanel total={total} collect={collect} linkFor={qrLink ? payload : undefined} company={settings.company.name} />}
       <div className="info">
         Le QR code se scanne à la douchette ou à la caméra dans l'entrepôt. Les articles sans code-barres en reçoivent un automatiquement à l'impression.
       </div>
