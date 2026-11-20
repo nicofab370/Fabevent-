@@ -9,6 +9,8 @@ Application web installable (PWA) qui **fonctionne hors ligne** : les données s
 npm install
 npm run dev       # développement : http://localhost:5173
 npm run build     # version de production dans dist/ (hébergeable sur n'importe quel hébergement statique)
+npm test          # tests unitaires des calculs (TVA, disponibilités, heures sup., Peppol…)
+npm run test:e2e  # parcours complet dans un navigateur (nécessite Playwright et Chromium)
 ```
 
 ## Fonctionnalités
@@ -61,6 +63,18 @@ options d'affichage (couleur, police, colonnes, lignes à 0 €) ; aperçu en di
 **Comptabilité et rapports**
 - Toutes les factures d'une période en un seul PDF, journal des ventes en CSV.
 - Chiffre d'affaires par mois, meilleurs clients, matériel le plus rentable et taux d'utilisation.
+
+**Facturation belge** : régimes de TVA (normal, autoliquidation UE, exonéré, hors UE) par client ou par projet, avec mention légale ;
+communication structurée +++…+++ et QR code de virement sur les factures ; factures échues et rappels de paiement (3 niveaux) ;
+remises par défaut du client.
+
+**Planning avancé** : décaler un projet (durée ou nouvelle date), modèles de projet, projets récurrents.
+
+**Matériel** : étiquettes QR imprimables (planches A4, rouleau), articles de remplacement proposés en cas de manque,
+archivage, photos, inventaire par scan avec mise à jour du stock, valeur du parc.
+
+**Équipe** : postes à la journée ou à l'heure avec heures supplémentaires majorées, temps de trajet dans les horaires
+communiqués, documents du personnel avec date d'expiration.
 
 **Démo** : Paramètres → « Ouvrir la base de démo » crée une base séparée avec des clients, du matériel, une équipe et 8 projets fictifs (réinitialisable).
 

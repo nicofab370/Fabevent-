@@ -175,21 +175,24 @@ export function buildReservations(lines: EquipmentLine[], subs: Subproject[], eq
   return out;
 }
 
-/** Pic de quantité réservée sur la période (balayage des intervalles). */
+/**
+ * Pic de quantité réservée sur la période. Les apports (sous-locations, transferts entrants)
+ * sont négatifs : le résultat peut donc être négatif si du stock arrive pendant toute la période.
+ */
 export function peakReserved(res: Reservation[], equipmentId: string, start: string, end: string, excludeLineId?: string, depotId?: string): number {
-  const events: [string, number][] = [];
-  for (const r of res) {
-    if (r.equipmentId !== equipmentId || r.lineId === excludeLineId) continue;
-    if (depotId && r.depotId !== depotId) continue;
-    if (!overlaps(r.start, r.end, start, end)) continue;
-    events.push([r.start < start ? start : r.start, r.qty]);
-    events.push([r.end > end ? end : r.end, -r.qty]);
+  const rs = res.filter((r) => r.equipmentId === equipmentId && r.lineId !== excludeLineId && (!depotId || r.depotId === depotId) && overlaps(r.start, r.end, start, end));
+  if (!rs.length) return 0;
+  // le net réservé ne change qu'au début d'une réservation ou à la fin d'un apport : on l'évalue à ces instants
+  const times = new Set([start]);
+  for (const r of rs) {
+    if (r.start > start && r.start < end) times.add(r.start);
+    if (r.qty < 0 && r.end > start && r.end < end) times.add(r.end);
   }
-  events.sort((a, b) => (a[0] === b[0] ? a[1] - b[1] : a[0] < b[0] ? -1 : 1));
-  let cur = 0, peak = 0;
-  for (const [, d] of events) {
-    cur += d;
-    peak = Math.max(peak, cur);
+  let peak = -Infinity;
+  for (const t of times) {
+    let net = 0;
+    for (const r of rs) if (r.start <= t && t < r.end) net += r.qty;
+    peak = Math.max(peak, net);
   }
   return peak;
 }

@@ -8,7 +8,9 @@ import { money, save, stockIn } from '../utils';
 export default function Inventory() {
   const av = useAvailability();
   const multi = av.depots.length > 1;
-  const [depot, setDepot] = useState(av.mainDepot);
+  // vide = dépôt principal (les paramètres peuvent ne pas être chargés au premier affichage)
+  const [depotSel, setDepot] = useState('');
+  const depot = depotSel || av.mainDepot;
   const [counted, setCounted] = useState<Record<string, number>>({});
   const [found, setFound] = useState<Set<string>>(new Set());
   const [code, setCode] = useState('');
