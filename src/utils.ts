@@ -1,6 +1,6 @@
 import type { Table } from 'dexie';
 import { db } from './db';
-import type { Base, Equipment, EquipmentLine, Inspection, Repair, SerialUnit, Settings, Subproject, Subrental } from './types';
+import type { Base, Equipment, EquipmentLine, Inspection, Period, Repair, SerialUnit, Settings, Subproject, Subrental } from './types';
 import { RESERVING } from './types';
 
 export function uid(): string {
@@ -109,7 +109,7 @@ export function buildReservations(lines: EquipmentLine[], subs: Subproject[], eq
     if (eq.isKit && eq.kitItems.length) {
       for (const k of eq.kitItems) push(k.equipmentId, k.qty * qty, l, sp, depth + 1);
     } else {
-      const [start, end] = blockPeriod(sp);
+      const [start, end] = lineBlock(l, sp);
       // un consommable vendu ne revient pas
       const sold = eq.kind === 'vente';
       if (sold && l.consumed) return;
@@ -267,7 +267,9 @@ export function buildIcs(name: string, events: IcsEvent[]): string {
 /* ---------- Suppression en cascade ---------- */
 
 export async function deleteProject(projectId: string) {
-  await db.transaction('rw', [db.projects, db.subprojects, db.lines, db.crew, db.vehicleAssignments, db.docs, db.subrentals, db.costs], async () => {
+  await db.transaction('rw', [db.projects, db.subprojects, db.lines, db.crew, db.vehicleAssignments, db.docs, db.subrentals, db.costs, db.files, db.log], async () => {
+    await db.files.where({ projectId }).delete();
+    await db.log.where({ projectId }).delete();
     await db.subrentals.where({ projectId }).delete();
     await db.costs.where({ projectId }).delete();
     await db.subprojects.where({ projectId }).delete();
@@ -323,4 +325,69 @@ export function inspectionsDue(equipment: Equipment[], units: SerialUnit[], insp
     }
   }
   return out.sort((a, b) => a.due.localeCompare(b.due));
+}
+
+/* ---------- Horaires des sous-projets ---------- */
+
+export function sortPeriods(periods: Period[]): Period[] {
+  return [...periods].sort((a, b) => a.start.localeCompare(b.start));
+}
+
+/** Déduit les dates du sous-projet de ses horaires (bloqué : tout ; facturé : les prestations). */
+export function syncPeriods<T extends Pick<Subproject, 'start' | 'end' | 'prepStart' | 'returnEnd' | 'periods'>>(sp: T): T {
+  const ps = sortPeriods((sp.periods || []).filter((p) => p.start && p.end));
+  if (!ps.length) return { ...sp, periods: undefined };
+  const usage = ps.filter((p) => p.kind === 'prestation');
+  const used = usage.length ? usage : ps;
+  const allStart = ps[0].start;
+  const allEnd = ps.reduce((a, p) => (p.end > a ? p.end : a), ps[0].end);
+  const start = used[0].start;
+  const end = used.reduce((a, p) => (p.end > a ? p.end : a), used[0].end);
+  return { ...sp, periods: ps, start, end, prepStart: allStart < start ? allStart : undefined, returnEnd: allEnd > end ? allEnd : undefined };
+}
+
+/** Jours facturés : jours distincts couverts par les prestations (une fin avant 6 h compte pour la veille). */
+export function usageDays(sp: Pick<Subproject, 'start' | 'end' | 'periods'>): number {
+  const usage = (sp.periods || []).filter((p) => p.kind === 'prestation');
+  if (!usage.length) return daysBetween(sp.start, sp.end);
+  const days = new Set<string>();
+  for (const p of usage) {
+    const d = new Date(p.start.slice(0, 10) + 'T12:00');
+    const endD = new Date(p.end);
+    if (endD.getHours() < 6 && p.end.slice(0, 10) > p.start.slice(0, 10)) endD.setDate(endD.getDate() - 1);
+    const last = toLocalInput(endD).slice(0, 10);
+    for (let i = 0; i < 366; i++) {
+      const k = toLocalInput(d).slice(0, 10);
+      days.add(k);
+      if (k >= last) break;
+      d.setDate(d.getDate() + 1);
+    }
+  }
+  return Math.max(1, days.size);
+}
+
+/* ---------- Groupes d'équipement liés à des créneaux ---------- */
+
+/** Créneaux couverts par le groupe de la ligne (ou null = toute la salle). */
+function groupPeriods(l: Pick<EquipmentLine, 'groupId'>, sp: Pick<Subproject, 'groups' | 'periods'>): Period[] | null {
+  if (!l.groupId) return null;
+  const g = sp.groups?.find((x) => x.id === l.groupId);
+  if (!g || !g.periodIds.length) return null;
+  const ps = (sp.periods || []).filter((p) => g.periodIds.includes(p.id));
+  return ps.length ? sortPeriods(ps) : null;
+}
+
+/** Période pendant laquelle la ligne bloque le matériel. */
+export function lineBlock(l: Pick<EquipmentLine, 'groupId'>, sp: Subproject): [string, string] {
+  const ps = groupPeriods(l, sp);
+  if (!ps) return blockPeriod(sp);
+  return [ps[0].start, ps.reduce((a, p) => (p.end > a ? p.end : a), ps[0].end)];
+}
+
+/** Jours facturés pour la ligne : jours de prestation des créneaux du groupe, sinon ceux de la salle. */
+export function lineDays(l: Pick<EquipmentLine, 'groupId'>, sp: Subproject): number {
+  const ps = groupPeriods(l, sp);
+  if (!ps) return usageDays(sp);
+  const synced = syncPeriods({ start: '', end: '', periods: ps });
+  return usageDays({ ...synced, periods: ps.some((p) => p.kind === 'prestation') ? ps : ps.map((p) => ({ ...p, kind: 'prestation' as const })) });
 }

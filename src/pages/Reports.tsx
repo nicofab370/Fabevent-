@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { Empty, PageHead, useSettings } from '../components/ui';
 import { db } from '../db';
 import { INVOICE_TYPES } from '../types';
-import { daysBetween, lineTotal, money, round2 } from '../utils';
+import { lineDays, lineTotal, money, round2 } from '../utils';
 
 const MONTHS = ['Janv.', 'Févr.', 'Mars', 'Avr.', 'Mai', 'Juin', 'Juil.', 'Août', 'Sept.', 'Oct.', 'Nov.', 'Déc.'];
 
@@ -38,7 +38,7 @@ export default function Reports() {
   for (const l of lines) {
     const sp = subMap.get(l.subprojectId);
     if (!sp || !l.equipmentId || l.optional || !['confirme', 'en_cours', 'termine'].includes(sp.status) || sp.start.slice(0, 4) !== y) continue;
-    const days = daysBetween(sp.start, sp.end);
+    const days = lineDays(l, sp);
     const eq = equipment.find((e) => e.id === l.equipmentId);
     const cur = stats.get(l.equipmentId) || { revenue: 0, unitDays: 0 };
     cur.revenue += lineTotal(l, days, settings, eq?.kind === 'vente');

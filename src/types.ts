@@ -101,9 +101,66 @@ export interface Project extends Base {
   discount: number;
   /** interlocuteur chez le client */
   contactPerson?: string;
+  /** type de projet (paramétrable) */
+  typeName?: string;
+  color?: string;
+  /** référence externe, ex. n° de bon de commande du client */
+  externalRef?: string;
+  /** lieu de prestation (contact de type « lieu ») */
+  venueId?: ID;
+  tasks?: Task[];
   notes?: string;
 }
 
+export interface Task {
+  id: ID;
+  text: string;
+  done: boolean;
+  due?: string;
+}
+
+/** Groupe d'équipement (par type, emplacement ou jour) rattaché à des créneaux de la salle. */
+export interface EquipGroup {
+  id: ID;
+  name: string;
+  /** créneaux couverts ; vide = toute la salle */
+  periodIds: ID[];
+}
+
+export interface ProjectFile {
+  id: ID;
+  projectId: ID;
+  name: string;
+  type: string;
+  size: number;
+  blob: Blob;
+  createdAt: string;
+}
+
+export interface LogEntry {
+  id: ID;
+  projectId: ID;
+  entityId: ID;
+  at: string;
+  text: string;
+  fields?: string[];
+}
+
+export type PeriodKind = 'montage' | 'prestation' | 'demontage' | 'autre';
+export const PERIOD_LABELS: Record<PeriodKind, string> = {
+  montage: 'Montage', prestation: 'Prestation', demontage: 'Démontage', autre: 'Autre',
+};
+
+/** Créneau horaire d'un sous-projet (montage, jour de prestation, démontage…). */
+export interface Period {
+  id: ID;
+  name: string;
+  kind: PeriodKind;
+  start: string;
+  end: string;
+}
+
+/** Sous-projet = une salle / zone du projet, avec son matériel et ses horaires. */
 export interface Subproject extends Base {
   projectId: ID;
   name: string;
@@ -115,6 +172,9 @@ export interface Subproject extends Base {
   prepStart?: string;
   /** fin du retour / contrôle au dépôt */
   returnEnd?: string;
+  /** horaires détaillés ; s'ils existent, start/end/prepStart/returnEnd en sont déduits */
+  periods?: Period[];
+  groups?: EquipGroup[];
   order: number;
   notes?: string;
 }
@@ -129,6 +189,8 @@ export interface EquipmentLine extends Base {
   discount: number;
   factor?: number;
   group?: string;
+  /** groupe d'équipement de la salle */
+  groupId?: ID;
   order: number;
   /** ligne facultative : affichée sur le devis mais hors total */
   optional?: boolean;
@@ -160,6 +222,8 @@ export interface CrewAssignment extends Base {
   projectId: ID;
   subprojectId: ID;
   personId?: ID;
+  /** créneau du sous-projet auquel le poste est rattaché */
+  periodId?: ID;
   function: string;
   start: string;
   end: string;
@@ -227,10 +291,18 @@ export interface Subrental extends Base {
   notes?: string;
 }
 
+/** Coût supplémentaire : frais interne et/ou refacturé au client (déplacement, hébergement…). */
 export interface ProjectCost extends Base {
   projectId: ID;
   label: string;
+  /** coût total pour toi (HT) */
   amount: number;
+  qty?: number;
+  /** prix de vente unitaire HT si refacturé */
+  price?: number;
+  billable?: boolean;
+  supplierId?: ID;
+  category?: string;
 }
 
 export interface Vehicle extends Base {
@@ -246,6 +318,7 @@ export interface VehicleAssignment extends Base {
   projectId: ID;
   subprojectId: ID;
   vehicleId: ID;
+  periodId?: ID;
   start: string;
   end: string;
   price: number;
@@ -289,6 +362,7 @@ export interface SnapshotLine {
 
 export interface SnapshotSub {
   name: string;
+  periods?: { name: string; kind: PeriodKind; start: string; end: string }[];
   venue?: string;
   start: string;
   end: string;
@@ -301,7 +375,9 @@ export interface SnapshotSub {
 export interface DocSnapshot {
   company: CompanyInfo;
   client?: Contact;
-  project: Pick<Project, 'number' | 'name' | 'venue' | 'start' | 'end' | 'notes' | 'discount'>;
+  project: Pick<Project, 'number' | 'name' | 'venue' | 'start' | 'end' | 'notes' | 'discount' | 'externalRef'>;
+  /** coûts supplémentaires refacturés */
+  extras?: { label: string; qty: number; unitPrice: number; total: number }[];
   subprojects: SnapshotSub[];
   totalHT: number;
   discountAmount: number;
@@ -364,4 +440,5 @@ export interface Settings {
   footer: string;
   appUrl: string;
   counters: Record<string, number>;
+  projectTypes?: { name: string; color: string }[];
 }

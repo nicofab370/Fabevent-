@@ -13,9 +13,17 @@ npm run build     # version de production dans dist/ (hébergeable sur n'importe
 
 ## Fonctionnalités
 
-**Projets**
-- Projets et sous-projets (montage, show, démontage…), statuts, duplication, interlocuteur client.
-- Période de préparation et de retour : le matériel est bloqué plus longtemps que la période facturée.
+**Projets** — fiche organisée en onglets, sur le modèle du « projet standard » de Rentman :
+- *Général* : nom, type (avec couleur), statut, numéro, référence externe, client et personne de contact, lieu (itinéraire),
+  avancée du projet, résumé du planning, tâches, notes, fichiers joints, bons de sortie et feuilles de route.
+- *Planning* : toutes les salles et leurs créneaux. *Équipement* : groupes (par type, emplacement ou jour) rattachés à des créneaux.
+- *Équipe & transport* : postes et véhicules par créneau, disponibilités, envoi du planning à chaque personne.
+- *Coûts supplémentaires* (refacturés ou non, bon de commande), *Finances & documents* (marge par catégorie, déjà facturé),
+  *Sous-locations & commandes*, *Registre* (historique des modifications).
+- Projets découpés en **salles / sous-projets** (Salle 1, Salle 2, scène…), chacun avec son matériel, son équipe et ses véhicules. Duplication d'une salle.
+- **Horaires par salle** : montage, Prestation J1, J2…, démontage. Le matériel est bloqué du premier au dernier créneau ;
+  seuls les jours de prestation sont facturés (une fin de soirée après minuit compte pour la veille). Les postes de l'équipe se rattachent à un créneau.
+- Statuts, duplication de projet, interlocuteur client.
 - Onglet Finances : chiffre d'affaires, coûts (personnel, sous-locations, consommables, frais divers), marge.
 
 **Matériel et stock**

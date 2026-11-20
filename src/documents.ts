@@ -1,7 +1,7 @@
 import { db, getSettings, nextNumber } from './db';
 import type { Doc, DocSnapshot, DocType, SnapshotSub } from './types';
 import { INVOICE_TYPES } from './types';
-import { daysBetween, factorFor, lineTotal, round2, save } from './utils';
+import { daysBetween, factorFor, lineDays, lineTotal, round2, save, sortPeriods } from './utils';
 
 const PREFIX: Record<DocType, 'D' | 'F' | 'AV' | 'BS' | 'FR'> = {
   devis: 'D', facture: 'F', acompte: 'F', avoir: 'AV', bon_sortie: 'BS', feuille_route: 'FR',
@@ -41,13 +41,14 @@ export async function buildSnapshot(projectId: string, type: DocType): Promise<D
   const snapSubs: SnapshotSub[] = subs
     .filter((sp) => sp.status !== 'annule')
     .map((sp) => {
-      const days = daysBetween(sp.start, sp.end);
+      const groupName = new Map((sp.groups || []).map((g) => [g.id, g.name]));
       const eq = lines
         .filter((l) => l.subprojectId === sp.id && (isQuote || isPacking || !l.optional))
         .sort((a, b) => a.order - b.order)
         .map((l) => {
           const e = l.equipmentId ? eMap.get(l.equipmentId) : undefined;
           const perPiece = e?.kind === 'vente';
+          const days = lineDays(l, sp);
           return {
             name: l.name,
             code: e?.code,
@@ -57,7 +58,7 @@ export async function buildSnapshot(projectId: string, type: DocType): Promise<D
             factor: perPiece ? 1 : l.factor ?? factorFor(days, s),
             discount: l.discount,
             total: lineTotal(l, days, s, perPiece),
-            group: l.group,
+            group: (l.groupId && groupName.get(l.groupId)) || l.group,
             optional: !!l.optional,
             unit: perPiece ? 'pièce' as const : 'jour' as const,
           };
@@ -83,10 +84,13 @@ export async function buildSnapshot(projectId: string, type: DocType): Promise<D
         cr.filter((c) => c.billable).reduce((a, c) => a + c.total, 0) +
         vh.filter((v) => v.billable).reduce((a, v) => a + v.price, 0),
       );
-      return { name: sp.name, venue: sp.venue || project.venue, start: sp.start, end: sp.end, equipment: eq, crew: cr, vehicles: vh, subtotal };
+      const periods = sp.periods?.length ? sortPeriods(sp.periods).map(({ name, kind, start, end }) => ({ name, kind, start, end })) : undefined;
+      return { name: sp.name, venue: sp.venue || project.venue, start: sp.prepStart || sp.start, end: sp.returnEnd || sp.end, periods, equipment: eq, crew: cr, vehicles: vh, subtotal };
     });
 
-  const gross = round2(snapSubs.reduce((a, sp) => a + sp.subtotal, 0));
+  const costs = await db.costs.where({ projectId }).toArray();
+  const extras = costs.filter((c) => c.billable && c.price).map((c) => ({ label: c.label, qty: c.qty || 1, unitPrice: c.price!, total: round2((c.qty || 1) * c.price!) }));
+  const gross = round2(snapSubs.reduce((a, sp) => a + sp.subtotal, 0) + extras.reduce((a, x) => a + x.total, 0));
   const discountAmount = round2(gross * (project.discount || 0) / 100);
   const totalHT = round2(gross - discountAmount);
   const vat = round2(totalHT * s.vatRate / 100);
@@ -95,8 +99,9 @@ export async function buildSnapshot(projectId: string, type: DocType): Promise<D
   return {
     company: s.company,
     client,
-    project: { number: project.number, name: project.name, venue: project.venue, start: project.start, end: project.end, notes: project.notes, discount: project.discount },
+    project: { number: project.number, name: project.name, venue: project.venue, start: project.start, end: project.end, notes: project.notes, discount: project.discount, externalRef: project.externalRef },
     subprojects: snapSubs,
+    extras: isPacking || !extras.length ? undefined : extras,
     totalHT, discountAmount, vatRate: s.vatRate, vat, totalTTC: round2(totalHT + vat),
     issuedAt: issued.toISOString(),
     validUntil: isQuote ? new Date(issued.getTime() + s.quoteValidityDays * 86400000).toISOString() : undefined,

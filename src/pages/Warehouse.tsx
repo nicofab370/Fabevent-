@@ -7,7 +7,7 @@ import { db } from '../db';
 import type { EquipmentLine } from '../types';
 import { blockPeriod, fmtRange, save, toLocalInput } from '../utils';
 import { RepairModal } from './Maintenance';
-import { addEquipmentToSub } from './ProjectDetail';
+import { addEquipmentToSub } from './project/EquipmentTab';
 
 /** Liste des préparations à venir. */
 export default function Warehouse() {
