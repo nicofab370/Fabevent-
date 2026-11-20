@@ -183,9 +183,10 @@ export function ChecklistView({ src }: { src: ChecklistSource }) {
                 <button className="cl-check" aria-label={state === 'done' ? 'Décocher' : 'Tout cocher'} disabled={serial}
                   onClick={() => src.setCount(l.key, ph, state === 'done' ? 0 : t)}>{state === 'done' ? '✓' : state === 'part' ? '◐' : ''}</button>
                 <div className="cl-name">
-                  <strong>{l.name}</strong> {l.code && <span className="muted">{l.code}</span>}
-                  {l.location && <span className="muted"> · 📍 {l.location}</span>}
-                  {l.remark && <div className="muted" style={{ fontSize: 12 }}>{l.remark}</div>}
+                  <div className="cl-title"><strong>{l.name}</strong></div>
+                  {(l.code || l.location || l.remark) && (
+                    <div className="cl-meta">{[l.code, l.location && `📍 ${l.location}`, l.remark].filter(Boolean).join(' · ')}</div>
+                  )}
                   {serial && (
                     <div className="cl-units">
                       {(ph === 'sortie' ? l.outSerials : l.outSerials).map((s) => {
@@ -193,15 +194,15 @@ export function ChecklistView({ src }: { src: ChecklistSource }) {
                         const back = l.inSerials.includes(s);
                         return <span key={s} className={'unit-chip' + (ph === 'retour' ? (back ? ' ok' : ' miss') : ' ok')} title={u?.defect ? `À réparer : ${u.defect}` : ''}>n° {s}{ph === 'retour' && back ? ' ✓' : ''}{u?.defect ? ' 🔧' : ''}</span>;
                       })}
-                      {ph === 'sortie' && l.outSerials.length < l.qty && <span className="muted" style={{ fontSize: 12 }}>scanne chaque unité</span>}
+                      {ph === 'sortie' && l.outSerials.length < l.qty && <span className="muted cl-hint">📷 scanne chaque unité</span>}
                     </div>
                   )}
                 </div>
                 <div className="cl-count">
                   {!serial && <button className="ghost" aria-label="Moins" onClick={() => src.setCount(l.key, ph, Math.max(0, n - 1))}>−</button>}
-                  <span className="cl-n"><b>{n}</b>/{t}</span>
+                  <span className="cl-n" title={serial ? 'Scanne chaque unité' : undefined}>{serial && '📷 '}<b>{n}</b>/{t}</span>
                   {!serial && <button className="ghost" aria-label="Plus" onClick={() => (n < t || ph === 'retour' ? src.setCount(l.key, ph, Math.min(n + 1, ph === 'retour' ? t : n + 1)) : src.bumpQty(l.key, 1).then(() => src.setCount(l.key, ph, n + 1)))}>+</button>}
-                  {!serial && n < t && <button className="secondary small" onClick={() => src.setCount(l.key, ph, t)}>Tout</button>}
+                  {!serial && n < t && <button className="secondary small cl-all" onClick={() => src.setCount(l.key, ph, t)}>Tout</button>}
                   {ph === 'retour' && l.equipmentId && <button className="secondary small" onClick={() => setBroken(l)}>Cassé</button>}
                 </div>
               </div>

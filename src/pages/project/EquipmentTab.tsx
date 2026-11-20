@@ -18,7 +18,8 @@ export interface DropTarget { subId: string; groupId?: string }
  * Le catalogue à droite se glisse-dépose dans un groupe ; une ligne se glisse vers un autre groupe ou sous-projet.
  */
 export default function EquipmentTab({ d }: { d: ProjectData }) {
-  const [showCat, setShowCat] = useState(() => { try { return localStorage.getItem('fab.catalogue') !== '0'; } catch { return true; } });
+  // sur téléphone, le catalogue est replié par défaut : la saisie rapide le remplace
+  const [showCat, setShowCat] = useState(() => { try { const v = localStorage.getItem('fab.catalogue'); return v === null ? window.innerWidth > 900 : v !== '0'; } catch { return true; } });
   const [qty, setQty] = useState(1);
   const [target, setTarget] = useState<DropTarget | null>(d.subs[0] ? { subId: d.subs[0].id } : null);
   const toggle = () => { setShowCat(!showCat); try { localStorage.setItem('fab.catalogue', showCat ? '0' : '1'); } catch { /* sans stockage */ } };
@@ -179,11 +180,11 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
                 <button className="small" onClick={() => setPicking(group?.id ?? null)}>+ Matériel</button>
                 <button className="secondary small" onClick={() => save(db.lines, { projectId: sp.projectId, subprojectId: sp.id, groupId: group?.id, name: 'Prestation', qty: 1, unitPrice: 0, discount: 0, order: lines.length })}>+ Ligne libre</button>
               </div>
-              {ordered.length === 0 && <div className="drop-hint">Glisse du matériel ici</div>}
+              {ordered.length === 0 && <div className="drop-hint">Glisse du matériel ici, ou tape-le ci-dessous</div>}
               {ordered.length > 0 && (
                 <div className="table-wrap">
-                  <table className="list">
-                    <thead><tr><th aria-label="Déplacer" /><th>Qté</th><th>Désignation</th><th className="n">Dispo</th><th>P.U.</th><th>Remise %</th><th title="Ligne facultative proposée en option sur le devis">Option</th>{groups.length > 0 && <th>Groupe</th>}<th className="n">Total HT</th><th /></tr></thead>
+                  <table className="list eq-table">
+                    <thead><tr><th aria-label="Déplacer" /><th>Qté</th><th>Désignation</th><th className="n">Dispo</th><th className="hide-sm">P.U.</th><th className="hide-sm">Rem. %</th><th className="n">Total HT</th><th /></tr></thead>
                     <tbody>
                       {ordered.map((l) => {
                         const eq = l.equipmentId ? eqMap.get(l.equipmentId) : undefined;
@@ -198,10 +199,12 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
                             <td style={l.parentLineId ? { paddingLeft: 24 } : undefined}>
                               {l.parentLineId && <span className="muted">↳ </span>}
                               {eq ? <Link to={'/materiel/' + eq.id}>{l.name}</Link> : <input value={l.name} onChange={(e) => updLine(l, { name: e.target.value })} />}
+                              {eq?.code && <span className="muted eq-code"> {eq.code}</span>}
                               {perPiece && <span className="badge" style={{ marginLeft: 6 }}>vente</span>}
-                              {l.periodIds?.length ? <div className="muted" style={{ fontSize: 11 }}>🕑 {periods.filter((p) => l.periodIds!.includes(p.id)).map((p) => p.name).join(', ')} · {fmtRange(b0, b1)}</div> : null}
-                              {l.remark && <div className="muted" style={{ fontSize: 11 }}>Devis : {l.remark}</div>}
-                              {l.internalRemark && <div className="muted" style={{ fontSize: 11 }}>Entrepôt : {l.internalRemark}</div>}
+                              {l.optional && <span className="badge st-option" style={{ marginLeft: 6 }}>option</span>}
+                              {l.periodIds?.length ? <div className="muted eq-sub" style={{ fontSize: 11 }}>🕑 {periods.filter((p) => l.periodIds!.includes(p.id)).map((p) => p.name).join(', ')} · {fmtRange(b0, b1)}</div> : null}
+                              {l.remark && <div className="muted eq-sub" style={{ fontSize: 11 }}>Devis : {l.remark}</div>}
+                              {l.internalRemark && <div className="muted eq-sub" style={{ fontSize: 11 }}>Entrepôt : {l.internalRemark}</div>}
                             {eq && avail !== null && avail < l.qty && !l.optional && (eq.alternatives || []).map((altId) => {
                               const alt = eqMap.get(altId);
                               if (!alt || alt.archived) return null;
@@ -217,21 +220,12 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
                               ) : null;
                             })}
                             </td>
-                            <td className="n">{avail === null ? '—' : <span className={'avail ' + (avail >= l.qty || l.optional ? 'ok' : 'ko')}>{avail}</span>}</td>
-                            <td><NumInput className="w-price" value={l.unitPrice} onChange={(n) => updLine(l, { unitPrice: n })} /></td>
-                            <td><NumInput className="w-qty" value={l.discount} onChange={(n) => updLine(l, { discount: n })} /></td>
-                            <td><input type="checkbox" checked={!!l.optional} onChange={(e) => updLine(l, { optional: e.target.checked })} /></td>
-                            {groups.length > 0 && (
-                              <td>{!l.parentLineId && (
-                                <select value={l.groupId || ''} onChange={(e) => updLine(l, { groupId: e.target.value || undefined })}>
-                                  <option value="">—</option>
-                                  {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-                                </select>
-                              )}</td>
-                            )}
+                            <td className="n eq-avail">{avail === null ? '—' : <span className={'avail ' + (avail >= l.qty || l.optional ? 'ok' : 'ko')}><span className="show-sm">dispo </span>{avail}</span>}</td>
+                            <td className="hide-sm"><NumInput className="w-price" value={l.unitPrice} onChange={(n) => updLine(l, { unitPrice: n })} aria-label="Prix unitaire" /></td>
+                            <td className="hide-sm"><NumInput className="w-qty" value={l.discount} onChange={(n) => updLine(l, { discount: n })} aria-label="Remise" /></td>
                             <td className="n">{money(lineTotal(l, lineDays(l, sp), settings, perPiece))}</td>
                             <td className="nowrap">
-                              <button className="ghost" onClick={() => setEditLine(l)} title="Horaire propre et remarques" aria-label="Détails de la ligne">⋯</button>
+                              <button className="ghost" onClick={() => setEditLine(l)} title="Prix, option, groupe, horaire propre et remarques" aria-label="Détails de la ligne">⋯</button>
                               <button className="ghost" onClick={() => removeLine(l)} aria-label="Retirer">✕</button>
                             </td>
                           </tr>
@@ -241,6 +235,8 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
                   </table>
                 </div>
               )}
+              <QuickAdd equipment={av.equipment} units={av.units} availOf={(e) => { const [b0, b1] = lineBlock({ groupId: group?.id }, sp); return availableQty(e, av.equipment, av.res, b0, b1, undefined, d.depot); }}
+                onAdd={(eqId, n) => addEquipmentToSub(sp, av.equipment, lines, { [eqId]: n }, group?.id, d.client?.discounts?.equipment || 0)} />
             </div>
           );
         })}
@@ -261,11 +257,12 @@ function LineModal({ sp, line, accessories, onClose }: { sp: Subproject; line: E
   const [l, setL] = useState(line);
   const groupName = sp.groups?.find((g) => g.id === line.groupId)?.name;
   return (
-    <Modal title={`Ligne — ${line.name}`} onClose={onClose}>
+    <Modal title={`Ligne — ${line.name}`} onClose={onClose} wide>
       <form className="form" onSubmit={async (e) => {
         e.preventDefault();
         const periodIds = l.periodIds?.length ? l.periodIds : undefined;
-        await patch(db.lines, line.id, { periodIds, remark: l.remark?.trim() || undefined, internalRemark: l.internalRemark?.trim() || undefined });
+        await patch(db.lines, line.id, { periodIds, remark: l.remark?.trim() || undefined, internalRemark: l.internalRemark?.trim() || undefined, unitPrice: l.unitPrice, discount: l.discount, optional: l.optional || undefined, groupId: l.groupId || undefined });
+        if (l.groupId !== line.groupId) for (const c of accessories) await patch(db.lines, c.id, { groupId: l.groupId || undefined });
         // les accessoires suivent l'horaire de leur article
         for (const c of accessories) await patch(db.lines, c.id, { periodIds });
         onClose();
@@ -288,6 +285,17 @@ function LineModal({ sp, line, accessories, onClose }: { sp: Subproject; line: E
             </>
           )}
         </div>
+        <Field label="Prix unitaire HT"><NumInput value={l.unitPrice} onChange={(n) => setL({ ...l, unitPrice: n })} /></Field>
+        <Field label="Remise %"><NumInput value={l.discount} onChange={(n) => setL({ ...l, discount: n })} /></Field>
+        {(sp.groups || []).length > 0 && !line.parentLineId && (
+          <Field label="Groupe">
+            <select value={l.groupId || ''} onChange={(e) => setL({ ...l, groupId: e.target.value || undefined })}>
+              <option value="">Sans groupe</option>
+              {(sp.groups || []).map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+            </select>
+          </Field>
+        )}
+        <Field label=" "><label className="check-row"><input type="checkbox" checked={!!l.optional} onChange={(e) => setL({ ...l, optional: e.target.checked })} /> En option sur le devis (hors total)</label></Field>
         <Field label="Remarque pour le client (devis, facture)" full><input value={l.remark || ''} onChange={(e) => setL({ ...l, remark: e.target.value })} placeholder="ex. livré monté sur pied" /></Field>
         <Field label="Remarque pour l'entrepôt (bon de sortie)" full><input value={l.internalRemark || ''} onChange={(e) => setL({ ...l, internalRemark: e.target.value })} placeholder="ex. prendre les câbles neufs" /></Field>
         <div className="form-actions">
@@ -404,7 +412,7 @@ function EquipmentPicker({ sp, groupId, depot, discount, equipment, res, existin
               {list.map((e) => {
                 const avail = availableQty(e, equipment, res, bStart, bEnd, undefined, depot);
                 return (
-                  <tr key={e.id}>
+                  <tr key={e.id} className="click" title="Clic : +1" onClick={(ev) => { if (!(ev.target as HTMLElement).closest('input')) setQty({ ...qty, [e.id]: (qty[e.id] || 0) + 1 }); }}>
                     <td>{e.photo && <img src={e.photo} alt="" className="thumb" />}{e.name} {e.isKit && <span className="badge">Kit</span>} {e.kind === 'vente' && <span className="badge">vente</span>} <span className="muted">{e.code}</span>
                       {e.accessories?.length ? <div className="muted" style={{ fontSize: 11 }}>+ accessoires automatiques</div> : null}</td>
                     <td className="n"><span className={'avail ' + (avail - (qty[e.id] || 0) >= 0 ? 'ok' : 'ko')}>{avail}</span></td>
@@ -422,5 +430,70 @@ function EquipmentPicker({ sp, groupId, depot, discount, equipment, res, existin
         <button disabled={!count} onClick={async () => { await addEquipmentToSub(sp, equipment, existing, qty, groupId, discount); onClose(); }}>Ajouter {count > 0 ? `(${count})` : ''}</button>
       </div>
     </Modal>
+  );
+}
+
+/**
+ * Saisie rapide (comme dans Rentman) : taper un nom ou un code, Entrée ajoute le premier résultat.
+ * « 12 sm58 » + Entrée ajoute directement 12 micros ; un code-barres scanné ajoute l'article.
+ * Les flèches choisissent un autre résultat ; la quantité peut aussi se mettre dans la petite case.
+ */
+export function QuickAdd({ equipment, units, availOf, onAdd }: {
+  equipment: Equipment[]; units: { equipmentId: string; barcode?: string; serial: string; extraCodes?: string[] }[];
+  availOf: (e: Equipment) => number; onAdd: (equipmentId: string, n: number) => Promise<void>;
+}) {
+  const [q, setQ] = useState('');
+  const [qty, setQty] = useState(1);
+  const [hi, setHi] = useState(0);
+  const [msg, setMsg] = useState('');
+  const m = q.match(/^\s*(\d+)\s*[x×*]?\s+(.+)$/i);
+  const n = m ? parseInt(m[1], 10) : qty || 1;
+  const term = (m ? m[2] : q).trim().toLowerCase();
+  const words = term.split(/\s+/).filter(Boolean);
+  const results = term.length < 1 ? [] : equipment
+    .filter((e) => !e.archived && words.every((w) => [e.name, e.code, e.barcode, ...(e.extraCodes || [])].join(' ').toLowerCase().includes(w)))
+    .sort((a, b) => Number(!(a.code || '').toLowerCase().startsWith(term)) - Number(!(b.code || '').toLowerCase().startsWith(term)) || a.name.localeCompare(b.name))
+    .slice(0, 8);
+  const add = async (e: Equipment) => {
+    await onAdd(e.id, n);
+    setMsg(`+${n} × ${e.name}`);
+    setQ(''); setQty(1); setHi(0);
+  };
+  return (
+    <div className="quick-add">
+      <NumInput className="w-qty" value={qty} onChange={setQty} aria-label="Quantité à ajouter" />
+      <div className="quick-add-box">
+        <input value={q} placeholder="+ Ajouter… (ex. « 12 sm58 » + Entrée)" aria-label="Ajouter un article"
+          onChange={(e) => { setQ(e.target.value); setHi(0); setMsg(''); }}
+          onKeyDown={async (e) => {
+            if (e.key === 'ArrowDown') { e.preventDefault(); setHi((h) => Math.min(h + 1, results.length - 1)); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); setHi((h) => Math.max(h - 1, 0)); }
+            else if (e.key === 'Escape') { setQ(''); }
+            else if (e.key === 'Enter') {
+              e.preventDefault();
+              // code-barres scanné : correspondance exacte
+              const code = q.trim().toLowerCase();
+              const u = units.find((x) => [x.barcode, x.serial, ...(x.extraCodes || [])].some((c) => c?.toLowerCase() === code));
+              const exact = equipment.find((x) => x.id === u?.equipmentId) || equipment.find((x) => [x.barcode, x.code, ...(x.extraCodes || [])].some((c) => c?.toLowerCase() === code));
+              const pick = exact || results[hi];
+              if (pick) await add(pick);
+            }
+          }} />
+        {results.length > 0 && (
+          <ul className="quick-add-list" role="listbox">
+            {results.map((e, i) => {
+              const a = availOf(e);
+              return (
+                <li key={e.id} role="option" aria-selected={i === hi} className={i === hi ? 'on' : ''} onMouseDown={(ev) => { ev.preventDefault(); add(e); }}>
+                  <span>{e.name} <span className="muted">{e.code}</span></span>
+                  <span className={'avail ' + (a >= n ? 'ok' : 'ko')} title="Disponible">{a}</span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+      {msg && <span className="avail ok">{msg}</span>}
+    </div>
   );
 }

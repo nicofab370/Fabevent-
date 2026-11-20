@@ -53,6 +53,7 @@ const openProject = async (name) => { await go('projets'); await page.click(`tex
 const tab = async (label) => { await page.click(`.project-tabs button:text-is("${label}")`); await page.waitForTimeout(300); };
 /** glisser-déposer HTML5 à la souris (la cible est d'abord ramenée à l'écran) */
 const drag = async (src, target) => {
+  await src.scrollIntoViewIfNeeded();
   await target.scrollIntoViewIfNeeded();
   await page.waitForTimeout(150);
   const a = await src.boundingBox(); const t = await target.boundingBox();
@@ -991,7 +992,7 @@ await step('Matériel : glisser un article du catalogue dans un groupe', async (
 await step('Matériel : déplacer une ligne vers un autre groupe, « + » du catalogue sur le groupe choisi', async () => {
   const room = page.locator('.sub', { hasText: 'Salle plénière' });
   const scene = room.locator('.eq-group[data-group="Scène"]');
-  const son = room.locator('.eq-group[data-group="Son & vidéo"]');
+  const son = room.locator('.eq-group[data-group="Soirée de gala J1"]');
   await drag(scene.locator('tr', { hasText: 'Micro Shure SM58' }).locator('td.drag-handle'), son);
   expect((await son.innerText()).includes('Micro Shure SM58') && !(await scene.innerText()).includes('Micro Shure SM58'), 'ligne déplacée');
   await scene.locator('.eq-group-head strong').click();
@@ -1325,6 +1326,32 @@ await step('Téléphone : pas de zoom (champs ≥ 16 px, double tap, échelle bl
     expect(r.touch === 'manipulation', 'double tap sans zoom');
   }
   await c.close();
+});
+
+await step('Équipement : saisie rapide « 12 sm58 » + Entrée, quantité, flèches, code scanné', async () => {
+  ctx = await newContext();
+  await openDemo();
+  await openProject('Conférence annuelle');
+  await tab('Équipement');
+  const scene = page.locator('.sub', { hasText: 'Salle plénière' }).locator('.eq-group[data-group="Scène"]');
+  const qa = scene.locator('input[aria-label="Ajouter un article"]');
+  await qa.fill('12 sm58');
+  await qa.press('Enter');
+  await page.waitForTimeout(400);
+  expect(await scene.locator('tr', { hasText: 'Micro Shure SM58' }).locator('input').first().inputValue() === '12', '12 micros ajoutés en une saisie');
+  await scene.locator('input[aria-label="Quantité à ajouter"]').fill('5');
+  await qa.fill('xlr');
+  await qa.press('ArrowDown');
+  const second = (await scene.locator('.quick-add-list li').nth(1).innerText()).split('\n')[0].replace(/F-\S+/, '').trim();
+  await qa.press('Enter');
+  await page.waitForTimeout(400);
+  expect(await scene.locator('tr', { hasText: second }).locator('input').first().inputValue() === '5', `5 × ${second} (2e résultat, flèche bas)`);
+  await qa.fill('DEMO-SUB');
+  await qa.press('Enter');
+  await page.waitForTimeout(400);
+  expect(await scene.locator('tr', { hasText: 'Caisson SB18' }).count() === 1, 'code-barres scanné ajouté');
+  expect((await qa.inputValue()) === '', 'champ vidé, prêt pour le suivant');
+  await ctx.close();
 });
 
 /* ---------- Synchronisation : deux appareils, le vrai serveur PHP ---------- */
