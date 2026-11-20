@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Empty, Field, Modal, NumInput, PageHead, StatusBadge } from '../components/ui';
 import { Scanner } from '../components/Scanner';
-import { addExtraCode, findByCode, removeExtraCode, setUnitState, UNIT_STATE_LABELS, unitState, type UnitState } from '../codes';
+import { addExtraCode, contentsText, findByCode, removeExtraCode, setUnitState, UNIT_STATE_LABELS, unitState, type UnitState } from '../codes';
 import { useAvailability } from '../data';
 import { currentWorkspace, db } from '../db';
 import type { Equipment, SerialUnit } from '../types';
@@ -286,6 +286,7 @@ export function ItemSheet({ id, onClose }: { id: string; onClose: () => void }) 
         <dt>Code</dt><dd>{e.code || '—'}{e.barcode && <span className="muted"> · étiquette {e.barcode}</span>}</dd>
         {e.location && <><dt>Emplacement</dt><dd>📍 {e.location}</dd></>}
         <dt>Stock</dt><dd><strong>{e.trackSerials ? units.filter((u) => u.status === 'ok').length : e.quantity}</strong>{e.trackSerials && ` unité(s) en service sur ${units.length}`}</dd>
+        {e.contents?.length ? <><dt>Contenu fourni</dt><dd>{contentsText(e)}</dd></> : null}
         <dt>Codes en plus</dt><dd>
           {(e.extraCodes || []).map((c) => <span key={c} className="tag small">{c} <button className="ghost small" aria-label={`Retirer ${c}`} onClick={() => removeExtraCode({ equipmentId: e.id }, c)}>✕</button></span>)}
           <form style={{ display: 'inline-flex', gap: 4, marginLeft: 4 }} onSubmit={async (ev) => { ev.preventDefault(); if (newCode.trim()) { await addExtraCode({ equipmentId: e.id }, newCode); setNewCode(''); } }}>

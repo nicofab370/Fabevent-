@@ -28,6 +28,7 @@ import Shortages from './pages/Shortages';
 import { SyncBadge } from './components/SyncPanel';
 import Venues, { VenueDetail } from './pages/Venues';
 import CrewAssignmentPage from './pages/crewAssign';
+import QrCard from './pages/QrCard';
 
 const NAV = [
   ['/', 'Tableau de bord', '◧'],
@@ -94,6 +95,7 @@ export default function App() {
           <Route path="/lieux" element={<Venues />} />
           <Route path="/lieux/:id" element={<VenueDetail />} />
           <Route path="/contacts" element={<Contacts />} />
+          <Route path="/q/:code" element={<QrCard />} />
           <Route path="/attribution" element={<CrewAssignmentPage />} />
           <Route path="/equipe" element={<Crew />} />
           <Route path="/vehicules" element={<Vehicles />} />

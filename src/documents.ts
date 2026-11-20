@@ -3,6 +3,7 @@ import type { Doc, DocSnapshot, DocType, Lang, ProjectStatus, Settings, Snapshot
 import { VAT_MENTIONS_I18N } from './i18n';
 import { DEFAULT_VAT_MENTIONS, structuredCommunication } from './payment';
 import { INVOICE_TYPES, VENUE_INFO_LABELS, type VenueInfo } from './types';
+import { contentsText } from './codes';
 import { deptOf, ownAddress, placeAddress, placeName, projectPerson, spotOf } from './places';
 import { crewAmount, crewWindow, daysBetween, factorFor, lineDays, lineTotal, round2, save, sortPeriods } from './utils';
 
@@ -83,6 +84,7 @@ export async function buildSnapshot(projectId: string, type: DocType, only?: { i
             optional: !!l.optional,
             unit: perPiece ? 'pièce' as const : 'jour' as const,
             remark: (isPacking ? l.internalRemark || l.remark : l.remark) || undefined,
+            contents: isPacking && e?.contents?.length ? contentsText(e) : undefined,
             periods: own || undefined,
           };
         });

@@ -221,6 +221,8 @@ export interface Equipment extends Base {
   barcode?: string;
   /** dépôt de base (première lettre du code) */
   homeDepotId?: ID;
+  /** contenu fourni avec l'article, sans fiche ni stock à part (ex. PC : chargeur, dock USB-C) */
+  contents?: { name: string; qty: number }[];
   /** codes en plus (code-barres du fabricant, ancienne étiquette…) qui désignent aussi l'article */
   extraCodes?: string[];
   /** mouvements de stock (ajout, inventaire, perte…), le plus récent en dernier */
@@ -636,6 +638,8 @@ export interface SnapshotLine {
   unit?: 'jour' | 'pièce';
   remark?: string;
   periods?: string;
+  /** contenu fourni (bon de sortie, feuille de route) */
+  contents?: string;
 }
 
 export interface SnapshotSub {
@@ -804,6 +808,8 @@ export interface Settings {
   appUrl: string;
   counters: Record<string, number>;
   projectTypes?: { name: string; color: string; moments?: ID[] }[];
+  /** QR des étiquettes = lien vers la fiche (lisible avec l'appareil photo de n'importe quel téléphone) */
+  qrLink?: boolean;
   /** lettre des codes du matériel quand aucun dépôt n'est déclaré (F par défaut) */
   codeLetter?: string;
   /** moments de facturation (au plus 3 par projet) */

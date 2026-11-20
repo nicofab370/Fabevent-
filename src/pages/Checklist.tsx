@@ -3,7 +3,7 @@ import { useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Empty, Field, Modal, PageHead, StatusBadge } from '../components/ui';
 import { Scanner } from '../components/Scanner';
-import { addExtraCode, findByCode, setUnitState, unitState, type CodeHit } from '../codes';
+import { addExtraCode, contentsText, findByCode, setUnitState, unitState, type CodeHit } from '../codes';
 import { useAvailability } from '../data';
 import { db } from '../db';
 import { importFile, rowsFromText, type ImportedList } from '../importList';
@@ -37,6 +37,8 @@ export interface CLine {
   parentKey?: string;
   location?: string;
   remark?: string;
+  /** contenu fourni à vérifier (chargeur, dock…) */
+  contents?: string;
 }
 
 export interface ChecklistSource {
@@ -124,7 +126,7 @@ export function ChecklistView({ src }: { src: ChecklistSource }) {
       }
       await src.setSerials(line.key, ph, [...serials, unit.serial]);
       const n = serials.length + 1;
-      say({ ok: true, msg: `${ph === 'sortie' ? 'Sortie' : 'Retour'} : ${eq.name} n° ${unit.serial} — ${n}/${target(line, ph) || n}${warn}${unit.defect ? ` · ⚠ à réparer : ${unit.defect}` : ''}` });
+      say({ ok: true, msg: `${ph === 'sortie' ? 'Sortie' : 'Retour'} : ${eq.name} n° ${unit.serial} — ${n}/${target(line, ph) || n}${warn}${unit.defect ? ` · ⚠ à réparer : ${unit.defect}` : ''}${eq.contents?.length ? ` · vérifie le contenu : ${contentsText(eq)}` : ''}` });
       return true;
     }
     const cur = counted(line, ph);
@@ -135,7 +137,7 @@ export function ChecklistView({ src }: { src: ChecklistSource }) {
       return false;
     }
     await src.setCount(line.key, ph, cur + 1);
-    say({ ok: true, msg: `${ph === 'sortie' ? 'Sortie' : 'Retour'} : ${eq.name} — ${cur + 1}/${target(line, ph)}` });
+    say({ ok: true, msg: `${ph === 'sortie' ? 'Sortie' : 'Retour'} : ${eq.name} — ${cur + 1}/${target(line, ph)}${eq.contents?.length ? ` · vérifie le contenu : ${contentsText(eq)}` : ''}` });
     inputRef.current?.focus();
     return true;
   };
@@ -187,6 +189,7 @@ export function ChecklistView({ src }: { src: ChecklistSource }) {
                   {(l.code || l.location || l.remark) && (
                     <div className="cl-meta">{[l.code, l.location && `📍 ${l.location}`, l.remark].filter(Boolean).join(' · ')}</div>
                   )}
+                  {l.contents && <div className="cl-meta cl-contents">↳ avec : {l.contents}</div>}
                   {serial && (
                     <div className="cl-units">
                       {(ph === 'sortie' ? l.outSerials : l.outSerials).map((s) => {
@@ -380,7 +383,7 @@ export function ProjectChecklist() {
     return {
       key: l.id, name: l.name, code: e?.code, equipmentId: l.equipmentId, qty: l.qty, out: l.outQty || 0, back: l.inQty || 0,
       outSerials: l.outSerials || [], inSerials: l.inSerials || [], cat: (l.groupId && groupName.get(l.groupId)) || l.group || (e?.categoryId && catName.get(e.categoryId)) || 'Matériel',
-      parentKey: l.parentLineId, location: e?.location, remark: [l.internalRemark || l.remark, kit.replace(/^ · /, '')].filter(Boolean).join(' — ') || undefined,
+      parentKey: l.parentLineId, location: e?.location, contents: contentsText(e) || undefined, remark: [l.internalRemark || l.remark, kit.replace(/^ · /, '')].filter(Boolean).join(' — ') || undefined,
     };
   };
   const after = () => warehouseStatus(sp.id);
@@ -427,6 +430,7 @@ export function FreeChecklistPage() {
       key: l.id, name: l.name, code: l.code, equipmentId: l.equipmentId, qty: l.qty, out: l.out, back: l.back,
       outSerials: l.outSerials || [], inSerials: l.inSerials || [], cat: l.cat, parentKey: l.parent || undefined,
       location: l.equipmentId ? eqMap.get(l.equipmentId)?.location : undefined,
+      contents: l.equipmentId ? contentsText(eqMap.get(l.equipmentId)) || undefined : undefined,
     })),
     missingSent: cl.missingSent,
     setCount: (key, ph, n) => updLine(key, ph === 'sortie' ? { out: Math.max(0, n) } : { back: Math.max(0, n) }),

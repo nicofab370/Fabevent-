@@ -354,3 +354,27 @@ button, a, input, select, textarea, label { touch-action: manipulation; }
 
 .show-sm { display: none; }
 @media (max-width: 640px) { .show-sm { display: inline; } }
+
+/* Fenêtre « + Matériel » */
+.picker-filters { display: grid; gap: 8px; margin-bottom: 8px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { border: 1px solid var(--border); background: var(--panel); color: var(--text); border-radius: 999px; padding: 4px 10px; font-size: 12px; }
+.chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.picker .pick-list { max-height: 55vh; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; }
+.pick-row { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto auto auto; gap: 8px; align-items: center; padding: 5px 8px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.pick-row:hover { background: var(--soft); }
+.pick-row.on { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.pick-row .thumb { width: 32px; height: 32px; margin: 0; border-radius: 6px; }
+.pick-name { min-width: 0; } .pick-name > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick-price { font-size: 12px; white-space: nowrap; }
+.stepper { display: flex; align-items: center; gap: 2px; }
+.stepper .ghost { width: 30px; height: 30px; padding: 0; font-size: 18px; }
+.stepper .w-qty { width: 48px; text-align: center; padding: 3px; }
+.picker-selection { margin-top: 8px; font-size: 13px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+@media (max-width: 640px) {
+  .pick-row { grid-template-columns: minmax(0, 1fr) auto auto; }
+  .pick-row .thumb, .pick-price { display: none; }
+  .picker .pick-list { max-height: 50vh; }
+}
+.qr-content { font-size: 16px; padding: 6px 0; }
+.cl-contents { white-space: normal; }

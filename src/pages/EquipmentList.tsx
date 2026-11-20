@@ -33,7 +33,8 @@ export function EquipmentForm({ initial, onDone }: { initial?: Draft; onDone: ()
     if (newCat.trim()) categoryId = (await save(db.categories, { name: newCat.trim(), letter: cleanLetter(newLetter) || letterSuggest })).id;
     let code = e.code?.trim();
     if (!code && codeAuto) code = newArticleCode({ ...e, categoryId }, settings, await db.categories.toArray(), await db.equipment.toArray());
-    await save(db.equipment, { ...e, categoryId, code } as Equipment);
+    const contents = (e.contents || []).filter((c) => c.name.trim()).map((c) => ({ name: c.name.trim(), qty: c.qty || 1 }));
+    await save(db.equipment, { ...e, categoryId, code, contents: contents.length ? contents : undefined } as Equipment);
     onDone();
   };
 
@@ -125,6 +126,21 @@ export function EquipmentForm({ initial, onDone }: { initial?: Draft; onDone: ()
           </div>
         </div>
       )}
+      <div className="field full contents-editor">
+        <span>Contenu fourni avec l'article (sans fiche ni stock à part : chargeur, câble, housse…)</span>
+        {(e.contents || []).map((c, i) => {
+          const upd = (patch: Partial<typeof c>) => set('contents', (e.contents || []).map((y, j) => (j === i ? { ...y, ...patch } : y)));
+          return (
+            <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6, alignItems: 'center' }}>
+              <NumInput className="w-qty" value={c.qty} onChange={(n) => upd({ qty: n || 1 })} aria-label="Quantité du contenu" />
+              <input value={c.name} onChange={(x) => upd({ name: x.target.value })} placeholder="ex. Chargeur 65 W" aria-label="Élément du contenu" />
+              <button type="button" className="ghost" onClick={() => set('contents', (e.contents || []).filter((_, j) => j !== i))} aria-label="Retirer">✕</button>
+            </div>
+          );
+        })}
+        <div><button type="button" className="secondary small" onClick={() => set('contents', [...(e.contents || []), { name: '', qty: 1 }])}>+ Élément du contenu</button></div>
+        <small className="muted">Affiché au scan, sur la checklist, le bon de sortie, la feuille de route et (au choix) l'étiquette. Pour un accessoire suivi en stock ou facturé, utilise plutôt les accessoires ci-dessous.</small>
+      </div>
       <div className="field full">
         <span>Accessoires ajoutés automatiquement (par unité de cet article)</span>
         {(e.accessories || []).map((a, i) => {

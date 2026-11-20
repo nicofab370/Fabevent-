@@ -186,6 +186,7 @@ export default function EquipmentDetail() {
           </table>
         </div>
       )}
+      {eq.contents?.length ? <div className="card"><h2>Contenu fourni</h2><ul style={{ margin: 0 }}>{eq.contents.map((c, i) => <li key={i}>{c.qty > 1 ? `${c.qty} × ` : ''}{c.name}</li>)}</ul></div> : null}
       {eq.notes && <div className="card"><h2>Notes</h2><p style={{ whiteSpace: 'pre-wrap' }}>{eq.notes}</p></div>}
 
       {editing && <Modal title="Modifier l'article" onClose={() => setEditing(false)} wide><EquipmentForm initial={raw} onDone={() => setEditing(false)} /></Modal>}
