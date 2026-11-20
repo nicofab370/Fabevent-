@@ -414,14 +414,23 @@ await step('Inventaire : scan inconnu refusé, écart appliqué au stock', async
   expect((await page.locator('table.list tr', { hasText: 'Pied de micro perche' }).innerText()).includes('18'), 'stock mis à 18');
 });
 
+const tickAll = async (except) => {
+  for (let i = 0; i < 40; i++) {
+    let b = page.locator('.cl-line:not(.done):not(.kit)');
+    if (except) b = b.filter({ hasNotText: except });
+    b = b.locator('.cl-check:not([disabled])');
+    if (!(await b.count())) break;
+    await b.first().click(); await page.waitForTimeout(150);
+  }
+};
 await step('Entrepôt : sortie de tout le matériel d’une ligne', async () => {
   await go('entrepot');
   await page.locator('table.list tr.click').first().click();
   await page.waitForSelector('.scan-input');
-  const before = await page.locator('.card p.muted').first().innerText();
-  await page.locator('button:text-is("Tout")').first().click();
+  const before = await page.locator('.cl-prog').innerText();
+  await page.locator('.cl-line:not(.done) .cl-check:not([disabled])').first().click();
   await page.waitForTimeout(300);
-  expect((await page.locator('.card p.muted').first().innerText()) !== before, 'progression mise à jour');
+  expect((await page.locator('.cl-prog').innerText()) !== before, 'progression mise à jour');
 });
 
 await step('Sauvegarde puis restauration (fichiers joints compris)', async () => {
@@ -653,6 +662,9 @@ await step('Entrepôt : scan d’un code-barres en sortie', async () => {
   await page.waitForSelector('.scan-input');
   await page.fill('.scan-input', 'DEMO-SUB');
   await page.press('.scan-input', 'Enter');
+  // article en vrac : « combien ? » (le reste par défaut), Entrée valide
+  await page.press('.cl-askq', 'Enter');
+  await page.waitForTimeout(300);
   expect((await page.locator('.flash').innerText()).startsWith('Sortie'), 'sortie enregistrée au scan');
 });
 
@@ -909,13 +921,13 @@ await step('Entrepôt : 1re sortie → En cours, tout rentré → Exécution ter
   await go('entrepot');
   await page.locator('table.list tr.click', { hasText: 'Beurs Maastricht' }).click();
   await page.waitForSelector('.scan-input');
-  for (let i = 0; i < 10 && await page.locator('button:text-is("Tout")').count(); i++) { await page.locator('button:text-is("Tout")').first().click(); await page.waitForTimeout(250); }
+  await tickAll();
   expect(await statusOf('Beurs Maastricht') === 'en_cours', 'en cours après la sortie');
   await go('entrepot');
   await page.locator('table.list tr.click', { hasText: 'Beurs Maastricht' }).click();
   await page.waitForSelector('.scan-input');
-  await page.click('.tabs button:has-text("Retour")');
-  for (let i = 0; i < 10 && await page.locator('button:text-is("Tout")').count(); i++) { await page.locator('button:text-is("Tout")').first().click(); await page.waitForTimeout(250); }
+  await page.click('.cl-phase button:has-text("Retour")');
+  await tickAll();
   expect(await statusOf('Beurs Maastricht') === 'execute', 'exécution terminée au retour complet');
 });
 
@@ -1202,7 +1214,13 @@ await step('Email : bon de commande RH et planning du technicien (.ics) joints',
 });
 
 console.log('\n  — checklist et inventaire (FABRI.live intégré) —');
-const scan = async (c) => { await page.fill('.checklist-scan .scan-input', c); await page.press('.checklist-scan .scan-input', 'Enter'); await page.waitForTimeout(350); return page.locator('.checklist-scan .flash').innerText(); };
+const scan = async (c) => {
+  await page.fill('.checklist-scan .scan-input', c); await page.press('.checklist-scan .scan-input', 'Enter'); await page.waitForTimeout(350);
+  // article en vrac : on valide la quantité proposée (le reste)
+  if (await page.locator('.cl-ask .cl-askq').count()) { await page.press('.cl-askq', 'Enter'); await page.waitForTimeout(300); }
+  return page.locator('.checklist-scan .flash').innerText();
+};
+const scanRaw = async (c) => { await page.fill('.checklist-scan .scan-input', c); await page.press('.checklist-scan .scan-input', 'Enter'); await page.waitForTimeout(350); };
 const openChecklist = async (name) => { await go('entrepot'); await page.locator('table.list tr.click', { hasText: name }).click(); await page.waitForSelector('.checklist-scan'); };
 
 await step('Checklist : unité scannée, doublon refusé, « ajouter en plus », code inconnu associé', async () => {
@@ -1210,10 +1228,13 @@ await step('Checklist : unité scannée, doublon refusé, « ajouter en plus »,
   await openChecklist('Mariage Dupont-Lemaire');
   expect((await scan('SN-LA4X-1001')).includes('Sortie : Amplificateur LA4X n° LA4X-1001'), 'unité sortie');
   expect((await scan('SN-LA4X-1001')).includes('déjà sorti'), 'doublon refusé');
-  expect((await scan('DEMO-SM58')).includes('pas prévu'), 'article hors liste signalé');
-  await page.locator('.checklist-scan .flash button:has-text("Ajouter en plus")').click();
+  await scanRaw('DEMO-SM58');
+  expect((await page.locator('.cl-ask').innerText()).includes('pas prévu'), 'article hors liste signalé');
+  await page.fill('.cl-askq', '2');
+  await page.locator('.cl-ask button:has-text("Ajouter en plus")').click();
   await page.waitForTimeout(400);
-  expect((await scan('DEMO-SM58')).includes('Sortie : Micro Shure SM58'), 'ajouté en plus puis sorti');
+  expect((await page.locator('.checklist-scan .flash').innerText()).includes('ajouté en plus (2)'), 'ajouté en plus et déjà sorti');
+  expect((await page.locator('.cl-line', { hasText: 'Micro Shure SM58' }).getAttribute('class')).includes('done'), 'ligne en plus cochée');
   expect((await scan('FAB-77777')).includes('Code inconnu'), 'code inconnu');
   await page.locator('.checklist-scan .flash button:has-text("Associer")').click();
   await page.fill('.modal input', 'Caisson');
@@ -1225,16 +1246,14 @@ await step('Checklist : unité scannée, doublon refusé, « ajouter en plus »,
 
 await step('Checklist : retour, unité abîmée, bilan, déclarer perdu puis retrouver', async () => {
   for (const sn of ['SN-ULXD-1001', 'SN-ULXD-1002', 'SN-QU16-1001']) await scan(sn);
-  for (let i = 0; i < 12 && await page.locator('.cl-line button:text-is("Tout")').count(); i++) { await page.locator('.cl-line button:text-is("Tout")').first().click(); await page.waitForTimeout(150); }
-  await page.click('.tabs button:has-text("Retour")');
+  await tickAll();
+  await page.click('.cl-phase button:has-text("Retour")');
   await page.waitForTimeout(300);
   for (const sn of ['SN-LA4X-1001', 'SN-ULXD-1001']) await scan(sn);
+  // une unité qui n'est pas sortie avec ce projet est refusée au retour
+  expect((await scan('SN-ULXD-1004')).includes('pas sorti'), 'unité non sortie refusée au retour');
   // tout le vrac rentre, sauf les enceintes X12
-  for (let i = 0; i < 12; i++) {
-    const b = page.locator('.cl-line', { hasNotText: 'L-Acoustics X12' }).locator('button:text-is("Tout")');
-    if (!(await b.count())) break;
-    await b.first().click(); await page.waitForTimeout(150);
-  }
+  await tickAll('L-Acoustics X12');
   await page.locator('.cl-line', { hasText: 'Micro HF' }).locator('button:text-is("Cassé")').click();
   await page.fill('.modal .field input', 'Antenne tordue');
   await page.click('.modal button[type=submit]');
@@ -1242,12 +1261,16 @@ await step('Checklist : retour, unité abîmée, bilan, déclarer perdu puis ret
   await page.click('button:text-is("Bilan du retour")');
   const bilan = await page.locator('.modal').innerText();
   expect(bilan.includes('L-Acoustics X12') && bilan.includes('ULXD-1002') && bilan.includes('QU16-1001'), `manquants listés : ${bilan.slice(0, 200)}`);
-  await page.click('.modal button:text-is("Déclarer perdu")');
+  // l'unité ULXD-1002 reviendra plus tard : décochée
+  await page.locator('.modal input[aria-label*="ULXD-1002"]').uncheck();
+  await page.click('.modal button:has-text("Déclarer perdu")');
   await page.waitForTimeout(600);
   expect((await page.locator('.modal').innerText()).includes('déclaré(s) perdu(s)'), 'pertes déclarées');
+  expect((await page.locator('.modal tr', { hasText: 'QU16-1001' }).innerText()).includes('déjà déclaré perdu'), 'pas déclarable deux fois');
+  expect(await page.locator('.modal input[aria-label*="ULXD-1002"]').isEnabled(), 'unité décochée encore déclarable plus tard');
   await page.click('.modal button:text-is("Fermer")');
   // l'unité perdue, rescannée, est proposée à la remise en stock
-  await page.click('.tabs button:has-text("Sortie")');
+  await page.click('.cl-phase button:has-text("Sortie")');
   expect((await scan('SN-QU16-1001')).includes('déclarée perdue'), 'unité perdue reconnue');
   await page.locator('.checklist-scan .flash button:has-text("Retrouvée")').click();
   await page.waitForTimeout(400);
@@ -1261,10 +1284,46 @@ await step('Checklist libre : bon collé, articles reconnus et scannés', async 
   await page.click('.modal button:text-is("Créer la checklist")');
   await page.waitForSelector('.checklist-scan');
   expect((await page.locator('.checklist-cat').count()) === 2, 'deux catégories');
-  expect((await scan('DEMO-X12')).includes('Sortie : Enceinte L-Acoustics X12 — 1/2'), 'article du catalogue scanné');
+  expect((await scan('DEMO-X12')).includes('Sortie : Enceinte L-Acoustics X12 — 2/2'), 'article du catalogue scanné (quantité demandée)');
   await page.locator('.cl-line', { hasText: 'Rouleau de scotch' }).locator('.cl-check').click();
   await page.waitForTimeout(300);
   expect((await page.locator('.cl-line', { hasText: 'Rouleau de scotch' }).getAttribute('class')).includes('done'), 'ligne libre cochée');
+});
+
+await step('Checklist libre : mode édition, kit, filtres, menu (dupliquer, tout décocher)', async () => {
+  await page.click('button[aria-label="Menu de la checklist"]');
+  await page.click('.modal button:has-text("Modifier les lignes")');
+  await page.locator('.cl-line', { hasText: 'Rouleau de scotch' }).click();
+  await page.locator('.modal .field', { hasText: 'Quantité' }).locator('input').fill('3');
+  await page.click('.modal button:text-is("Enregistrer")');
+  await page.waitForTimeout(300);
+  expect((await page.locator('.cl-line', { hasText: 'Rouleau de scotch' }).innerText()).includes('3×'), 'quantité corrigée');
+  // un flight case et son contenu
+  await page.locator('.checklist-cat', { hasText: 'Son' }).locator('button:has-text("+ Ajouter une ligne")').click();
+  await page.locator('.modal .field', { hasText: 'Nom' }).locator('input').fill('Flight case son');
+  await page.click('.modal button:text-is("Enregistrer")');
+  await page.waitForTimeout(300);
+  await page.locator('.checklist-cat', { hasText: 'Son' }).locator('button:has-text("+ Ajouter une ligne")').click();
+  await page.locator('.modal .field', { hasText: 'Nom' }).locator('input').fill('Câble XLR 10 m');
+  await page.locator('.modal .field', { hasText: 'Quantité' }).locator('input').fill('4');
+  await page.locator('.modal .field', { hasText: 'Dans le kit' }).locator('select').selectOption({ label: 'Flight case son' });
+  await page.click('.modal button:text-is("Enregistrer")');
+  await page.waitForTimeout(300);
+  await page.click('.cl-banner button:text-is("Terminer")');
+  const kit = page.locator('.cl-line.kit', { hasText: 'Flight case son' });
+  expect((await kit.innerText()).includes('KIT · 0/1'), 'kit avec son contenu');
+  await kit.click();
+  await page.waitForTimeout(300);
+  expect((await kit.innerText()).includes('KIT · 1/1') && (await page.locator('.cl-line.kid', { hasText: 'Câble XLR 10 m' }).getAttribute('class')).includes('done'), 'kit coché d’un coup');
+  await page.click('.cl-filters button:text-is("Restant")');
+  await page.waitForTimeout(200);
+  expect(await page.locator('.cl-line', { hasText: 'Enceinte L-Acoustics X12' }).count() === 0, 'filtre « Restant » : lignes faites masquées');
+  expect(await page.locator('.cl-line', { hasText: 'Rouleau de scotch' }).count() === 1, 'ligne partielle (1/3) toujours visible');
+  await page.click('.cl-filters button:text-is("Toutes")');
+  await page.click('button[aria-label="Menu de la checklist"]');
+  await page.click('.modal button:has-text("Dupliquer")');
+  await page.waitForTimeout(500);
+  expect((await page.locator('h1').innerText()).includes('(copie)') && (await page.locator('.cl-prog').innerText()).startsWith('0 /'), 'copie à zéro');
 });
 
 await step('Checklist libre : import d’un bon PDF', async () => {

@@ -152,10 +152,23 @@ téléchargement des fichiers puis l'ouverture de la messagerie (Gmail web). Dev
 factures), bons de commande de sous-location et RH en PDF, planning du technicien en `.ics`. Un devis ou une facture envoyé
 passe au statut « Envoyé ».
 
-**Entrepôt (repris de FABRI.live)** : checklist de sortie puis de retour par sous-projet, scan à la douchette ou à la caméra
-(ZXing intégré, fonctionne sur iPhone et hors ligne), unités sérialisées, « ajouter en plus », codes fabricant associés,
-unités à réparer / en réparation, bilan du retour et déclaration des pertes avec historique daté. **Checklists libres**
-importées d'un bon PDF, Word, HTML (export Rentman) ou de texte collé. **Inventaire** repris de l'Inventaire FABRI.live :
+**Entrepôt (Checklist FABRI.live reprise)** : checklist de sortie puis de retour par sous-projet.
+- Scan à la douchette ou à la caméra (ZXing intégré, fonctionne sur iPhone et hors ligne). Une unité sérialisée ne compte qu'une fois.
+- Article en vrac scanné : « combien ? », le reste par défaut (ou « chaque scan compte 1 »).
+- Kit scanné : tout son contenu d'un coup. Hors liste : « ajouter en plus », déjà compté.
+- Catégories et kits repliables avec leur compteur (« KIT · 3/5 »), filtres Tout / Restant / Fait, recherche.
+- On touche une ligne pour la cocher, − / + pour une partie, ℹ pour la fiche.
+- Au retour :
+  - bandeau « N pas encore rentrés » ;
+  - une unité non sortie avec le projet est refusée ;
+  - bilan avec cases à cocher : ce qui revient plus tard reste déclarable, rien n'est déclaré deux fois ;
+  - pertes avec historique daté.
+- Menu : tout replier, tout décocher, imprimer A4 (état actuel ou vierge à remplir).
+
+**Checklists libres** importées d'un bon PDF, Word, HTML (export Rentman) ou de texte collé :
+- accueil en cartes avec la progression ;
+- mode édition (corriger l'import, kits) ;
+- renommer, dupliquer à zéro, exporter, supprimer. **Inventaire** repris de l'Inventaire FABRI.live :
 - liste par catégorie avec la progression, vues Tout / À compter / Écarts ;
 - comptage d'un article en plusieurs endroits (5 au dépôt + 3 dans le camion), « Conforme », « Corriger le total » ;
 - unités à numéro de série en pastilles, avec un scan limité à l'article ;

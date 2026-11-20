@@ -419,6 +419,8 @@ export interface Subproject extends Base {
   reserve?: boolean;
   /** manquants du retour déjà déclarés perdus */
   missingSent?: boolean;
+  /** ce qui a déjà été déclaré perdu au retour (« u<id d'unité> » ou « b<id de ligne> ») : jamais deux fois */
+  lostSent?: string[];
 }
 
 export interface EquipmentLine extends Base {
@@ -858,4 +860,5 @@ export interface FreeChecklist extends Base {
   lines: FreeLine[];
   phase: 'sortie' | 'retour';
   missingSent?: boolean;
+  lostSent?: string[];
 }
