@@ -1304,6 +1304,29 @@ await step('Codes : nouvel article F-S-…, unités F-S-…-01, nouveau dépôt 
 });
 await ctx.close();
 
+await step('Téléphone : pas de zoom (champs ≥ 16 px, double tap, échelle bloquée) et rien ne déborde', async () => {
+  const { devices } = require('playwright');
+  const c = await browser.newContext({ ...devices['iPhone 13'] });
+  const p = await c.newPage();
+  await p.goto(U); await p.click('text=Essayer avec des données de démo'); await p.waitForSelector('.demo-badge', { timeout: 20000 }); await p.waitForTimeout(600);
+  const meta = await p.locator('meta[name=viewport]').getAttribute('content');
+  expect(meta.includes('maximum-scale=1') && meta.includes('user-scalable=no'), `zoom bloqué (${meta})`);
+  for (const path of ['projets', 'materiel', 'entrepot', 'inventaire', 'comptabilite', 'modeles', 'etiquettes', 'parametres']) {
+    await p.goto(U + '#/' + path); await p.waitForTimeout(500);
+    const r = await p.evaluate(() => {
+      const W = document.documentElement.clientWidth;
+      const inScroll = (el) => { for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) { const o = getComputedStyle(a).overflowX; if (o === 'auto' || o === 'scroll') return true; } return false; };
+      const cut = [...document.querySelectorAll('body *')].filter((el) => { const b = el.getBoundingClientRect(); return b.width && b.right > W + 1 && !inScroll(el); }).length;
+      const small = [...document.querySelectorAll('input:not([type=checkbox]):not([type=radio]), select, textarea')].filter((e) => parseFloat(getComputedStyle(e).fontSize) < 16).length;
+      return { cut, small, touch: getComputedStyle(document.documentElement).touchAction };
+    });
+    expect(r.cut === 0, `${path} : ${r.cut} élément(s) qui dépassent l'écran`);
+    expect(r.small === 0, `${path} : ${r.small} champ(s) < 16 px (zoom iPhone)`);
+    expect(r.touch === 'manipulation', 'double tap sans zoom');
+  }
+  await c.close();
+});
+
 /* ---------- Synchronisation : deux appareils, le vrai serveur PHP ---------- */
 const hasPhp = spawnSync('php', ['-v']).status === 0;
 if (hasPhp) {
