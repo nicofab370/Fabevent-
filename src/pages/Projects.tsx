@@ -8,6 +8,7 @@ import type { Project, ProjectStatus } from '../types';
 import { STATUS_LABELS } from '../types';
 import { fmtRange, save, toLocalInput } from '../utils';
 import { ContactForm } from './Contacts';
+import { CsvButton, exportCsv, Tags } from '../components/extra';
 
 type Draft = Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'number'> & Partial<Project>;
 
@@ -102,14 +103,20 @@ export default function Projects() {
   const [showTemplates, setShowTemplates] = useState(false);
   const cMap = new Map(contacts.map((c) => [c.id, c.company]));
   const templates = projects.filter((p) => p.isTemplate);
+  const [tag, setTag] = useState('');
+  const allTags = Array.from(new Set(projects.flatMap((p) => p.tags || []))).sort();
   const filtered = projects.filter((p) =>
     !!p.isTemplate === showTemplates &&
     (!status || p.status === status) &&
-    [p.number, p.name, p.venue, p.clientId && cMap.get(p.clientId)].join(' ').toLowerCase().includes(q.toLowerCase()));
+    (!tag || p.tags?.includes(tag)) &&
+    [p.number, p.name, p.venue, p.clientId && cMap.get(p.clientId), ...(p.tags || [])].join(' ').toLowerCase().includes(q.toLowerCase()));
+  const csv = () => exportCsv('projets.csv', ['Numéro', 'Projet', 'Type', 'Client', 'Début', 'Fin', 'Lieu', 'Statut', 'Référence client', 'Étiquettes'],
+    filtered.map((p) => [p.number, p.name, p.typeName, p.clientId ? cMap.get(p.clientId) : '', p.start.replace('T', ' '), p.end.replace('T', ' '), p.venue, STATUS_LABELS[p.status], p.externalRef, (p.tags || []).join(', ')]));
 
   return (
     <>
       <PageHead title={showTemplates ? 'Modèles de projet' : 'Projets'}>
+        <CsvButton onClick={csv} />
         <button className="secondary" onClick={() => setShowTemplates(!showTemplates)}>{showTemplates ? '← Projets' : `Modèles (${templates.length})`}</button>
         {templates.length > 0 && <button className="secondary" onClick={() => setFromTemplate(true)}>+ À partir d'un modèle</button>}
         <button onClick={() => setCreating(true)}>+ Nouveau projet</button>
@@ -122,6 +129,12 @@ export default function Projects() {
             <option value="">Tous statuts</option>
             {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
+          {allTags.length > 0 && (
+            <select value={tag} onChange={(e) => setTag(e.target.value)}>
+              <option value="">Toutes étiquettes</option>
+              {allTags.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          )}
         </div>
         {filtered.length === 0 ? <Empty>{showTemplates ? 'Aucun modèle.' : 'Aucun projet.'}</Empty> : (
           <div className="table-wrap">
@@ -131,7 +144,7 @@ export default function Projects() {
                 {filtered.map((p) => (
                   <tr key={p.id} className="click" onClick={() => nav('/projets/' + p.id)}>
                     <td className="muted">{p.number}</td>
-                    <td><span className="color-dot" style={{ background: p.color || 'var(--border)' }} /><strong>{p.name}</strong></td>
+                    <td><span className="color-dot" style={{ background: p.color || 'var(--border)' }} /><strong>{p.name}</strong> <Tags tags={p.tags} /></td>
                     <td className="muted">{p.typeName}</td>
                     <td>{p.clientId && cMap.get(p.clientId)}</td>
                     <td>{fmtRange(p.start, p.end)}</td>

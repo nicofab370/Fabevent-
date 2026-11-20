@@ -4,6 +4,7 @@ import { Empty, Field, Modal, NumInput, PageHead } from '../components/ui';
 import { db } from '../db';
 import type { Vehicle } from '../types';
 import { fmtRange, money, save, toLocalInput } from '../utils';
+import { CsvButton, exportCsv } from '../components/extra';
 
 type Draft = Partial<Vehicle> & { name: string; dailyPrice: number };
 
@@ -17,7 +18,10 @@ export default function Vehicles() {
 
   return (
     <>
-      <PageHead title="Véhicules"><button onClick={() => setEdit({ name: '', dailyPrice: 0 })}>+ Nouveau véhicule</button></PageHead>
+      <PageHead title="Véhicules">
+        <CsvButton onClick={() => exportCsv('vehicules.csv', ['Véhicule', 'Immatriculation', 'Places', 'Charge utile', 'Forfait / jour', 'Prix / km'], vehicles.map((v) => [v.name, v.plate, v.seats, v.payload, v.dailyPrice, v.pricePerKm]))} />
+        <button onClick={() => setEdit({ name: '', dailyPrice: 0 })}>+ Nouveau véhicule</button>
+      </PageHead>
       <div className="card">
         {vehicles.length === 0 ? <Empty>Aucun véhicule.</Empty> : (
           <table className="list">

@@ -15,6 +15,28 @@ export const VAT_REGIME_LABELS: Record<VatRegime, string> = {
   hors_ue: 'Hors UE (export de services)',
 };
 
+export type Lang = 'fr' | 'nl' | 'en';
+export const LANG_LABELS: Record<Lang, string> = { fr: 'Français', nl: 'Nederlands', en: 'English' };
+
+/** Champ personnalisé (Paramètres) ajouté aux projets, contacts ou articles. */
+export interface CustomField {
+  id: ID;
+  label: string;
+  entity: 'projet' | 'contact' | 'materiel';
+  type: 'texte' | 'oui_non' | 'nombre' | 'date';
+}
+export type CustomValues = Record<ID, string | number | boolean | undefined>;
+
+/** Rendez-vous hors projet (repérage, réunion…). */
+export interface Appointment extends Base {
+  title: string;
+  start: string;
+  end: string;
+  location?: string;
+  personIds?: ID[];
+  notes?: string;
+}
+
 export type ContactType = 'client' | 'fournisseur' | 'soustraitant' | 'lieu' | 'autre';
 export const CONTACT_TYPES: Record<ContactType, string> = {
   client: 'Client',
@@ -43,6 +65,10 @@ export interface Contact extends Base {
   vatRegime?: VatRegime;
   /** remises par défaut (%) : sur le matériel (par ligne) et sur le total du projet */
   discounts?: { equipment?: number; total?: number };
+  /** langue des documents envoyés à ce client */
+  language?: Lang;
+  tags?: string[];
+  custom?: CustomValues;
   notes?: string;
 }
 
@@ -109,6 +135,8 @@ export interface Equipment extends Base {
   archived?: boolean;
   /** photo (image réduite) */
   photo?: string;
+  tags?: string[];
+  custom?: CustomValues;
   kind?: EquipmentKind;
   trackSerials?: boolean;
   accessories?: Accessory[];
@@ -161,6 +189,10 @@ export interface Project extends Base {
   vatRegime?: VatRegime;
   /** modèle de projet (n'apparaît pas dans les listes) */
   isTemplate?: boolean;
+  /** langue des documents (sinon celle du client) */
+  language?: Lang;
+  tags?: string[];
+  custom?: CustomValues;
   /** dépôt d'où part le matériel */
   depotId?: ID;
   /** distance aller dépôt → lieu (km) et temps de trajet (min) */
@@ -286,6 +318,7 @@ export interface Person extends Base {
   hourlyRate?: number;
   hourlyCost?: number;
   external: boolean;
+  /** société de sous-traitance (contact) qui facture ses prestations */
   contactId?: ID;
   notes?: string;
 }
@@ -300,6 +333,8 @@ export interface CrewAssignment extends Base {
   rateUnit?: 'jour' | 'heure';
   /** temps de trajet du projet ajouté avant et après les horaires communiqués */
   travel?: boolean;
+  /** planification finale (visible du technicien) ; sinon provisoire */
+  final?: boolean;
   function: string;
   start: string;
   end: string;
@@ -523,11 +558,19 @@ export interface DocSnapshot {
   refNumber?: string;
   dueDate?: string;
   optionalTotal?: number;
+  /** langue du document */
+  lang?: Lang;
+  /** champs personnalisés du projet et du client, figés (variables {{champ.clé}}) */
+  customFields?: { key: string; label: string; value: string }[];
   vatRegime?: VatRegime;
   /** mention légale liée au régime de TVA */
   vatMention?: string;
   /** virement : communication (structurée belge ou numéro) */
   payment?: { communication: string; structured: boolean };
+  /** facture partielle : salles facturées */
+  partialRooms?: string[];
+  /** facture finale : salles déjà facturées séparément */
+  partialInvoices?: { number: string; rooms: string[]; ht: number }[];
   /** rappel de paiement */
   reminder?: { level: number; invoiceNumber: string; invoiceDate: string; invoiceDue?: string; amount: number };
   /** modèle figé au moment de la génération */
@@ -543,6 +586,8 @@ export interface Doc extends Base {
   status: DocStatus;
   note?: string;
   contactPerson?: string;
+  /** facture partielle : salles facturées */
+  subprojectIds?: ID[];
   snapshot: DocSnapshot;
 }
 
@@ -593,5 +638,8 @@ export interface Settings {
   /** catalogue des fonctions : tarif facturé au client, quel que soit le prestataire */
   crewFunctions?: CrewFunction[];
   depots?: Depot[];
+  customFields?: CustomField[];
+  /** nouveaux postes en planification finale par défaut */
+  crewFinalByDefault?: boolean;
   templates?: DocTemplates;
 }

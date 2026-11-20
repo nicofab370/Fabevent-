@@ -6,6 +6,7 @@ import { db } from '../db';
 import type { Subrental, SubrentStatus } from '../types';
 import { SUBRENT_LABELS } from '../types';
 import { fmtDate, fmtRange, money, save } from '../utils';
+import { CsvButton, exportCsv } from '../components/extra';
 
 export default function Subrentals() {
   const nav = useNavigate();
@@ -16,7 +17,10 @@ export default function Subrentals() {
   const cMap = new Map(contacts.map((c) => [c.id, c.company]));
   return (
     <>
-      <PageHead title="Sous-locations" />
+      <PageHead title="Sous-locations">
+        <CsvButton onClick={() => exportCsv('sous-locations.csv', ['N°', 'Projet', 'Fournisseur', 'Début', 'Fin', 'Matériel', 'Coût', 'Statut'],
+          list.map((s) => [s.number, pMap.get(s.projectId)?.name, s.supplierId ? cMap.get(s.supplierId) : '', s.start.replace('T', ' '), s.end.replace('T', ' '), s.lines.map((l) => `${l.qty} × ${l.name}`).join(', '), s.lines.reduce((a, l) => a + l.cost, 0), SUBRENT_LABELS[s.status]]))} />
+      </PageHead>
       <div className="info">Une sous-location se crée depuis un projet en manque de matériel (bouton « Sous-louer le manque »). Une fois confirmée, le matériel sous-loué compte dans les disponibilités.</div>
       <div className="card">
         {list.length === 0 ? <Empty>Aucune sous-location.</Empty> : (

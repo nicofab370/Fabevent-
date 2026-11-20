@@ -4,6 +4,7 @@ import { Empty, Field, Modal, NumInput, PageHead, useSettings } from '../compone
 import { appBaseUrl, db } from '../db';
 import type { Person, ProjectFile, Unavailability } from '../types';
 import { buildIcs, crewWindow, download, fmtRange, money, save, toLocalInput, uid } from '../utils';
+import { CsvButton, exportCsv } from '../components/extra';
 
 type Draft = Partial<Person> & { name: string; dailyRate: number; external: boolean };
 
@@ -16,6 +17,7 @@ export default function Crew() {
   const [edit, setEdit] = useState<Draft | null>(null);
   const [unavFor, setUnavFor] = useState<Person | null>(null);
   const [docsFor, setDocsFor] = useState<Person | null>(null);
+  const companies = useLiveQuery(() => db.contacts.where('type').anyOf('soustraitant', 'fournisseur').sortBy('company'), []) || [];
   const files = useLiveQuery(() => db.files.where('personId').above('').toArray(), []) || [];
   const soon = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
   const unav = useLiveQuery(() => db.unavailability.toArray(), []) || [];
@@ -24,7 +26,7 @@ export default function Crew() {
   const nowS = toLocalInput(new Date());
 
   const assignmentsOf = (id: string) => crew
-    .filter((c) => c.personId === id && sMap.get(c.subprojectId)?.status !== 'annule')
+    .filter((c) => c.personId === id && sMap.get(c.subprojectId)?.status !== 'annule' && c.final !== false)
     .sort((a, b) => a.start.localeCompare(b.start));
 
   const exportIcs = (person: Person) => {
@@ -41,6 +43,8 @@ export default function Crew() {
   return (
     <>
       <PageHead title="Équipe & sous-traitants">
+        <CsvButton onClick={() => exportCsv('equipe.csv', ['Nom', 'Fonction', 'Statut', 'Société', 'Téléphone', 'Email', 'Coût / jour', 'Coût / heure'],
+          people.map((p) => [p.name, p.role, p.external ? 'Sous-traitant' : 'Interne', companies.find((c) => c.id === p.contactId)?.company, p.phone, p.email, p.costRate, p.hourlyCost]))} />
         <button onClick={() => setEdit({ name: '', dailyRate: 0, external: false })}>+ Nouvelle personne</button>
       </PageHead>
       <div className="card">
@@ -55,7 +59,7 @@ export default function Crew() {
                     <tr key={p.id}>
                       <td><a href="#" onClick={(e) => { e.preventDefault(); setEdit(p); }}><strong>{p.name}</strong></a></td>
                       <td>{p.role}</td>
-                      <td><span className="badge">{p.external ? 'Sous-traitant' : 'Interne'}</span></td>
+                      <td><span className="badge">{p.external ? 'Sous-traitant' : 'Interne'}</span>{p.contactId && <div className="muted" style={{ fontSize: 11 }}>{companies.find((c) => c.id === p.contactId)?.company}</div>}</td>
                       <td>{p.phone}</td>
                       <td className="n">{p.costRate ? money(p.costRate) : <span className="muted">—</span>}</td>
                       <td className="n">{p.hourlyCost ? money(p.hourlyCost) : <span className="muted">—</span>}</td>
@@ -94,7 +98,15 @@ export default function Crew() {
             <Field label="Tarif client de secours / heure (€ HT)"><NumInput value={edit.hourlyRate || 0} onChange={(n) => setEdit({ ...edit, hourlyRate: n || undefined })} /></Field>
             <Field label="Email"><input type="email" value={edit.email || ''} onChange={(e) => setEdit({ ...edit, email: e.target.value })} /></Field>
             <Field label="Téléphone"><input value={edit.phone || ''} onChange={(e) => setEdit({ ...edit, phone: e.target.value })} /></Field>
-            <Field label=" " full><label className="check-row"><input type="checkbox" checked={edit.external} onChange={(e) => setEdit({ ...edit, external: e.target.checked })} /> Sous-traitant / freelance externe</label></Field>
+            <Field label=" "><label className="check-row"><input type="checkbox" checked={edit.external} onChange={(e) => setEdit({ ...edit, external: e.target.checked })} /> Sous-traitant / freelance externe</label></Field>
+            {edit.external && (
+              <Field label="Société qui facture (sinon le freelance lui-même)">
+                <select value={edit.contactId || ''} onChange={(e) => setEdit({ ...edit, contactId: e.target.value || undefined })}>
+                  <option value="">— freelance —</option>
+                  {companies.map((c) => <option key={c.id} value={c.id}>{c.company}</option>)}
+                </select>
+              </Field>
+            )}
             <Field label="Notes" full><textarea value={edit.notes || ''} onChange={(e) => setEdit({ ...edit, notes: e.target.value })} /></Field>
             <div className="form-actions">
               {edit.id && <button type="button" className="danger" style={{ marginRight: 'auto' }} onClick={async () => {

@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { DEFAULT_DOC_STYLE } from '../db';
 import { DEFAULT_HTML, fillTemplate, stripScripts } from '../docTemplate';
 import { epcPayload, qrSvg } from '../payment';
+import { docLang, REMINDER_TEXTS, tr, VAT_SHORT } from '../i18n';
 import type { Doc, DocStyle } from '../types';
 import { INVOICE_TYPES } from '../types';
 import { fmtDate, money } from '../utils';
@@ -57,7 +58,7 @@ export function buildDocHtml(doc: Doc): string {
   const depositsTTC = (s.deposits || []).reduce((a, d) => a + d.ttc, 0);
   const r = (el: ReactElement) => renderToStaticMarkup(el);
   const text = (v?: string) => (v ? `<div class="text">${fillTemplate(v, doc)}</div>` : '');
-  const intro = t?.intro || (s.reminder ? DEFAULT_REMINDER_TEXT[Math.min(3, s.reminder.level) as 1 | 2 | 3] : '');
+  const intro = t?.intro || (s.reminder ? REMINDER_TEXTS[docLang(doc)][Math.min(3, s.reminder.level) as 1 | 2 | 3] : '');
 
   const blocks: Record<string, string> = {
     'bloc.introduction': text(intro),
@@ -65,34 +66,34 @@ export function buildDocHtml(doc: Doc): string {
     'bloc.salles': r(<Rooms doc={doc} st={st} />),
     'bloc.frais': s.extras?.length && showPrices ? r(
       <section>
-        <h2>Frais supplémentaires</h2>
+        <h2>{tr(doc, 'extras')}</h2>
         <table>
-          <thead><tr><th className="n">Qté</th><th>Désignation</th><th className="n">P.U.</th><th className="n">Total HT</th></tr></thead>
+          <thead><tr><th className="n">{tr(doc, 'qty')}</th><th>{tr(doc, 'item')}</th><th className="n">{tr(doc, 'unitPrice')}</th><th className="n">{tr(doc, 'totalExcl')}</th></tr></thead>
           <tbody>{s.extras.map((x, i) => <tr key={i}><td className="n">{x.qty}</td><td>{x.label}</td><td className="n">{money(x.unitPrice)}</td><td className="n">{money(x.total)}</td></tr>)}</tbody>
         </table>
       </section>,
     ) : '',
     'bloc.lignes_simples': s.simpleLines?.length ? r(
       <table style={{ marginTop: 16 }}>
-        <thead><tr><th>Désignation</th><th className="n">Montant HT</th></tr></thead>
+        <thead><tr><th>{tr(doc, 'item')}</th><th className="n">{tr(doc, 'amountExcl')}</th></tr></thead>
         <tbody>{s.simpleLines.map((l, i) => <tr key={i}><td>{l.label}</td><td className="n">{money(l.ht)}</td></tr>)}</tbody>
       </table>,
     ) : '',
-    'bloc.options': showPrices && s.optionalTotal ? r(<p className="muted">Options proposées (non incluses dans le total) : {money(s.optionalTotal)} HT</p>) : '',
+    'bloc.options': showPrices && s.optionalTotal ? r(<p className="muted">{tr(doc, 'options')} : {money(s.optionalTotal)}</p>) : '',
     'bloc.totaux': showPrices ? r(
       <table className="totals">
         <tbody>
-          {s.discountAmount > 0 && <tr><td>Remise ({s.project.discount} %)</td><td className="n">− {money(s.discountAmount)}</td></tr>}
-          {!s.reminder && <tr><td>Total HT</td><td className="n">{money(s.totalHT)}</td></tr>}
-          {!s.reminder && <tr><td>TVA {s.vatRate} %{s.vatRegime && s.vatRegime !== 'normal' ? ` (${VAT_REGIME_SHORT[s.vatRegime]})` : ''}</td><td className="n">{money(s.vat)}</td></tr>}
-          <tr className="grand"><td>{s.reminder ? 'Montant restant dû' : 'Total TTC'}</td><td className="n">{money(s.totalTTC)}</td></tr>
-          {(s.deposits || []).map((d) => <tr key={d.number}><td>Acompte {d.number}</td><td className="n">− {money(d.ttc)}</td></tr>)}
-          {depositsTTC > 0 && <tr className="grand"><td>Reste à payer</td><td className="n">{money(s.totalTTC - depositsTTC)}</td></tr>}
+          {s.discountAmount > 0 && <tr><td>{tr(doc, 'discount')} ({s.project.discount} %)</td><td className="n">− {money(s.discountAmount)}</td></tr>}
+          {!s.reminder && <tr><td>{tr(doc, 'totalExcl')}</td><td className="n">{money(s.totalHT)}</td></tr>}
+          {!s.reminder && <tr><td>{tr(doc, 'vat')} {s.vatRate} %{s.vatRegime && s.vatRegime !== 'normal' ? ` (${VAT_SHORT[docLang(doc)][s.vatRegime]})` : ''}</td><td className="n">{money(s.vat)}</td></tr>}
+          <tr className="grand"><td>{s.reminder ? tr(doc, 'remaining') : tr(doc, 'totalIncl')}</td><td className="n">{money(s.totalTTC)}</td></tr>
+          {(s.deposits || []).map((d) => <tr key={d.number}><td>{tr(doc, 'deposit')} {d.number}</td><td className="n">− {money(d.ttc)}</td></tr>)}
+          {depositsTTC > 0 && <tr className="grand"><td>{tr(doc, 'toPay')}</td><td className="n">{money(s.totalTTC - depositsTTC)}</td></tr>}
         </tbody>
       </table>,
     ) : '',
-    'bloc.signature': doc.type === 'devis' && st.showSignature ? r(<div className="sign"><div>Bon pour accord (date, signature, cachet)</div></div>)
-      : isPacking ? r(<div className="sign"><div>Préparé par</div><div>Vérifié / retour par</div></div>) : '',
+    'bloc.signature': doc.type === 'devis' && st.showSignature ? r(<div className="sign"><div>{tr(doc, 'approval')}</div></div>)
+      : isPacking ? r(<div className="sign"><div>{tr(doc, 'preparedBy')}</div><div>{tr(doc, 'checkedBy')}</div></div>) : '',
     'bloc.paiement': paymentBlock(doc),
     'bloc.mention_tva': s.vatMention ? `<p class="mention">${esc(s.vatMention)}</p>` : '',
   };
@@ -115,6 +116,8 @@ function Rooms({ doc, st }: { doc: Doc; st: DocStyle }) {
   return (
     <>
       {(isRoadmap || isPacking) && s.project.notes && <p style={{ whiteSpace: 'pre-wrap' }}>{s.project.notes}</p>}
+      {s.partialRooms && <p><strong>{tr(doc, 'partial')} :</strong> {s.partialRooms.join(', ')}</p>}
+      {s.partialInvoices?.map((p) => <p key={p.number} className="muted">{tr(doc, 'alreadyInvoiced')} {p.number} : {p.rooms.join(', ')} ({money(p.ht)} HT)</p>)}
       {s.subprojects.map((sp, i) => {
         const eqLines = sp.equipment.filter((l) => !(showPrices && st.hideZero && !l.total && !l.unitPrice));
         const eqTotal = sp.equipment.filter((l) => !l.optional).reduce((a, l) => a + l.total, 0);
@@ -124,28 +127,28 @@ function Rooms({ doc, st }: { doc: Doc; st: DocStyle }) {
             <div className="muted">{fmtDate(sp.start)} → {fmtDate(sp.end)}{sp.venue && ` · ${sp.venue}`}</div>
             {st.showPeriods && sp.periods && sp.periods.length > 0 && (
               <>
-                <h3>Horaires</h3>
+                <h3>{tr(doc, 'schedule')}</h3>
                 <table><tbody>{sp.periods.map((p, k) => <tr key={k}><td style={{ width: '40%' }}><strong>{p.name}</strong></td><td>{fmtDate(p.start)} → {fmtDate(p.end)}</td></tr>)}</tbody></table>
               </>
             )}
             {summaryOnly && sp.equipment.length > 0 && (
-              <table><tbody><tr><td>Location de matériel ({sp.equipment.filter((l) => !l.optional).length} lignes)</td><td className="n">{money(eqTotal)}</td></tr></tbody></table>
+              <table><tbody><tr><td>{tr(doc, 'rental')} ({sp.equipment.filter((l) => !l.optional).length} {tr(doc, 'lines')})</td><td className="n">{money(eqTotal)}</td></tr></tbody></table>
             )}
             {!summaryOnly && eqLines.length > 0 && (
               <>
-                <h3>Matériel</h3>
+                <h3>{tr(doc, 'equipment')}</h3>
                 <table>
                   <thead>
                     <tr>
-                      {isPacking && <th>Sortie</th>}
-                      {isPacking && <th>Retour</th>}
-                      <th className="n">Qté</th>
-                      <th>Désignation</th>
+                      {isPacking && <th>{tr(doc, 'out')}</th>}
+                      {isPacking && <th>{tr(doc, 'back')}</th>}
+                      <th className="n">{tr(doc, 'qty')}</th>
+                      <th>{tr(doc, 'item')}</th>
                       {showPrices && <>
-                        <th className="n">P.U.</th>
-                        {st.showFactor && <th className="n">Coef.</th>}
-                        {st.showDiscount && <th className="n">Remise</th>}
-                        <th className="n">Total HT</th>
+                        <th className="n">{tr(doc, 'unitPrice')}</th>
+                        {st.showFactor && <th className="n">{tr(doc, 'factor')}</th>}
+                        {st.showDiscount && <th className="n">{tr(doc, 'discount')}</th>}
+                        <th className="n">{tr(doc, 'totalExcl')}</th>
                       </>}
                     </tr>
                   </thead>
@@ -158,10 +161,10 @@ function Rooms({ doc, st }: { doc: Doc; st: DocStyle }) {
                         {isPacking && <td><span className="check" /></td>}
                         {isPacking && <td><span className="check" /></td>}
                         <td className="n">{l.qty}</td>
-                        <td>{l.name}{st.showCode && l.code && <span className="muted"> ({l.code})</span>}{l.optional && ' — en option'}</td>
+                        <td>{l.name}{st.showCode && l.code && <span className="muted"> ({l.code})</span>}{l.optional && ` — ${tr(doc, 'option')}`}</td>
                         {showPrices && <>
                           <td className="n">{money(l.unitPrice)}</td>
-                          {st.showFactor && <td className="n">{l.unit === 'pièce' ? 'vente' : `${l.factor} (${l.days} j)`}</td>}
+                          {st.showFactor && <td className="n">{l.unit === 'pièce' ? tr(doc, 'sale') : `${l.factor} (${l.days} ${tr(doc, 'days')})`}</td>}
                           {st.showDiscount && <td className="n">{l.discount ? `${l.discount} %` : ''}</td>}
                           <td className="n">{money(l.total)}</td>
                         </>}
@@ -173,19 +176,19 @@ function Rooms({ doc, st }: { doc: Doc; st: DocStyle }) {
             )}
             {(sp.crew.length > 0 && (isRoadmap || sp.crew.some((x) => x.billable))) && (
               <>
-                <h3>Personnel</h3>
+                <h3>{tr(doc, 'crew')}</h3>
                 <table>
-                  <thead><tr><th>Fonction</th>{isRoadmap && <th>Nom</th>}{isRoadmap && <th>Tél.</th>}<th>Horaires</th>{showPrices && <><th className="n">Quantité</th><th className="n">Tarif</th><th className="n">Total HT</th></>}</tr></thead>
+                  <thead><tr><th>{tr(doc, 'function')}</th>{isRoadmap && <th>{tr(doc, 'name')}</th>}{isRoadmap && <th>{tr(doc, 'phone')}</th>}<th>{tr(doc, 'hours')}</th>{showPrices && <><th className="n">{tr(doc, 'quantity')}</th><th className="n">{tr(doc, 'rate')}</th><th className="n">{tr(doc, 'totalExcl')}</th></>}</tr></thead>
                   <tbody>
                     {sp.crew.filter((x) => isRoadmap || x.billable || !showPrices).filter((x) => !(showPrices && st.hideZero && !x.total)).map((x, j) => (
                       <tr key={j}>
                         <td>{x.function}</td>
                         {isRoadmap && <td>{x.person || '—'}</td>}
                         {isRoadmap && <td>{x.phone || ''}</td>}
-                        <td>{fmtDate(x.start)} → {fmtDate(x.end)}{!showPrices && x.departure && <div className="muted">départ {fmtDate(x.departure)} · retour {fmtDate(x.back)}</div>}</td>
+                        <td>{fmtDate(x.start)} → {fmtDate(x.end)}{!showPrices && x.departure && <div className="muted">{tr(doc, 'departure')} {fmtDate(x.departure)} · {tr(doc, 'return')} {fmtDate(x.back)}</div>}</td>
                         {showPrices && <>
-                          <td className="n">{x.unit === 'heure' ? `${x.hours} h${x.overtime ? ` (dont ${x.overtime} h sup.)` : ''}` : `${x.days} j`}</td>
-                          <td className="n">{money(x.rate)}{x.unit === 'heure' ? '/h' : '/j'}</td>
+                          <td className="n">{x.unit === 'heure' ? `${x.hours} h${x.overtime ? ` (${tr(doc, 'of')} ${x.overtime} ${tr(doc, 'overtime')})` : ''}` : `${x.days} ${tr(doc, 'days')}`}</td>
+                          <td className="n">{money(x.rate)}{x.unit === 'heure' ? '/h' : `/${tr(doc, 'days')}`}</td>
                           <td className="n">{money(x.total)}</td>
                         </>}
                       </tr>
@@ -196,9 +199,9 @@ function Rooms({ doc, st }: { doc: Doc; st: DocStyle }) {
             )}
             {(sp.vehicles.length > 0 && (!showPrices || sp.vehicles.some((v) => v.billable))) && (
               <>
-                <h3>Transport</h3>
+                <h3>{tr(doc, 'transport')}</h3>
                 <table>
-                  <thead><tr><th>Véhicule</th>{!showPrices && <th>Chauffeur</th>}<th>Période</th>{showPrices && <th className="n">Total HT</th>}</tr></thead>
+                  <thead><tr><th>{tr(doc, 'vehicle')}</th>{!showPrices && <th>{tr(doc, 'driver')}</th>}<th>{tr(doc, 'period')}</th>{showPrices && <th className="n">{tr(doc, 'totalExcl')}</th>}</tr></thead>
                   <tbody>
                     {sp.vehicles.filter((v) => !showPrices || v.billable).map((v, j) => (
                       <tr key={j}>
@@ -212,7 +215,7 @@ function Rooms({ doc, st }: { doc: Doc; st: DocStyle }) {
                 </table>
               </>
             )}
-            {showPrices && st.showSubtotals && <div className="right"><strong>Sous-total {sp.name} : {money(sp.subtotal)}</strong></div>}
+            {showPrices && st.showSubtotals && <div className="right"><strong>{tr(doc, 'subtotal')} {sp.name} : {money(sp.subtotal)}</strong></div>}
           </section>
         );
       })}
@@ -220,15 +223,10 @@ function Rooms({ doc, st }: { doc: Doc; st: DocStyle }) {
   );
 }
 
-const VAT_REGIME_SHORT = { normal: '', autoliquidation: 'autoliquidation', exonere: 'exonéré', hors_ue: 'hors UE' } as const;
 
 const esc = (v: unknown) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-export const DEFAULT_REMINDER_TEXT: Record<1 | 2 | 3, string> = {
-  1: 'Sauf erreur de notre part, la facture {{document.reference}} reste impayée à ce jour. Nous vous remercions de bien vouloir régler {{total.ttc}} avant le {{document.echeance}}.\nSi le paiement a été effectué entre-temps, merci de ne pas tenir compte de ce rappel.',
-  2: 'Malgré notre précédent rappel, la facture {{document.reference}} n\'est toujours pas réglée. Nous vous prions de verser {{total.ttc}} au plus tard le {{document.echeance}}.',
-  3: 'Mise en demeure : la facture {{document.reference}} demeure impayée malgré nos rappels. À défaut de paiement de {{total.ttc}} avant le {{document.echeance}}, nous serons contraints d\'entamer une procédure de recouvrement.',
-};
+export const DEFAULT_REMINDER_TEXT = REMINDER_TEXTS.fr;
 
 /** Bloc de paiement : IBAN, communication (structurée) et QR code de virement. */
 export function paymentBlock(doc: Doc): string {
@@ -243,8 +241,8 @@ export function paymentBlock(doc: Doc): string {
     if (amount > 0) qr = qrSvg(epcPayload({ name: s.company.name, iban: s.company.iban, bic: s.company.bic, amount, communication: comm }), 110);
   } catch { /* QR impossible : on garde le texte */ }
   return `<div class="pay">${qr}<div>
-    <div>Merci de verser <strong>${esc(money(amount))}</strong> sur le compte <strong>${esc(s.company.iban)}</strong>${s.company.bic ? ` (BIC ${esc(s.company.bic)})` : ''}</div>
-    <div>avec la communication${s.payment?.structured ? ' structurée' : ''} :</div><div class="comm">${esc(comm)}</div>
-    ${qr ? '<div class="muted" style="font-size:11px">Scannez le QR code avec votre application bancaire.</div>' : ''}
+    <div>${tr(doc, 'pay')} <strong>${esc(money(amount))}</strong> ${tr(doc, 'onAccount')} <strong>${esc(s.company.iban)}</strong>${s.company.bic ? ` (BIC ${esc(s.company.bic)})` : ''}</div>
+    <div>${tr(doc, 'withComm')}${s.payment?.structured ? ` ${tr(doc, 'structured')}` : ''} :</div><div class="comm">${esc(comm)}</div>
+    ${qr ? `<div class="muted" style="font-size:11px">${tr(doc, 'scan')}</div>` : ''}
   </div></div>`;
 }

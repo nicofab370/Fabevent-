@@ -156,7 +156,8 @@ await step('Facturation : autoliquidation (client NL), mention, Peppol AE, commu
   await tab('Finances & documents');
   await page.click('button:text-is("+ Facture")');
   await page.waitForSelector('.doc');
-  expect((await page.locator('.doc .totals').innerText()).includes('autoliquidation'), 'TVA 0 % autoliquidation');
+  expect((await page.locator('.doc .totals').innerText()).includes('verlegd'), 'TVA 0 % verlegd (document en néerlandais)');
+  expect((await page.locator('.doc h1').innerText()) === 'Factuur', 'titre en néerlandais');
   expect((await page.locator('.doc .mention').innerText()).includes('196'), 'mention légale');
   const comm = await page.locator('.doc .pay .comm').innerText();
   expect(mod97(comm), `communication structurée valide : ${comm}`);
@@ -339,6 +340,338 @@ await step('Sauvegarde puis restauration (fichiers joints compris)', async () =>
   await go('projets');
   const listed = await page.locator('table.list tbody tr').count();
   expect(listed > 0 && listed <= nbProjects, `projets restaurés (${listed}/${nbProjects})`);
+});
+await ctx.close();
+
+/* ---------- Audit des autres fonctionnalités (base de démo fraîche) ---------- */
+console.log('\n  — audit des autres fonctionnalités —');
+ctx = await newContext();
+await openDemo();
+
+await step('Import CSV : matériel (séparateur ;, virgule décimale) et contacts', async () => {
+  await go('import');
+  await page.setInputFiles('input[type=file]', { name: 'mat.csv', mimeType: 'text/csv', buffer: Buffer.from('Nom;Code;Catégorie;Quantité;Prix de location\nBarre LED test;BL1;Lumière;12;7,50\n') });
+  await page.waitForSelector('text=Correspondance');
+  await page.click('button:has-text("Importer 1 lignes")');
+  await page.waitForSelector('text=importé');
+  await page.selectOption('select', 'contacts');
+  await page.setInputFiles('input[type=file]', { name: 'c.csv', mimeType: 'text/csv', buffer: Buffer.from('Société,Email,Ville\nImport SA,a@exemple.be,Liège\n') });
+  await page.waitForSelector('text=Correspondance');
+  await page.click('button:has-text("Importer 1 lignes")');
+  await page.waitForSelector('text=importé');
+  await go('materiel');
+  expect((await page.locator('table.list tr', { hasText: 'Barre LED test' }).innerText()).includes('7,50'), 'prix importé 7,50 €');
+  await go('contacts');
+  expect(await page.locator('text=Import SA').count(), 'contact importé');
+});
+
+await step('Accessoires automatiques et quantité qui suit', async () => {
+  await openProject('Mariage Dupont-Lemaire');
+  await tab('Équipement');
+  const child = page.locator('table.list tbody tr', { hasText: 'Câble NL4 15 m' }).first();
+  expect(await child.count(), 'câble NL4 ajouté avec les enceintes');
+  const parent = page.locator('table.list tbody tr', { hasText: 'Enceinte L-Acoustics X12' }).first();
+  await parent.locator('input').first().fill('3');
+  await page.waitForTimeout(400);
+  expect((await child.locator('input').first().inputValue()) === '3', 'la quantité du câble suit (3)');
+});
+
+await step('Consommables : passés en « Terminé », ils sortent du stock', async () => {
+  await go('materiel');
+  const before = Number((await page.locator('table.list tr', { hasText: 'Gaffer noir 50 mm' }).locator('td').nth(4).innerText()).trim());
+  await openProject('Salon de l\'emploi');
+  await page.locator('.page-head select').selectOption('termine');
+  await page.waitForTimeout(600);
+  await go('materiel');
+  const after = Number((await page.locator('table.list tr', { hasText: 'Gaffer noir 50 mm' }).locator('td').nth(4).innerText()).trim());
+  expect(after === before - 2, `stock de gaffer ${before} → ${after} (−2 attendu)`);
+});
+
+await step('Indisponibilité d’un technicien signalée sur un poste', async () => {
+  await openProject('Festival des Lumières');
+  await tab('Équipe & transport');
+  expect(await page.locator('.avail.ko', { hasText: 'Indisponible' }).count(), 'Emma (congés) signalée indisponible');
+});
+
+await step('Véhicule réservé deux fois : conflit signalé', async () => {
+  await openProject('Beurs Maastricht');
+  await tab('Équipe & transport');
+  await page.locator('input[type=datetime-local]').last().fill('2030-01-01T00:00');
+  await page.waitForTimeout(300);
+  const va = page.locator('table.list').last().locator('tbody tr').first();
+  await va.locator('input[type=datetime-local]').first().fill(await page.evaluate(() => ''));
+  // on met le fourgon sur les dates du mariage, qui l'utilise déjà
+  await openProject('Mariage Dupont-Lemaire');
+  await tab('Équipe & transport');
+  const start = await page.locator('table.list').last().locator('tbody tr').first().locator('input[type=datetime-local]').first().inputValue();
+  await openProject('Beurs Maastricht');
+  await tab('Équipe & transport');
+  await page.locator('table.list').last().locator('tbody tr').first().locator('input[type=datetime-local]').first().fill(start);
+  await page.waitForTimeout(400);
+  expect(await page.locator('text=Déjà réservé ailleurs').count(), 'conflit de véhicule signalé');
+});
+
+await step('Maintenance : réparation (dispo −1) et contrôle non conforme', async () => {
+  await go('materiel');
+  await page.click('text=Caisson SB18');
+  await page.waitForTimeout(400);
+  const before = await page.locator('.tl-num').first().innerText();
+  await page.click('text=Déclarer une réparation');
+  await page.fill('.modal textarea', 'Grille abîmée');
+  await page.click('.modal button[type=submit]');
+  await page.waitForTimeout(400);
+  expect(Number(await page.locator('.tl-num').first().innerText()) === Number(before) - 1, 'une unité de moins disponible');
+  await go('maintenance');
+  expect(await page.locator('text=Grille abîmée').count(), 'réparation listée');
+  await page.locator('button:text-is("Contrôlé")').first().click();
+  await page.locator('.modal select').selectOption('ko');
+  await page.click('.modal button[type=submit]');
+  await page.waitForTimeout(400);
+  expect(await page.locator('text=Contrôle non conforme').count(), 'contrôle non conforme → réparation');
+});
+
+await step('Planning : export agenda .ics avec liens vers les projets', async () => {
+  await go('planning');
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('text=Exporter vers mon agenda')]);
+  const ics = readFileSync(await dl.path(), 'utf8');
+  expect(ics.includes('BEGIN:VEVENT') && ics.includes('#/projets/'), 'événements avec lien');
+  expect(ics.includes('Montage'), 'créneaux détaillés exportés');
+});
+
+await step('Export comptable : journal CSV et PDF groupé', async () => {
+  await go('comptabilite');
+  await page.locator('input[type=month]').first().fill('2020-01');
+  await page.locator('input[type=month]').last().fill('2030-12');
+  await page.waitForTimeout(300);
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('text=Journal des ventes (CSV)')]);
+  const csv = readFileSync(await dl.path(), 'utf8');
+  expect(csv.split('\n').length >= 3 && csv.includes(';'), 'journal CSV');
+  await page.click('text=Toutes les factures en PDF');
+  expect((await page.locator('.doc').count()) >= 2, 'factures regroupées');
+});
+
+await step('Rapports : chiffre d’affaires et valeur du parc', async () => {
+  await go('rapports');
+  const t = await page.locator('.stats').innerText();
+  expect(!t.startsWith('0,00'), 'chiffre d’affaires non nul');
+  expect(t.includes('valeur de remplacement'), 'valeur du parc');
+});
+
+await step('Projet : tâches, notes, fichiers et registre', async () => {
+  await openProject('Mariage Dupont-Lemaire');
+  await page.fill('input[placeholder^="Nouvelle tâche"]', 'Tâche e2e');
+  await page.press('input[placeholder^="Nouvelle tâche"]', 'Enter');
+  await page.fill('textarea[placeholder^="Accès"]', 'Note e2e');
+  await page.locator('textarea[placeholder^="Accès"]').blur();
+  await page.setInputFiles('input[type=file][multiple]', { name: 'plan.txt', mimeType: 'text/plain', buffer: Buffer.from('plan') });
+  await page.waitForTimeout(500);
+  await openProject('Mariage Dupont-Lemaire');
+  expect(await page.locator('text=Tâche e2e').count(), 'tâche enregistrée');
+  expect((await page.locator('textarea[placeholder^="Accès"]').inputValue()) === 'Note e2e', 'note enregistrée');
+  expect(await page.locator('text=plan.txt').count(), 'fichier joint');
+  await tab('Registre');
+  expect((await page.locator('.card').innerText()).includes('modifié'), 'modifications dans le registre');
+});
+
+await step('Distance (cartographie simulée) : transport recalculé', async () => {
+  await page.route('https://nominatim.openstreetmap.org/**', (r) => r.fulfill({ contentType: 'application/json', body: JSON.stringify([{ lat: '50.6', lon: '5.5' }]) }));
+  await page.route('https://router.project-osrm.org/**', (r) => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ code: 'Ok', routes: [{ distance: 100000, duration: 4200 }] }) }));
+  await openProject('Mariage Dupont-Lemaire');
+  const before = await page.locator('.distance').innerText();
+  await page.click('.distance button:has-text("Calculer")');
+  await page.waitForTimeout(3000);
+  const after = await page.locator('.distance').innerText();
+  expect(after.includes('1 h 10') && after !== before, `trajet calculé (${after.slice(0, 80)})`);
+  await page.unroute('https://nominatim.openstreetmap.org/**');
+  await page.unroute('https://router.project-osrm.org/**');
+});
+
+await step('Groupe d’équipement limité à un créneau : 1 jour facturé', async () => {
+  await openProject('Conférence annuelle');
+  await tab('Équipement');
+  expect((await page.locator('.eq-group-head', { hasText: 'Soirée de gala J1' }).innerText()).includes('1 j facturé'), 'groupe J1 = 1 jour');
+});
+
+await step('Documents : bon de sortie à cocher, export HTML, Peppol taux normal', async () => {
+  await openProject('Mariage Dupont-Lemaire');
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Bon de sortie")');
+  await page.waitForSelector('.doc');
+  expect(await page.locator('.doc .check').count(), 'cases sortie / retour');
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('text=Télécharger (HTML)')]);
+  expect(readFileSync(await dl.path(), 'utf8').includes('<!doctype html>'), 'export HTML autonome');
+  await openProject('Mariage Dupont-Lemaire');
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Facture")');
+  await page.waitForSelector('.doc');
+  const [x] = await Promise.all([page.waitForEvent('download'), page.click('text=Peppol (XML)')]);
+  const xml = readFileSync(await x.path(), 'utf8');
+  expect(xml.includes('<cbc:ID>S</cbc:ID>') && xml.includes('<cbc:Percent>21</cbc:Percent>'), 'catégorie S à 21 %');
+});
+
+await step('Transfert manuel définitif : le stock change de dépôt', async () => {
+  await go('transferts');
+  await page.click('text=+ Nouveau transfert');
+  const sel = page.locator('.modal select');
+  await sel.nth(0).selectOption({ label: 'Dépôt Liège' });
+  await sel.nth(1).selectOption({ label: 'Dépôt Namur' });
+  await page.locator('.modal input[type=checkbox]').uncheck();
+  const pick = sel.last();
+  await pick.selectOption(await pick.locator('option', { hasText: 'Machine à brouillard' }).getAttribute('value'));
+  await page.click('.modal button:has-text("+ Ajouter")');
+  await page.locator('.modal table input').fill('2');
+  await page.click('.modal button[type=submit]');
+  await page.waitForTimeout(400);
+  await go('materiel');
+  await page.locator('.toolbar select').nth(1).selectOption({ label: 'Dépôt Namur' });
+  await page.waitForTimeout(300);
+  const dispo = await page.locator('table.list tr', { hasText: 'Machine à brouillard' }).locator('td').nth(5).innerText();
+  expect(Number(dispo) === 2, `Namur reçoit 2 machines (dispo ${dispo})`);
+});
+
+await step('Bases séparées : une nouvelle base est vide', async () => {
+  await go('parametres');
+  await page.fill('input[placeholder="Nom de la nouvelle base"]', 'essai');
+  await page.click('text=Créer et ouvrir');
+  await page.waitForTimeout(1000);
+  expect((await page.locator('.ws').innerText()).includes('essai'), 'base « essai » active');
+  await go('projets');
+  expect((await page.locator('table.list tbody tr').count()) === 0, 'aucun projet');
+  await go('parametres');
+  await page.locator('.card', { hasText: 'Bases de données' }).locator('button:text-is("demo")').click();
+  await page.waitForTimeout(1000);
+});
+
+await step('Entrepôt : scan d’un code-barres en sortie', async () => {
+  await openProject('Mariage Dupont-Lemaire');
+  await page.click('.sub-head button:has-text("Préparer")').catch(() => {});
+  await tab('Équipement');
+  await page.locator('button:has-text("Préparer / scanner")').first().click();
+  await page.waitForSelector('.scan-input');
+  await page.fill('.scan-input', 'DEMO-SUB');
+  await page.press('.scan-input', 'Enter');
+  expect((await page.locator('.flash').innerText()).startsWith('Sortie'), 'sortie enregistrée au scan');
+});
+
+await step('Hors ligne : l’application se recharge sans réseau', async () => {
+  await go('');
+  await page.waitForTimeout(1500);
+  await page.reload();
+  await page.waitForTimeout(1000);
+  await ctx.setOffline(true);
+  await page.reload();
+  await page.waitForSelector('h1', { timeout: 10000 });
+  expect((await page.locator('h1').first().innerText()).length > 0, 'page affichée hors ligne');
+  await ctx.setOffline(false);
+});
+await ctx.close();
+
+/* ---------- Compléments Rentman (lot 2) ---------- */
+console.log('\n  — compléments Rentman —');
+ctx = await newContext();
+await openDemo();
+
+await step('Société de sous-traitance : bon de commande RH et coûts par fournisseur', async () => {
+  await openProject('Festival des Lumières');
+  await tab('Sous-locations & commandes');
+  const row = page.locator('table.list tr', { hasText: 'Rigging Services (démo)' });
+  expect(await row.count(), 'bon de commande regroupé pour Rigging Services');
+  expect((await row.innerText()).includes('Karim'), 'postes de Karim regroupés sous sa société');
+  const [popup] = await Promise.all([page.waitForEvent('popup'), row.locator('button:has-text("Bon de commande")').click()]);
+  await popup.waitForLoadState();
+  expect((await popup.locator('.doc').innerText()).includes('Total HT'), 'bon de commande imprimable');
+  await popup.close();
+  await tab('Finances & documents');
+  expect((await page.locator('.card', { hasText: 'Coûts par fournisseur' }).innerText()).includes('Rigging Services'), 'coûts par fournisseur');
+});
+
+await step('Planification provisoire : « à confirmer » sur la feuille de route, puis finale', async () => {
+  await openProject('Festival des Lumières');
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Feuille de route")');
+  await page.waitForSelector('.doc');
+  expect((await page.locator('.doc').innerText()).includes('à confirmer'), 'poste provisoire masqué au technicien');
+  await openProject('Festival des Lumières');
+  await tab('Équipe & transport');
+  const stat = () => page.locator('.stat', { hasText: 'postes provisoires' }).locator('b').innerText();
+  expect(Number(await stat()) > 0, 'postes provisoires comptés');
+  await page.click('text=Rendre toute la planification finale');
+  await page.waitForTimeout(500);
+  expect(Number(await stat()) === 0, 'plus aucun poste provisoire');
+});
+
+await step('Facture d’une salle, puis facture finale qui l’exclut', async () => {
+  await openProject('Conférence annuelle');
+  await tab('Finances & documents');
+  await page.click('text=+ Facture d\'une salle');
+  await page.locator('.modal label', { hasText: 'Salle atelier 1' }).locator('input').check();
+  await page.click('.modal button[type=submit]');
+  await page.waitForSelector('.doc');
+  const partial = await page.locator('.doc').innerText();
+  expect(partial.includes('Facture partielle') && partial.includes('Salle atelier 1') && !partial.includes('Salle plénière'), 'facture partielle limitée à la salle');
+  await openProject('Conférence annuelle');
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Facture")');
+  await page.waitForSelector('.doc');
+  const fin = await page.locator('.doc').innerText();
+  expect(fin.includes('Déjà facturé séparément') && fin.includes('Salle plénière'), 'facture finale avec la mention');
+  expect((await page.locator('.doc h2', { hasText: 'Salle atelier 1' }).count()) === 0, 'salle déjà facturée exclue');
+});
+
+await step('Champs personnalisés : saisie et variable dans le devis', async () => {
+  await openProject('Festival des Lumières');
+  expect(await page.locator('.field', { hasText: 'Repas fourni' }).locator('input').isChecked(), 'champ « Repas fourni » coché');
+  await go('modeles');
+  await page.locator('.field', { hasText: "Texte d'introduction" }).locator('textarea').fill('Repas : {{champ.repas_fourni}} — accès : {{champ.acces_livraison}}');
+  await page.click('button:text-is("Enregistrer")');
+  await page.waitForTimeout(300);
+  await openProject('Festival des Lumières');
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Devis")');
+  await page.waitForSelector('.doc .text');
+  expect((await page.locator('.doc .text').innerText()).includes('Repas : Oui — accès : Entrée nord, quai 2'), 'variables remplies');
+});
+
+await step('Étiquettes : filtres sur les projets et le matériel', async () => {
+  await go('projets');
+  await page.locator('.toolbar select').last().selectOption('Festival');
+  await page.waitForTimeout(200);
+  expect((await page.locator('table.list tbody tr').count()) === 1, 'un projet étiqueté Festival');
+  await go('materiel');
+  await page.locator('.toolbar select').filter({ hasText: 'Toutes étiquettes' }).selectOption('Line array');
+  await page.waitForTimeout(200);
+  expect((await page.locator('table.list tbody tr').count()) === 2, 'deux articles Line array');
+});
+
+await step('Rendez-vous : affiché au planning et rend le participant indisponible', async () => {
+  const conf = await (async () => { await openProject('Conférence annuelle'); await tab('Planning'); return page.locator('.card').first().locator('table.list tbody tr').nth(1).locator('td').nth(2).innerText(); })();
+  const [dd, mm, yy] = conf.slice(0, 10).split('/');
+  await go('planning');
+  await page.click('text=+ Rendez-vous');
+  await page.fill('.modal input >> nth=0', 'Réunion e2e');
+  await page.locator('.modal input[type=datetime-local]').first().fill(`${yy}-${mm}-${dd}T06:00`);
+  await page.locator('.modal input[type=datetime-local]').last().fill(`${yy}-${mm}-${dd}T23:00`);
+  await page.locator('.modal label', { hasText: 'Hugo Laurent' }).locator('input').check();
+  await page.click('.modal button[type=submit]');
+  await page.waitForTimeout(300);
+  await openProject('Conférence annuelle');
+  await tab('Équipe & transport');
+  expect(await page.locator('.avail.ko', { hasText: 'Indisponible' }).count(), 'Hugo indisponible pendant le rendez-vous');
+});
+
+await step('Export CSV et modification groupée des prix', async () => {
+  await go('materiel');
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('text=Exporter (CSV)')]);
+  expect(readFileSync(await dl.path(), 'utf8').includes('Désignation;Référence'), 'export CSV du matériel');
+  const price = async (name) => (await page.locator('table.list tr', { hasText: name }).locator('td').last().innerText()).trim();
+  const before = await price('Micro Shure SM58');
+  await page.locator('table.list tr', { hasText: 'Micro Shure SM58' }).locator('input[type=checkbox]').check();
+  await page.locator('table.list tr', { hasText: 'Boîte de direct DI passive' }).locator('input[type=checkbox]').check();
+  await page.click('text=Modifier en groupe…');
+  await page.locator('.modal .field', { hasText: 'Variation des prix' }).locator('input').fill('20');
+  await page.click('.modal button[type=submit]');
+  await page.waitForTimeout(1200);
+  expect(before.startsWith('5,00') && (await price('Micro Shure SM58')).startsWith('6,00'), `prix 5 € → 6 € (+20 %) (${before} → ${await price('Micro Shure SM58')})`);
 });
 await ctx.close();
 

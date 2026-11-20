@@ -9,6 +9,14 @@ export function uid(): string {
 }
 export const nowIso = () => new Date().toISOString();
 
+/**
+ * Modifie seulement les champs donnés d'un enregistrement (sans réécrire le reste) :
+ * évite d'écraser une modification faite juste avant par un autre champ de l'écran.
+ */
+export async function patch<T extends Base>(table: Table<T, string>, id: string, changes: Partial<T>): Promise<void> {
+  await (table as unknown as Table<Base, string>).update(id, { ...changes, updatedAt: nowIso() } as Partial<Base>);
+}
+
 /** Crée ou met à jour un enregistrement (id + horodatage). */
 export async function save<T extends Base>(table: Table<T, string>, data: Omit<T, keyof Base> & Partial<Base>): Promise<T> {
   const rec = { ...data, id: data.id || uid(), createdAt: data.createdAt || nowIso(), updatedAt: nowIso() } as T;

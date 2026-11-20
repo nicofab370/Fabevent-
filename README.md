@@ -76,6 +76,14 @@ archivage, photos, inventaire par scan avec mise à jour du stock, valeur du par
 **Sous-traitants et marge** : le client paie la fonction (catalogue de tarifs dans Paramètres), quel que soit le prestataire ;
 chaque technicien ou sous-traitant a son propre coût, qui ne joue que sur la marge (affichée poste par poste, candidats triés par coût).
 
+**Sociétés de sous-traitance** : chaque technicien externe peut être rattaché à sa société ; bons de commande RH regroupés
+par fournisseur (impression, email), coûts par fournisseur dans les finances. Planification **provisoire ou finale** des postes
+(seuls les postes finals sont envoyés aux techniciens).
+
+**Documents en français, néerlandais ou anglais** selon le client ou le projet. **Facture d'une salle** (facture partielle),
+la facture finale excluant les salles déjà facturées. **Champs personnalisés** (projets, contacts, matériel) utilisables dans les documents,
+**étiquettes** et filtres, **rendez-vous** hors projet dans le planning, **export CSV** de toutes les listes, **modification groupée** du matériel.
+
 **Équipe** : postes à la journée ou à l'heure avec heures supplémentaires majorées, temps de trajet dans les horaires
 communiqués, documents du personnel avec date d'expiration.
 

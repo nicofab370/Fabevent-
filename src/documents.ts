@@ -1,5 +1,6 @@
 import { db, DEFAULT_DOC_STYLE, getSettings, nextNumber } from './db';
-import type { Doc, DocSnapshot, DocType, Settings, SnapshotSub, VatRegime } from './types';
+import type { Doc, DocSnapshot, DocType, Lang, Settings, SnapshotSub, VatRegime } from './types';
+import { VAT_MENTIONS_I18N } from './i18n';
 import { DEFAULT_VAT_MENTIONS, structuredCommunication } from './payment';
 import { INVOICE_TYPES } from './types';
 import { crewAmount, crewWindow, daysBetween, factorFor, lineDays, lineTotal, round2, save, sortPeriods } from './utils';
@@ -9,9 +10,15 @@ const PREFIX: Record<DocType, 'D' | 'F' | 'AV' | 'BS' | 'FR' | 'RP'> = {
 };
 
 /** Taux et mention selon le régime de TVA du projet (ou, à défaut, du client). */
-function vatFor(regime: VatRegime, s: Settings): { rate: number; mention?: string } {
+function vatFor(regime: VatRegime, s: Settings, lang: Lang = 'fr'): { rate: number; mention?: string } {
   if (regime === 'normal') return { rate: s.vatRate };
+  if (lang !== 'fr') return { rate: 0, mention: VAT_MENTIONS_I18N[lang][regime] };
   return { rate: 0, mention: s.vatMentions?.[regime] || DEFAULT_VAT_MENTIONS[regime] };
+}
+
+/** Clé de variable d'un champ personnalisé : « Repas fourni » → repas_fourni */
+export function fieldKey(label: string): string {
+  return label.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 }
 
 export interface DocOptions {
@@ -21,11 +28,13 @@ export interface DocOptions {
   amountHT?: number;
   /** avoir : facture d'origine */
   invoiceId?: string;
+  /** facture partielle : uniquement ces salles */
+  subIds?: string[];
   note?: string;
 }
 
 /** Construit une photo figée du projet à l'instant T. */
-export async function buildSnapshot(projectId: string, type: DocType): Promise<DocSnapshot> {
+export async function buildSnapshot(projectId: string, type: DocType, only?: { include?: string[]; exclude?: string[] }): Promise<DocSnapshot> {
   const s = await getSettings();
   const project = await db.projects.get(projectId);
   if (!project) throw new Error('Projet introuvable');
@@ -46,7 +55,7 @@ export async function buildSnapshot(projectId: string, type: DocType): Promise<D
   const isPacking = type === 'bon_sortie' || type === 'feuille_route';
 
   const snapSubs: SnapshotSub[] = subs
-    .filter((sp) => sp.status !== 'annule')
+    .filter((sp) => sp.status !== 'annule' && (!only?.include || only.include.includes(sp.id)) && !only?.exclude?.includes(sp.id))
     .map((sp) => {
       const groupName = new Map((sp.groups || []).map((g) => [g.id, g.name]));
       const eq = lines
@@ -78,7 +87,7 @@ export async function buildSnapshot(projectId: string, type: DocType): Promise<D
           const [dep, back] = crewWindow(c, project.travelMinutes);
           const p = c.personId ? pMap.get(c.personId) : undefined;
           return {
-            function: c.function, person: p?.name, phone: p?.phone, start: c.start, end: c.end, days: a.unit === 'jour' ? a.qty : 0, rate: c.rate, total: a.billed,
+            function: c.function, person: c.final === false ? (p ? 'à confirmer' : undefined) : p?.name, phone: c.final === false ? undefined : p?.phone, start: c.start, end: c.end, days: a.unit === 'jour' ? a.qty : 0, rate: c.rate, total: a.billed,
             billable: c.billable, unit: a.unit, hours: a.unit === 'heure' ? a.hours : undefined, overtime: a.overtime || undefined,
             departure: dep !== c.start ? dep : undefined, back: back !== c.end ? back : undefined,
           };
@@ -101,12 +110,18 @@ export async function buildSnapshot(projectId: string, type: DocType): Promise<D
     });
 
   const costs = await db.costs.where({ projectId }).toArray();
-  const extras = costs.filter((c) => c.billable && c.price).map((c) => ({ label: c.label, qty: c.qty || 1, unitPrice: c.price!, total: round2((c.qty || 1) * c.price!) }));
+  // les frais supplémentaires vont sur la facture finale, pas sur une facture partielle par salle
+  const extras = only?.include ? [] : costs.filter((c) => c.billable && c.price).map((c) => ({ label: c.label, qty: c.qty || 1, unitPrice: c.price!, total: round2((c.qty || 1) * c.price!) }));
   const gross = round2(snapSubs.reduce((a, sp) => a + sp.subtotal, 0) + extras.reduce((a, x) => a + x.total, 0));
   const discountAmount = round2(gross * (project.discount || 0) / 100);
   const totalHT = round2(gross - discountAmount);
   const regime: VatRegime = project.vatRegime || client?.vatRegime || 'normal';
-  const { rate: vatRate, mention: vatMention } = vatFor(regime, s);
+  const lang: Lang = project.language || client?.language || 'fr';
+  const { rate: vatRate, mention: vatMention } = vatFor(regime, s, lang);
+  const customFields = (s.customFields || []).filter((f) => f.entity === 'projet' || f.entity === 'contact').map((f) => {
+    const v = f.entity === 'projet' ? project.custom?.[f.id] : client?.custom?.[f.id];
+    return { key: fieldKey(f.label), label: f.label, value: v === undefined || v === '' ? '' : f.type === 'oui_non' ? (v ? 'Oui' : 'Non') : f.type === 'date' ? new Date(String(v)).toLocaleDateString('fr-FR') : String(v) };
+  });
   const vat = round2(totalHT * vatRate / 100);
   const issued = new Date();
   const optionalTotal = round2(snapSubs.reduce((a, sp) => a + sp.equipment.filter((l) => l.optional).reduce((b, l) => b + l.total, 0), 0));
@@ -116,7 +131,7 @@ export async function buildSnapshot(projectId: string, type: DocType): Promise<D
     project: { number: project.number, name: project.name, venue: project.venue, start: project.start, end: project.end, notes: project.notes, discount: project.discount, externalRef: project.externalRef },
     subprojects: snapSubs,
     extras: isPacking || !extras.length ? undefined : extras,
-    totalHT, discountAmount, vatRate, vat, totalTTC: round2(totalHT + vat), vatRegime: regime, vatMention,
+    totalHT, discountAmount, vatRate, vat, totalTTC: round2(totalHT + vat), vatRegime: regime, vatMention, lang, customFields,
     issuedAt: issued.toISOString(),
     validUntil: isQuote ? new Date(issued.getTime() + s.quoteValidityDays * 86400000).toISOString() : undefined,
     dueDate: INVOICE_TYPES.includes(type) ? new Date(issued.getTime() + s.paymentDays * 86400000).toISOString() : undefined,
@@ -140,7 +155,20 @@ function simple(base: DocSnapshot, label: string, ht: number): DocSnapshot {
  */
 export async function createDocument(projectId: string, type: DocType, opts: DocOptions = {}): Promise<Doc> {
   const projectDocs = await db.docs.where({ projectId }).toArray();
-  let snapshot = await buildSnapshot(projectId, type);
+  // salles déjà facturées séparément (facture partielle non annulée par un avoir total)
+  const fullyCredited = new Set(projectDocs.filter((d) => d.type === 'avoir').map((d) => {
+    const inv = projectDocs.find((x) => x.number === d.snapshot.refNumber);
+    return inv && Math.abs(d.snapshot.totalHT) >= Math.abs(inv.snapshot.totalHT) - 0.01 ? inv.number : '';
+  }));
+  const partials = projectDocs.filter((d) => d.type === 'facture' && d.subprojectIds?.length && !fullyCredited.has(d.number));
+  const alreadyInvoiced = partials.flatMap((d) => d.subprojectIds || []);
+  const only = type !== 'facture' ? undefined : opts.subIds?.length ? { include: opts.subIds.filter((x) => !alreadyInvoiced.includes(x)) } : alreadyInvoiced.length ? { exclude: alreadyInvoiced } : undefined;
+  if (only?.include && !only.include.length) throw new Error('Ces salles sont déjà facturées.');
+  let snapshot = await buildSnapshot(projectId, type, only);
+  if (type === 'facture' && partials.length && !opts.subIds?.length) {
+    snapshot = { ...snapshot, partialInvoices: partials.map((d) => ({ number: d.number, rooms: d.snapshot.subprojects.map((x) => x.name), ht: d.snapshot.totalHT })) };
+  }
+  if (type === 'facture' && opts.subIds?.length) snapshot = { ...snapshot, partialRooms: snapshot.subprojects.map((x) => x.name) };
 
   if (type === 'facture') {
     // On déduit les acomptes déjà facturés (hors acomptes annulés par un avoir)
@@ -201,5 +229,8 @@ export async function createDocument(projectId: string, type: DocType, opts: Doc
     snapshot = { ...snapshot, payment: st.structuredComm !== false ? { communication: structuredCommunication(number), structured: true } : { communication: number, structured: false } };
   }
   const project = await db.projects.get(projectId);
-  return save(db.docs, { projectId, type, number, version, status: 'brouillon', note: opts.note, contactPerson: project?.contactPerson, snapshot });
+  return save(db.docs, {
+    projectId, type, number, version, status: 'brouillon', note: opts.note, contactPerson: project?.contactPerson, snapshot,
+    subprojectIds: type === 'facture' && only?.include ? only.include : undefined,
+  });
 }
