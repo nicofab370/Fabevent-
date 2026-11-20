@@ -267,6 +267,13 @@ export interface EquipmentLine extends Base {
   inSerials?: string[];
 }
 
+/** Fonction facturée au client (le coût, lui, dépend de la personne affectée). */
+export interface CrewFunction {
+  name: string;
+  dayRate: number;
+  hourRate?: number;
+}
+
 export interface Person extends Base {
   name: string;
   role?: string;
@@ -297,7 +304,7 @@ export interface CrewAssignment extends Base {
   start: string;
   end: string;
   rate: number;
-  /** coût / jour pour toi */
+  /** coût saisi à la main pour ce poste ; sinon celui de la personne affectée */
   cost?: number;
   billable: boolean;
   notes?: string;
@@ -583,6 +590,8 @@ export interface Settings {
   appUrl: string;
   counters: Record<string, number>;
   projectTypes?: { name: string; color: string }[];
+  /** catalogue des fonctions : tarif facturé au client, quel que soit le prestataire */
+  crewFunctions?: CrewFunction[];
   depots?: Depot[];
   templates?: DocTemplates;
 }

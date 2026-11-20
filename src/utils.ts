@@ -489,3 +489,22 @@ export function crewWindow(c: { start: string; end: string; travel?: boolean }, 
   if (!c.travel || !travelMinutes) return [c.start, c.end];
   return [toLocalInput(new Date(new Date(c.start).getTime() - travelMinutes * 60000)), toLocalInput(new Date(new Date(c.end).getTime() + travelMinutes * 60000))];
 }
+
+/** Coût d'un poste : saisi à la main, sinon celui de la personne affectée selon l'unité. */
+export function crewCostRate(
+  c: { cost?: number; rateUnit?: 'jour' | 'heure' },
+  person?: { costRate?: number; hourlyCost?: number },
+): number {
+  if (c.cost != null) return c.cost;
+  return (c.rateUnit === 'heure' ? person?.hourlyCost : person?.costRate) ?? 0;
+}
+
+/** Tarif client d'une fonction du catalogue (sinon le tarif par défaut de la personne). */
+export function functionRate(
+  fn: string, unit: 'jour' | 'heure' | undefined, catalogue: { name: string; dayRate: number; hourRate?: number }[] = [],
+  person?: { dailyRate?: number; hourlyRate?: number },
+): number | undefined {
+  const f = catalogue.find((x) => x.name.trim().toLowerCase() === fn.trim().toLowerCase());
+  if (f) return unit === 'heure' ? f.hourRate : f.dayRate;
+  return unit === 'heure' ? person?.hourlyRate : person?.dailyRate;
+}

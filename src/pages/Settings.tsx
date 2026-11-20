@@ -117,6 +117,24 @@ export default function SettingsPage() {
           setS({ ...s, depots: [...list, { id: uid(), name: `Dépôt ${list.length + 1}` }] });
         }}>+ Dépôt</button>
 
+        <h2 style={{ marginTop: 20 }}>Fonctions et tarifs clients</h2>
+        <p className="muted" style={{ marginTop: 0 }}>
+          Le client paie la fonction (ex. Régisseur son 380 €/jour), quel que soit le technicien ou sous-traitant envoyé.
+          Le coût, lui, dépend de la personne affectée (fiche dans Équipe) et ne joue que sur ta marge.
+        </p>
+        {(s.crewFunctions || []).map((f, i, all) => {
+          const upd = (patch: Partial<typeof f>) => setS({ ...s, crewFunctions: all.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
+          return (
+            <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6, alignItems: 'center', maxWidth: 640, flexWrap: 'wrap' }}>
+              <input value={f.name} onChange={(e) => upd({ name: e.target.value })} placeholder="Fonction" style={{ flex: 2, minWidth: 160 }} />
+              <label className="check-row">€/jour <input type="number" step="any" value={f.dayRate} onChange={(e) => upd({ dayRate: parseFloat(e.target.value) || 0 })} style={{ width: 90 }} /></label>
+              <label className="check-row">€/heure <input type="number" step="any" value={f.hourRate ?? ''} onChange={(e) => upd({ hourRate: e.target.value === '' ? undefined : parseFloat(e.target.value) })} style={{ width: 90 }} /></label>
+              <button type="button" className="ghost" onClick={() => setS({ ...s, crewFunctions: all.filter((_, j) => j !== i) })} aria-label="Retirer">✕</button>
+            </div>
+          );
+        })}
+        <button type="button" className="secondary small" onClick={() => setS({ ...s, crewFunctions: [...(s.crewFunctions || []), { name: '', dayRate: 0 }] })}>+ Fonction</button>
+
         <h2 style={{ marginTop: 20 }}>Types de projet</h2>
         <p className="muted" style={{ marginTop: 0 }}>Chaque type a une couleur, reprise dans la liste des projets.</p>
         {(s.projectTypes?.length ? s.projectTypes : DEFAULT_PROJECT_TYPES).map((t, i, all) => (

@@ -54,6 +54,14 @@ async function seedAll() {
     },
     vatRate: 21,
     pricePerKm: 1.1,
+    crewFunctions: [
+      { name: 'Technicien', dayRate: 280, hourRate: 35 },
+      { name: 'Régisseur son', dayRate: 380, hourRate: 45 },
+      { name: 'Éclairagiste', dayRate: 360, hourRate: 42 },
+      { name: 'Technicienne vidéo', dayRate: 340 },
+      { name: 'Rigger', dayRate: 420 },
+      { name: 'Roadie', dayRate: 220 },
+    ],
     defaultTrips: 2,
     projectTypes: DEFAULT_PROJECT_TYPES,
     depots: [
@@ -167,12 +175,17 @@ async function seedAll() {
     return p.id;
   };
   const pLucas = await person('Lucas Dubois (démo)', 'Régisseur son', 380, 0);
-  await db.people.update(pLucas, { hourlyRate: 45, hourlyCost: 0 });
   const pEmma = await person('Emma Petit (démo)', 'Éclairagiste', 360, 0);
   const pHugo = await person('Hugo Laurent (démo)', 'Technicien polyvalent', 280, 0);
   const pLea = await person('Léa Moreau (démo)', 'Technicienne vidéo', 340, 230, true);
   const pKarim = await person('Karim Haddad (démo)', 'Rigger', 420, 300, true);
   const pTom = await person('Tom Simon (démo)', 'Roadie / chauffeur', 220, 160, true);
+  // coûts : salariés (coût employeur) et sous-traitants aux prix différents pour une même fonction
+  await db.people.update(pLucas, { costRate: 240, hourlyRate: 45, hourlyCost: 30 });
+  await db.people.update(pEmma, { costRate: 230 });
+  await db.people.update(pHugo, { costRate: 180 });
+  await person('Nina Lefèvre (démo)', 'Régisseuse son', 380, 320, true);
+  await person('Sam Moreau (démo)', 'Rigger', 420, 260, true);
   await db.unavailability.put({ ...base(), personId: pEmma, start: at(12, 0), end: at(16, 23, 59), reason: 'Congés' });
 
   const vehicle = async (name: string, plate: string, payload: number, dailyPrice: number, pricePerKm?: number) => {
