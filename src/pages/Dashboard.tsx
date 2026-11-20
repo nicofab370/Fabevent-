@@ -1,7 +1,8 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Link, useNavigate } from 'react-router-dom';
 import { Empty, PageHead, StatusBadge } from '../components/ui';
-import { db } from '../db';
+import { currentWorkspace, db, switchWorkspace } from '../db';
+import { DEMO_WORKSPACE } from '../demo';
 import { DOC_LABELS, DOC_STATUS_LABELS, INVOICE_TYPES } from '../types';
 import { useAvailability } from '../data';
 import { fmtDate, fmtRange, inspectionsDue, money, toLocalInput } from '../utils';
@@ -100,6 +101,16 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+      {projects.length === 0 && currentWorkspace() !== DEMO_WORKSPACE && (
+        <div className="card" style={{ borderColor: '#7c3aed' }}>
+          <h2>Envie de tester d'abord ?</h2>
+          <p className="muted" style={{ marginTop: 0 }}>
+            Ouvre la base de démonstration : clients, matériel, équipe et projets fictifs, rangés à part de tes vraies données.
+            Tu pourras revenir ici à tout moment depuis Paramètres.
+          </p>
+          <button onClick={() => switchWorkspace(DEMO_WORKSPACE)}>Essayer avec des données de démo</button>
+        </div>
+      )}
       {projects.length === 0 && (
         <div className="info">
           Pour démarrer : renseigne ta société dans <Link to="/parametres">Paramètres</Link>, importe ton catalogue et tes contacts
