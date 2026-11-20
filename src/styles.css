@@ -170,3 +170,15 @@ tr.missing td { background: color-mix(in srgb, var(--danger) 10%, transparent); 
 @media (max-width: 800px) { .period-row { grid-template-columns: 1fr 1fr; } }
 .cal .ev.k-montage, .cal .ev.k-prestation, .cal .ev.k-demontage { border-left: 3px solid; }
 .cal .ev.k-montage { border-left-color: #6366f1; } .cal .ev.k-prestation { border-left-color: #16a34a; } .cal .ev.k-demontage { border-left-color: #dc2626; }
+.eq-group { margin-bottom: 14px; }
+.eq-group-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 6px 0; border-bottom: 2px solid var(--border); margin-bottom: 4px; }
+.progress-steps { display: flex; flex-wrap: wrap; gap: 8px; }
+.step { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 10px; border-radius: 99px; background: var(--soft); color: var(--muted); }
+.step.done { background: #dcfce7; color: #166534; } .step.warn { background: #fef3c7; color: #92400e; }
+.color-dot { display: inline-block; width: 12px; height: 12px; border-radius: 99px; vertical-align: middle; margin-right: 6px; }
+.task { display: flex; gap: 8px; align-items: center; padding: 4px 0; }
+.task.done span { text-decoration: line-through; color: var(--muted); }
+.kv { display: grid; grid-template-columns: 140px 1fr; gap: 4px 12px; font-size: 13px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; }
+@media (max-width: 800px) { .project-tabs { flex-wrap: nowrap; overflow-x: auto; } .project-tabs button { white-space: nowrap; } }

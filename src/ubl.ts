@@ -70,6 +70,7 @@ function collectLines(doc: Doc, sign: number): Line[] {
     for (const c of sp.crew) if (c.billable) out.push({ name: `${c.function} (${c.days} j) — ${sp.name}`, qty: c.days, total: c.total });
     for (const v of sp.vehicles) if (v.billable) out.push({ name: `Transport ${v.name} — ${sp.name}`, qty: 1, total: v.price });
   }
+  for (const x of s.extras || []) out.push({ name: x.label, qty: x.qty, total: x.total });
   return out.filter((l) => l.total !== 0 || l.qty !== 0);
 }
 

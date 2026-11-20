@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Field, PageHead, useSettings } from '../components/ui';
-import { currentWorkspace, db, listWorkspaces, switchWorkspace, TABLES } from '../db';
+import { currentWorkspace, db, DEFAULT_PROJECT_TYPES, listWorkspaces, switchWorkspace, TABLES } from '../db';
 import { DEMO_WORKSPACE, seedDemo } from '../demo';
 import type { Settings } from '../types';
 import { download } from '../utils';
@@ -86,6 +86,17 @@ export default function SettingsPage() {
           </Field>
           {s.company.logo && <div className="field"><img src={s.company.logo} alt="Logo" style={{ maxHeight: 50, maxWidth: 160 }} /><button type="button" className="ghost small" onClick={() => setCo('logo', '')}>Retirer le logo</button></div>}
         </div>
+
+        <h2 style={{ marginTop: 20 }}>Types de projet</h2>
+        <p className="muted" style={{ marginTop: 0 }}>Chaque type a une couleur, reprise dans la liste des projets.</p>
+        {(s.projectTypes?.length ? s.projectTypes : DEFAULT_PROJECT_TYPES).map((t, i, all) => (
+          <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6, maxWidth: 420 }}>
+            <input type="color" value={t.color} style={{ width: 48, padding: 2 }} onChange={(e) => setS({ ...s, projectTypes: all.map((x, j) => (j === i ? { ...x, color: e.target.value } : x)) })} />
+            <input value={t.name} onChange={(e) => setS({ ...s, projectTypes: all.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} />
+            <button type="button" className="ghost" onClick={() => setS({ ...s, projectTypes: all.filter((_, j) => j !== i) })} aria-label="Retirer">✕</button>
+          </div>
+        ))}
+        <button type="button" className="secondary small" onClick={() => setS({ ...s, projectTypes: [...(s.projectTypes?.length ? s.projectTypes : DEFAULT_PROJECT_TYPES), { name: 'Nouveau type', color: '#64748b' }] })}>+ Type</button>
 
         <h2 style={{ marginTop: 20 }}>Tarification</h2>
         <div className="form">

@@ -109,7 +109,7 @@ export function buildReservations(lines: EquipmentLine[], subs: Subproject[], eq
     if (eq.isKit && eq.kitItems.length) {
       for (const k of eq.kitItems) push(k.equipmentId, k.qty * qty, l, sp, depth + 1);
     } else {
-      const [start, end] = blockPeriod(sp);
+      const [start, end] = lineBlock(l, sp);
       // un consommable vendu ne revient pas
       const sold = eq.kind === 'vente';
       if (sold && l.consumed) return;
@@ -267,7 +267,9 @@ export function buildIcs(name: string, events: IcsEvent[]): string {
 /* ---------- Suppression en cascade ---------- */
 
 export async function deleteProject(projectId: string) {
-  await db.transaction('rw', [db.projects, db.subprojects, db.lines, db.crew, db.vehicleAssignments, db.docs, db.subrentals, db.costs], async () => {
+  await db.transaction('rw', [db.projects, db.subprojects, db.lines, db.crew, db.vehicleAssignments, db.docs, db.subrentals, db.costs, db.files, db.log], async () => {
+    await db.files.where({ projectId }).delete();
+    await db.log.where({ projectId }).delete();
     await db.subrentals.where({ projectId }).delete();
     await db.costs.where({ projectId }).delete();
     await db.subprojects.where({ projectId }).delete();
@@ -362,4 +364,30 @@ export function usageDays(sp: Pick<Subproject, 'start' | 'end' | 'periods'>): nu
     }
   }
   return Math.max(1, days.size);
+}
+
+/* ---------- Groupes d'équipement liés à des créneaux ---------- */
+
+/** Créneaux couverts par le groupe de la ligne (ou null = toute la salle). */
+function groupPeriods(l: Pick<EquipmentLine, 'groupId'>, sp: Pick<Subproject, 'groups' | 'periods'>): Period[] | null {
+  if (!l.groupId) return null;
+  const g = sp.groups?.find((x) => x.id === l.groupId);
+  if (!g || !g.periodIds.length) return null;
+  const ps = (sp.periods || []).filter((p) => g.periodIds.includes(p.id));
+  return ps.length ? sortPeriods(ps) : null;
+}
+
+/** Période pendant laquelle la ligne bloque le matériel. */
+export function lineBlock(l: Pick<EquipmentLine, 'groupId'>, sp: Subproject): [string, string] {
+  const ps = groupPeriods(l, sp);
+  if (!ps) return blockPeriod(sp);
+  return [ps[0].start, ps.reduce((a, p) => (p.end > a ? p.end : a), ps[0].end)];
+}
+
+/** Jours facturés pour la ligne : jours de prestation des créneaux du groupe, sinon ceux de la salle. */
+export function lineDays(l: Pick<EquipmentLine, 'groupId'>, sp: Subproject): number {
+  const ps = groupPeriods(l, sp);
+  if (!ps) return usageDays(sp);
+  const synced = syncPeriods({ start: '', end: '', periods: ps });
+  return usageDays({ ...synced, periods: ps.some((p) => p.kind === 'prestation') ? ps : ps.map((p) => ({ ...p, kind: 'prestation' as const })) });
 }

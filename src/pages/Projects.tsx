@@ -1,8 +1,8 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Empty, Field, Modal, NumInput, PageHead, StatusBadge } from '../components/ui';
-import { db, nextNumber } from '../db';
+import { Empty, Field, Modal, NumInput, PageHead, StatusBadge, useSettings } from '../components/ui';
+import { DEFAULT_PROJECT_TYPES, db, nextNumber } from '../db';
 import type { Project, ProjectStatus } from '../types';
 import { STATUS_LABELS } from '../types';
 import { fmtRange, save, toLocalInput } from '../utils';
@@ -17,6 +17,8 @@ export function ProjectForm({ initial, onDone }: { initial?: Draft; onDone: (p?:
   end.setHours(23, 0);
   const [p, setP] = useState<Draft>(initial || { name: '', status: 'demande', start: toLocalInput(today), end: toLocalInput(end), discount: 0 });
   const [newClient, setNewClient] = useState(false);
+  const settings = useSettings();
+  const types = settings.projectTypes?.length ? settings.projectTypes : DEFAULT_PROJECT_TYPES;
   const clients = useLiveQuery(() => db.contacts.orderBy('company').toArray(), []) || [];
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setP({ ...p, [k]: v });
 
@@ -60,6 +62,12 @@ export function ProjectForm({ initial, onDone }: { initial?: Draft; onDone: (p?:
           </Field>
         ) : null;
       })()}
+      <Field label="Type de projet">
+        <select value={p.typeName || ''} onChange={(e) => setP({ ...p, typeName: e.target.value || undefined, color: types.find((t) => t.name === e.target.value)?.color })}>
+          <option value="">—</option>
+          {types.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
+        </select>
+      </Field>
       <Field label="Statut">
         <select value={p.status} onChange={(e) => set('status', e.target.value as ProjectStatus)}>
           {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
@@ -104,12 +112,13 @@ export default function Projects() {
         {filtered.length === 0 ? <Empty>Aucun projet.</Empty> : (
           <div className="table-wrap">
             <table className="list">
-              <thead><tr><th>N°</th><th>Projet</th><th>Client</th><th>Dates</th><th>Lieu</th><th>Statut</th></tr></thead>
+              <thead><tr><th>N°</th><th>Projet</th><th>Type</th><th>Client</th><th>Dates</th><th>Lieu</th><th>Statut</th></tr></thead>
               <tbody>
                 {filtered.map((p) => (
                   <tr key={p.id} className="click" onClick={() => nav('/projets/' + p.id)}>
                     <td className="muted">{p.number}</td>
-                    <td><strong>{p.name}</strong></td>
+                    <td><span className="color-dot" style={{ background: p.color || 'var(--border)' }} /><strong>{p.name}</strong></td>
+                    <td className="muted">{p.typeName}</td>
                     <td>{p.clientId && cMap.get(p.clientId)}</td>
                     <td>{fmtRange(p.start, p.end)}</td>
                     <td>{p.venue}</td>

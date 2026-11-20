@@ -1,6 +1,6 @@
 import Dexie, { type Table } from 'dexie';
 import type {
-  Category, Contact, CrewAssignment, Doc, Equipment, EquipmentLine, Inspection, Person, Project, ProjectCost, Repair,
+  Category, Contact, CrewAssignment, Doc, Equipment, EquipmentLine, Inspection, LogEntry, Person, Project, ProjectCost, ProjectFile, Repair,
   SerialUnit, Settings, Subproject, Subrental, Unavailability, Vehicle, VehicleAssignment,
 } from './types';
 
@@ -53,6 +53,8 @@ export class FabDB extends Dexie {
   subrentals!: Table<Subrental, string>;
   costs!: Table<ProjectCost, string>;
   unavailability!: Table<Unavailability, string>;
+  files!: Table<ProjectFile, string>;
+  log!: Table<LogEntry, string>;
 
   constructor(name: string) {
     super(name);
@@ -78,6 +80,10 @@ export class FabDB extends Dexie {
       costs: 'id, projectId',
       unavailability: 'id, personId',
     });
+    this.version(3).stores({
+      files: 'id, projectId',
+      log: 'id, projectId, at',
+    });
   }
 }
 
@@ -85,8 +91,15 @@ export const db = new FabDB('fabevent_' + currentWorkspace());
 
 export const TABLES = [
   'contacts', 'categories', 'equipment', 'projects', 'subprojects', 'lines', 'people', 'crew', 'vehicles',
-  'vehicleAssignments', 'docs', 'settings', 'units', 'repairs', 'inspections', 'subrentals', 'costs', 'unavailability',
+  'vehicleAssignments', 'docs', 'settings', 'units', 'repairs', 'inspections', 'subrentals', 'costs', 'unavailability', 'files', 'log',
 ] as const;
+
+export const DEFAULT_PROJECT_TYPES = [
+  { name: 'Prestation', color: '#2563eb' },
+  { name: 'Location sèche', color: '#16a34a' },
+  { name: 'Vente', color: '#9333ea' },
+  { name: 'Tournée', color: '#ea580c' },
+];
 
 export const defaultSettings: Settings = {
   id: 'main',
@@ -121,4 +134,60 @@ export async function nextNumber(kind: 'P' | 'D' | 'F' | 'AV' | 'BS' | 'FR' | 'S
 export function appBaseUrl(s: Settings): string {
   if (s.appUrl) return s.appUrl.replace(/#.*$/, '').replace(/\/?$/, '/');
   return location.origin + location.pathname;
+}
+
+/* ---------- Registre des modifications (onglet Registre du projet) ---------- */
+
+let logSuppressed = false;
+/** Désactive le registre (ex. pendant la création des données de démo). */
+export function suppressLog(v: boolean) { logSuppressed = v; }
+
+const LOGGED: Record<string, string> = {
+  projects: 'Projet', subprojects: 'Salle', lines: 'Matériel', crew: 'Poste', vehicleAssignments: 'Transport',
+  costs: 'Coût supplémentaire', docs: 'Document', subrentals: 'Sous-location', files: 'Fichier',
+};
+const FIELD_LABELS: Record<string, string> = {
+  name: 'nom', qty: 'quantité', unitPrice: 'prix', discount: 'remise', status: 'statut', start: 'début', end: 'fin',
+  periods: 'horaires', groups: 'groupes', personId: 'personne', rate: 'tarif', cost: 'coût', billable: 'facturation', optional: 'option',
+  clientId: 'client', venue: 'lieu', venueId: 'lieu', notes: 'notes', tasks: 'tâches', function: 'fonction', vehicleId: 'véhicule',
+  driverId: 'chauffeur', price: 'prix', amount: 'montant', label: 'libellé', groupId: 'groupe', periodId: 'créneau', lines: 'lignes',
+  supplierId: 'fournisseur', contactPerson: 'interlocuteur', typeName: 'type', color: 'couleur', externalRef: 'référence externe',
+  outQty: 'sortie entrepôt', inQty: 'retour entrepôt', outSerials: 'sortie entrepôt', inSerials: 'retour entrepôt', prepStart: 'préparation', returnEnd: 'retour',
+};
+
+function describe(obj: Record<string, unknown>): string {
+  const v = obj.name ?? obj.function ?? obj.label ?? obj.number ?? '';
+  return v ? ` « ${String(v)} »` : '';
+}
+
+function writeLog(projectId: string | undefined, entityId: string, text: string, fields?: string[]) {
+  if (logSuppressed || !projectId) return;
+  // en dehors de la transaction en cours
+  setTimeout(async () => {
+    try {
+      if (!(await db.projects.get(projectId))) return;
+      const at = new Date().toISOString();
+      const last = await db.log.where('projectId').equals(projectId).last();
+      // les saisies successives sur la même ligne sont regroupées (2 min)
+      if (last && fields && last.fields && last.entityId === entityId && Date.parse(at) - Date.parse(last.at) < 120000) {
+        const merged = Array.from(new Set([...last.fields, ...fields]));
+        await db.log.put({ ...last, at, fields: merged, text: text.replace(/ : .*$/, ' : ' + merged.join(', ')) });
+      } else {
+        await db.log.add({ id: crypto.randomUUID?.() || String(Math.random()), projectId, entityId, at, text, fields });
+      }
+    } catch { /* registre indisponible */ }
+  }, 0);
+}
+
+for (const [table, label] of Object.entries(LOGGED)) {
+  const t = db.table(table);
+  const pid = (o: Record<string, unknown>) => (table === 'projects' ? (o.id as string) : (o.projectId as string));
+  t.hook('creating', (_k, obj) => { writeLog(pid(obj), obj.id, `${label}${describe(obj)} ajouté`); });
+  t.hook('updating', (mods, _k, obj) => {
+    const keys = Array.from(new Set(Object.keys(mods).map((k) => k.split('.')[0]).filter((k) => k !== 'updatedAt' && k !== 'createdAt')));
+    if (!keys.length) return;
+    const fields = Array.from(new Set(keys.map((k) => FIELD_LABELS[k] || k)));
+    writeLog(pid(obj), obj.id, `${label}${describe({ ...obj, ...mods })} modifié : ${fields.join(', ')}`, fields);
+  });
+  t.hook('deleting', (_k, obj) => { if (obj) writeLog(pid(obj), obj.id, `${label}${describe(obj)} supprimé`); });
 }

@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import type { Doc } from '../types';
 import { DOC_LABELS, INVOICE_TYPES } from '../types';
 import { fmtDate, money } from '../utils';
@@ -65,6 +66,7 @@ export function DocRender({ doc }: { doc: Doc }) {
 
       <div>
         <strong>Projet {s.project.number} — {s.project.name}</strong>
+        {s.project.externalRef && !isRoadmap && <div>Votre référence : {s.project.externalRef}</div>}
         <div className="muted">{fmtDate(s.project.start)} → {fmtDate(s.project.end)}{s.project.venue && ` · ${s.project.venue}`}</div>
         {s.project.notes && (isRoadmap || isPacking) && <p style={{ whiteSpace: 'pre-wrap' }}>{s.project.notes}</p>}
       </div>
@@ -100,8 +102,9 @@ export function DocRender({ doc }: { doc: Doc }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {sp.equipment.map((l, j) => (
-                      <tr key={j} className={l.optional ? 'opt' : ''}>
+                    {sp.equipment.map((l, j) => (<Fragment key={j}>
+                      {l.group && l.group !== sp.equipment[j - 1]?.group && <tr><td colSpan={8} style={{ fontWeight: 600, background: '#fafafa' }}>{l.group}</td></tr>}
+                      <tr className={l.optional ? 'opt' : ''}>
                         {isPacking && <td><span className="check" /></td>}
                         {isPacking && <td><span className="check" /></td>}
                         <td className="n">{l.qty}</td>
@@ -113,7 +116,7 @@ export function DocRender({ doc }: { doc: Doc }) {
                           <td className="n">{money(l.total)}</td>
                         </>}
                       </tr>
-                    ))}
+                    </Fragment>))}
                   </tbody>
                 </table>
               </>
@@ -160,6 +163,16 @@ export function DocRender({ doc }: { doc: Doc }) {
           {showPrices && <div className="right"><strong>Sous-total {sp.name} : {money(sp.subtotal)}</strong></div>}
         </section>
       ))}
+
+      {s.extras && s.extras.length > 0 && showPrices && (
+        <section>
+          <h2>Frais supplémentaires</h2>
+          <table>
+            <thead><tr><th className="n">Qté</th><th>Désignation</th><th className="n">P.U.</th><th className="n">Total HT</th></tr></thead>
+            <tbody>{s.extras.map((x, i) => <tr key={i}><td className="n">{x.qty}</td><td>{x.label}</td><td className="n">{money(x.unitPrice)}</td><td className="n">{money(x.total)}</td></tr>)}</tbody>
+          </table>
+        </section>
+      )}
 
       {s.simpleLines && s.simpleLines.length > 0 && (
         <table style={{ marginTop: 16 }}>
