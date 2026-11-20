@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
 import { Empty, Field, Modal, PageHead, NumInput, useSettings } from '../components/ui';
@@ -103,6 +104,7 @@ export function ContactForm({ initial, onDone }: { initial?: Draft; onDone: (c?:
 }
 
 export default function Contacts() {
+  const nav = useNavigate();
   const contacts = useLiveQuery(() => db.contacts.orderBy('company').toArray(), []) || [];
   const [q, setQ] = useState('');
   const [type, setType] = useState('');
@@ -142,7 +144,7 @@ export default function Contacts() {
               <thead><tr><th>Nom</th><th>Type</th><th>Contact</th><th>Email</th><th>Téléphone</th><th>Ville</th></tr></thead>
               <tbody>
                 {filtered.map((c) => (
-                  <tr key={c.id} className="click" onClick={() => setEdit(c)}>
+                  <tr key={c.id} className="click" onClick={() => (c.type === 'lieu' ? nav('/lieux/' + c.id) : setEdit(c))}>
                     <td><strong>{c.company}</strong> <Tags tags={c.tags} /></td>
                     <td><span className="badge">{CONTACT_TYPES[c.type]}</span></td>
                     <td>{[c.firstName, c.lastName].filter(Boolean).join(' ')}{c.persons?.length ? <span className="muted"> +{c.persons.length} interlocuteur(s)</span> : null}</td>

@@ -45,6 +45,7 @@ function ProjectPage({ d }: { d: ProjectData }) {
   const [editSub, setEditSub] = useState<Partial<Subproject> | null>(null);
   const [repeat, setRepeat] = useState(false);
   const { project, client, settings, subs, finance, conflicts, projectCrew } = d;
+  const venueAlerts = (d.contacts.find((c) => c.id === project.venueId)?.comments || []).filter((c) => c.important);
   const open = projectCrew.filter((c) => !c.personId).length;
 
   const exportIcs = () => {
@@ -87,6 +88,11 @@ function ProjectPage({ d }: { d: ProjectData }) {
         <div className="stat"><b style={{ color: finance.margin < 0 ? 'var(--danger)' : undefined }}>{money(finance.margin)}</b><span>marge</span></div>
       </div>
 
+      {venueAlerts.length > 0 && (
+        <div className="alert venue-alert">
+          {venueAlerts.map((c) => <div key={c.id}><strong>⚠ Lieu :</strong> {c.text}</div>)}
+        </div>
+      )}
       {(conflicts.length > 0 || open > 0) && (
         <div className="alert">
           {conflicts.length > 0 && <div><strong>Manque de matériel :</strong> {Array.from(conflicts.reduce((m, c) => m.set(c.equipment.name, Math.max(m.get(c.equipment.name) || 0, c.shortage)), new Map<string, number>())).map(([n, q]) => `${n} (−${q})`).join(', ')} — <a href="#" onClick={(e) => { e.preventDefault(); goTab('souslocation'); }}>sous-louer</a></div>}

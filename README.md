@@ -102,6 +102,11 @@ facturation en un clic ou « facturé en externe ». Délai de paiement par clie
 client (devis, facture) et remarque pour l'entrepôt (bon de sortie). **Notes de projet** imprimées sur les documents choisis.
 Champs personnalisés en **liste déroulante**, affichables en colonne et en filtre dans la liste des projets.
 
+**Base des lieux** : chaque lieu a ses infos pratiques (accès et déchargement, électricité, contact sur place, dimensions)
+et des commentaires datés, ajoutés depuis la fiche du lieu ou depuis un projet (rattachés au projet). Un commentaire peut être
+marqué *important* (alerte sur tous les projets de ce lieu) ou *sur la feuille de route* (imprimé, avec les infos pratiques,
+sur la feuille de route et le bon de sortie). Recherche dans les commentaires, historique des projets du lieu, export CSV.
+
 **Démo** : Paramètres → « Ouvrir la base de démo » crée une base séparée avec des clients, du matériel, une équipe et 8 projets fictifs (réinitialisable).
 
 **Données** : import CSV (exports Rentman), plusieurs bases, sauvegarde et restauration.

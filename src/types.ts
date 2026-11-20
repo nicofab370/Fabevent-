@@ -50,6 +50,30 @@ export const CONTACT_TYPES: Record<ContactType, string> = {
   autre: 'Autre',
 };
 
+/** Commentaire sur un lieu (accès, électricité, retour d'expérience…). */
+export interface VenueComment {
+  id: ID;
+  at: string;
+  text: string;
+  /** projet pendant lequel la remarque a été faite */
+  projectId?: ID;
+  /** affiché en alerte sur les projets de ce lieu */
+  important?: boolean;
+  /** imprimé sur la feuille de route et le bon de sortie */
+  onRoadmap?: boolean;
+}
+
+/** Informations pratiques d'un lieu. */
+export interface VenueInfo {
+  access?: string;
+  power?: string;
+  onSite?: string;
+  capacity?: string;
+}
+export const VENUE_INFO_LABELS: Record<keyof VenueInfo, string> = {
+  access: 'Accès et déchargement', power: 'Électricité', onSite: 'Contact sur place', capacity: 'Salle : dimensions, capacité, accroche',
+};
+
 export interface Contact extends Base {
   type: ContactType;
   company: string;
@@ -78,6 +102,9 @@ export interface Contact extends Base {
   paymentDays?: number;
   /** moments de facturation par défaut de ses projets */
   moments?: ID[];
+  /** lieu : informations pratiques et commentaires */
+  venueInfo?: VenueInfo;
+  comments?: VenueComment[];
 }
 
 export interface ContactPerson {
@@ -648,6 +675,8 @@ export interface DocSnapshot {
   partialInvoices?: { number: string; rooms: string[]; ht: number }[];
   /** rappel de paiement */
   reminder?: { level: number; invoiceNumber: string; invoiceDate: string; invoiceDue?: string; amount: number };
+  /** lieu : informations pratiques et commentaires à imprimer (feuille de route, bon de sortie) */
+  venueNotes?: { label: string; text: string }[];
   /** notes du projet prévues pour ce type de document */
   notes?: { title: string; text: string }[];
   /** caution à verser (hors TVA) */

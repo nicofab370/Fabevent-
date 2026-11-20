@@ -1,14 +1,15 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Fragment, useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { Empty, Field, Modal } from '../../components/ui';
 import { DEFAULT_PROJECT_TYPES, db } from '../../db';
 import { createDocument } from '../../documents';
 import type { DocType, Project, ProjectNote, ProjectStatus, Task, VatRegime } from '../../types';
-import { CONFIRMED, LANG_LABELS, STATUS_LABELS, VAT_REGIME_LABELS, type Lang } from '../../types';
+import { CONFIRMED, LANG_LABELS, STATUS_LABELS, VENUE_INFO_LABELS, type VenueInfo, VAT_REGIME_LABELS, type Lang } from '../../types';
 import { CustomFieldsEditor, TagInput } from '../../components/extra';
 import { blockPeriod, fmtDate, fmtRange, patch, save, sortPeriods, uid, usageDays } from '../../utils';
 import { ContactForm } from '../Contacts';
+import { VenueComments } from '../Venues';
 import { setProjectStatus } from './status';
 import { setProjectDistance, type ProjectData } from './shared';
 import { drivingRoute } from '../../geo';
@@ -166,6 +167,19 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
           </div>
           {venueAddress && <p>{venueAddress}<br /><a href={route} target="_blank" rel="noreferrer">Voir l'itinéraire ↗</a></p>}
           <Distance d={d} from={origin} to={venueAddress} />
+          {venue && (
+            <>
+              {venue.venueInfo && Object.keys(venue.venueInfo).length > 0 && (
+                <dl className="kv" style={{ marginTop: 10 }}>
+                  {(Object.keys(VENUE_INFO_LABELS) as (keyof VenueInfo)[]).filter((k) => venue.venueInfo?.[k]).map((k) => (
+                    <Fragment key={k}><dt>{VENUE_INFO_LABELS[k]}</dt><dd style={{ whiteSpace: 'pre-wrap' }}>{venue.venueInfo![k]}</dd></Fragment>
+                  ))}
+                </dl>
+              )}
+              <h3 style={{ marginBottom: 4 }}>Commentaires sur le lieu <Link to={'/lieux/' + venue.id} className="muted" style={{ fontSize: 12, fontWeight: 400 }}>fiche du lieu ↗</Link></h3>
+              <VenueComments venue={venue} projects={[project]} projectId={project.id} />
+            </>
+          )}
         </div>
 
         <div className="card">

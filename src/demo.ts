@@ -394,6 +394,27 @@ async function seedAll() {
     noteList: [{ id: uid(), title: 'Accès et parking', text: 'Déchargement par la cour arrière, badge à retirer à l\'accueil.', on: ['devis', 'bon_sortie', 'feuille_route'] }],
   });
   await db.projects.update(pFest, { deposit: { amount: 1500, status: 'demandee' }, custom: { 'cf-repas': true, 'cf-acces': 'Entrée nord, quai 2', 'cf-proba': 'Forte' } });
+  // Base des lieux : infos pratiques et commentaires laissés au fil des projets
+  const cChateau = await contact('lieu', 'Hôtel Le Château (démo)', { city: 'Spa', postalCode: '4900', address: 'Avenue des Thermes 1', phone: '+32 87 00 00 00' });
+  await db.projects.update(pConf, { venueId: cChateau, venue: 'Hôtel Le Château (démo)' });
+  const daysAgo = (n: number) => new Date(Date.now() - n * 86400000).toISOString();
+  await db.contacts.update(cPalais, {
+    venueInfo: { access: 'Quai de déchargement niveau −1, hauteur max 3,8 m. Badge à demander à la sécurité.', power: '2 × 63 A tétra côté scène, 1 × 32 A en régie', onSite: 'Régisseur du lieu : Paul (+32 470 00 00 00)' },
+    comments: [
+      { id: uid(), at: daysAgo(18), projectId: pGala, text: 'Le monte-charge est lent : prévoir 1 h de plus au déchargement.', onRoadmap: true },
+      { id: uid(), at: daysAgo(400), text: 'Très bon accueil, café offert aux équipes.' },
+    ],
+  });
+  await db.contacts.update(cBoverie, {
+    venueInfo: { access: 'Entrée nord uniquement pour les camions, avant 9 h.', power: 'Pas de courant sur place : groupe électrogène à prévoir.' },
+    comments: [
+      { id: uid(), at: daysAgo(200), text: 'Sol meuble après la pluie : prévoir des plaques de roulage pour le flight-case son.', important: true, onRoadmap: true },
+    ],
+  });
+  await db.contacts.update(cChateau, {
+    venueInfo: { capacity: 'Salle plénière 18 × 12 m, hauteur 4,2 m, 2 points d\'accroche de 250 kg.' },
+    comments: [{ id: uid(), at: daysAgo(90), text: 'Les rideaux occultants de la plénière ne ferment pas complètement : vidéoprojection difficile le matin.', important: true }],
+  });
   // salle de la conférence déjà prête pour l'entrepôt ; un vidéoprojecteur ne sert que le premier jour
   for (const sp of await db.subprojects.where({ projectId: pConf }).toArray()) {
     await db.subprojects.update(sp.id, { readyToPack: sp.order === 0 });

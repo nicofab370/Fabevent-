@@ -79,7 +79,7 @@ export const VARIABLE_GROUPS: { label: string; items: [string, string][] }[] = [
     ['bloc.entete', 'En-tête (gabarit ci-dessus)'], ['bloc.introduction', "Texte d'introduction"], ['bloc.salles', 'Salles : horaires, matériel, personnel, transport'],
     ['bloc.frais', 'Frais supplémentaires'], ['bloc.lignes_simples', 'Lignes acompte / avoir'], ['bloc.options', 'Total des options'], ['bloc.totaux', 'Tableau des totaux'],
     ['bloc.conclusion', 'Texte de fin'], ['bloc.signature', 'Cadre de signature'], ['bloc.paiement', 'Paiement : IBAN, communication, QR'],
-    ['bloc.mention_tva', 'Mention de TVA (sinon sous les totaux)'], ['bloc.notes', 'Notes du projet prévues pour ce document'],
+    ['bloc.mention_tva', 'Mention de TVA (sinon sous les totaux)'], ['bloc.notes', 'Notes du projet et infos du lieu prévues pour ce document'],
     ['bloc.caution', 'Caution à verser'], ['bloc.conditions', 'Conditions générales'], ['bloc.pied', 'Pied de page (gabarit)'],
   ] },
 ];

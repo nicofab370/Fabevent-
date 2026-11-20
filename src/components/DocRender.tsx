@@ -96,9 +96,15 @@ export function buildDocHtml(doc: Doc): string {
       : isPacking ? r(<div className="sign"><div>{tr(doc, 'preparedBy')}</div><div>{tr(doc, 'checkedBy')}</div></div>) : '',
     'bloc.paiement': paymentBlock(doc),
     'bloc.mention_tva': s.vatMention ? `<p class="mention">${esc(s.vatMention)}</p>` : '',
-    'bloc.notes': s.notes?.length ? r(
+    'bloc.notes': s.notes?.length || s.venueNotes?.length ? r(
       <section className="notes">
-        {s.notes.map((n, i) => <div key={i}><h3>{n.title || tr(doc, 'notes')}</h3><p style={{ whiteSpace: 'pre-wrap', marginTop: 0 }}>{n.text}</p></div>)}
+        {s.venueNotes?.length ? (
+          <div className="venue-notes">
+            <h3>{tr(doc, 'venue')}{s.project.venue ? ` — ${s.project.venue}` : ''}</h3>
+            <table><tbody>{s.venueNotes.map((n, i) => <tr key={i}><td style={{ width: '30%' }}><strong>{n.label}</strong></td><td style={{ whiteSpace: 'pre-wrap' }}>{n.text}</td></tr>)}</tbody></table>
+          </div>
+        ) : null}
+        {(s.notes || []).map((n, i) => <div key={i}><h3>{n.title || tr(doc, 'notes')}</h3><p style={{ whiteSpace: 'pre-wrap', marginTop: 0 }}>{n.text}</p></div>)}
       </section>,
     ) : '',
     'bloc.caution': s.deposit?.amount ? r(

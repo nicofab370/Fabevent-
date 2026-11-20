@@ -116,7 +116,7 @@ await step('Démo : chargement et tableau de bord', async () => {
 
 await step('Dépôts : transfert proposé depuis Namur pour le festival', async () => {
   await openProject('Festival des Lumières');
-  const before = await page.locator('.alert').innerText();
+  const before = await page.locator('.alert:not(.venue-alert)').innerText();
   const m = before.match(/X12 \(−(\d+)\)/);
   expect(m, 'manque d’enceintes X12 attendu');
   await tab('Sous-locations & commandes');
@@ -125,7 +125,7 @@ await step('Dépôts : transfert proposé depuis Namur pour le festival', async 
   await page.click('.modal button[type=submit]');
   await page.waitForTimeout(400);
   await openProject('Festival des Lumières');
-  const after = (await page.locator('.alert').innerText()).match(/X12 \(−(\d+)\)/);
+  const after = (await page.locator('.alert:not(.venue-alert)').innerText()).match(/X12 \(−(\d+)\)/);
   expect(after && Number(after[1]) < Number(m[1]), `le manque doit diminuer (${m[1]} → ${after?.[1]})`);
 });
 
@@ -136,7 +136,7 @@ await step('Sous-location : confirmée, elle comble le manque', async () => {
   await field('Statut').locator('select').selectOption('confirme');
   await page.waitForTimeout(300);
   await openProject('Festival des Lumières');
-  const alert = await page.locator('.alert').innerText().catch(() => '');
+  const alert = await page.locator('.alert:not(.venue-alert)').innerText().catch(() => '');
   expect(!alert.includes('X12'), `plus de manque de X12 attendu, reçu : ${alert}`);
 });
 
@@ -832,6 +832,48 @@ await step('Champ en liste déroulante : colonne et filtre des projets', async (
   await page.waitForTimeout(200);
   const rows = await page.locator('table.list tbody tr').allInnerTexts();
   expect(rows.length === 1 && rows[0].includes('Festival'), 'filtre sur la valeur');
+});
+
+console.log('\n  — base des lieux —');
+await step('Lieux : liste, recherche dans les commentaires, fiche avec projets', async () => {
+  await resetDemo();
+  await go('lieux');
+  expect((await page.locator('table.list tbody tr').count()) >= 3, 'lieux de la démo listés');
+  await page.fill('.toolbar input', 'monte-charge');
+  await page.waitForTimeout(200);
+  const rows = await page.locator('table.list tbody tr').allInnerTexts();
+  expect(rows.length === 1 && rows[0].includes('Palais des Congrès'), 'recherche dans les commentaires');
+  await page.locator('table.list tbody tr').first().click();
+  await page.waitForSelector('h2:has-text("Projets dans ce lieu")');
+  expect((await page.locator('.card', { hasText: 'Projets dans ce lieu' }).innerText()).includes('Gala de fin'), 'historique des projets');
+  expect(await field('Électricité').locator('textarea').inputValue() === '2 × 63 A tétra côté scène, 1 × 32 A en régie', 'infos pratiques');
+});
+
+await step('Lieux : commentaire ajouté depuis un projet, alerte et feuille de route', async () => {
+  await openProject('Festival des Lumières');
+  expect((await page.locator('.venue-alert').innerText()).includes('plaques de roulage'), 'alerte du lieu sur le projet');
+  const card = page.locator('.card', { hasText: 'Lieu de la prestation' });
+  await card.locator('.venue-comments textarea').fill('Prévoir 2 rallonges 63 A supplémentaires pour la scène acoustique');
+  await card.locator('.venue-comments label', { hasText: 'Sur la feuille de route' }).locator('input').check();
+  await card.locator('.venue-comments button[type=submit]').click();
+  await page.waitForTimeout(400);
+  expect((await card.innerText()).includes('2 rallonges 63 A'), 'commentaire affiché sur le projet');
+  await go('lieux');
+  await page.locator('tr', { hasText: 'Parc de la Boverie' }).click();
+  await page.waitForSelector('.venue-comments');
+  const venueCard = await page.locator('.card', { hasText: 'Commentaires' }).innerText();
+  expect(venueCard.includes('2 rallonges 63 A') && venueCard.includes('Festival des Lumières'), 'commentaire rattaché au lieu et au projet');
+  await openProject('Festival des Lumières');
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Feuille de route")');
+  await page.waitForSelector('.doc');
+  const fr = await page.locator('.doc').innerText();
+  expect(fr.includes('Entrée nord uniquement') && fr.includes('2 rallonges 63 A') && fr.includes('plaques de roulage'), 'infos et commentaires du lieu sur la feuille de route');
+  await openProject('Festival des Lumières');
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Devis")');
+  await page.waitForSelector('.doc');
+  expect(!(await page.locator('.doc').innerText()).includes('plaques de roulage'), 'pas sur le devis');
 });
 
 await ctx.close();

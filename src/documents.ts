@@ -2,7 +2,7 @@ import { db, DEFAULT_DOC_STYLE, getSettings, nextNumber } from './db';
 import type { Doc, DocSnapshot, DocType, Lang, ProjectStatus, Settings, SnapshotSub, VatRegime } from './types';
 import { VAT_MENTIONS_I18N } from './i18n';
 import { DEFAULT_VAT_MENTIONS, structuredCommunication } from './payment';
-import { INVOICE_TYPES } from './types';
+import { INVOICE_TYPES, VENUE_INFO_LABELS, type VenueInfo } from './types';
 import { crewAmount, crewWindow, daysBetween, factorFor, lineDays, lineTotal, round2, save, sortPeriods } from './utils';
 
 const PREFIX: Record<DocType, 'D' | 'F' | 'AV' | 'BS' | 'FR' | 'RP'> = {
@@ -144,6 +144,7 @@ export async function buildSnapshot(projectId: string, type: DocType, only?: { i
     issuedAt: issued.toISOString(),
     validUntil: isQuote ? new Date(issued.getTime() + s.quoteValidityDays * 86400000).toISOString() : undefined,
     dueDate: INVOICE_TYPES.includes(type) ? new Date(issued.getTime() + (client?.paymentDays ?? s.paymentDays) * 86400000).toISOString() : undefined,
+    venueNotes: isPacking ? await venueNotesFor(project.venueId) : undefined,
     notes: (() => { const n = (project.noteList || []).filter((x) => x.on.includes(type) && x.text.trim()).map(({ title, text }) => ({ title, text })); return n.length ? n : undefined; })(),
     deposit: project.deposit?.amount && project.deposit.status !== 'aucune' && (isQuote || type === 'facture' || type === 'bon_sortie') ? project.deposit : undefined,
     terms: s.terms?.trim() && (isQuote || (s.termsOnInvoices && (type === 'facture' || type === 'acompte'))) ? s.terms : undefined,
@@ -257,4 +258,13 @@ export async function setStatusDeep(projectId: string, status: ProjectStatus, on
   await db.subprojects.where({ projectId }).modify((sp) => {
     if (sp.status !== 'annule' && (!onlyFrom || onlyFrom.includes(sp.status))) { sp.status = status; sp.updatedAt = new Date().toISOString(); }
   });
+}
+
+/** Infos pratiques et commentaires « feuille de route » du lieu, pour les documents de terrain. */
+async function venueNotesFor(venueId?: string): Promise<{ label: string; text: string }[] | undefined> {
+  const v = venueId ? await db.contacts.get(venueId) : undefined;
+  if (!v) return undefined;
+  const out = (Object.keys(VENUE_INFO_LABELS) as (keyof VenueInfo)[]).filter((k) => v.venueInfo?.[k]).map((k) => ({ label: VENUE_INFO_LABELS[k], text: v.venueInfo![k]! }));
+  for (const c of v.comments || []) if (c.onRoadmap) out.push({ label: c.important ? '⚠ Remarque' : 'Remarque', text: c.text });
+  return out.length ? out : undefined;
 }
