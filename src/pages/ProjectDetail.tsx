@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { PageHead } from '../components/ui';
-import { appBaseUrl, db, nextNumber } from '../db';
+import { appBaseUrl } from '../db';
 import type { ProjectStatus, Subproject } from '../types';
 import { STATUS_LABELS } from '../types';
-import { buildIcs, deleteProject, download, fmtRange, money, nowIso, save, uid } from '../utils';
+import { buildIcs, deleteProject, download, fmtDate, fmtRange, money } from '../utils';
+import { copyProject, recurrenceStarts, shiftBetween } from '../projectOps';
+import { Field, Modal } from '../components/ui';
+import type { Project } from '../types';
 import CostsTab from './project/CostsTab';
 import CrewTab from './project/CrewTab';
 import EquipmentTab from './project/EquipmentTab';
@@ -40,6 +43,7 @@ function ProjectPage({ d }: { d: ProjectData }) {
   const tab = params.get('onglet') || 'general';
   const goTab = (t: string) => setParams(t === 'general' ? {} : { onglet: t }, { replace: true });
   const [editSub, setEditSub] = useState<Partial<Subproject> | null>(null);
+  const [repeat, setRepeat] = useState(false);
   const { project, client, settings, subs, finance, conflicts, projectCrew } = d;
   const open = projectCrew.filter((c) => !c.personId).length;
 
@@ -52,27 +56,12 @@ function ProjectPage({ d }: { d: ProjectData }) {
     download(`${project.number}.ics`, buildIcs(project.name, events), 'text/calendar;charset=utf-8');
   };
 
-  /** Copie complète : salles, horaires, groupes, matériel, postes (sans personnes), véhicules, coûts. */
-  const duplicate = async () => {
-    const np = await save(db.projects, { ...project, id: undefined, createdAt: undefined, number: await nextNumber('P'), name: project.name + ' (copie)', status: 'demande', tasks: project.tasks?.map((t) => ({ ...t, done: false })) });
-    for (const sp of subs) {
-      const idMap = new Map<string, string>();
-      const periods = sp.periods?.map((p) => { const nid = uid(); idMap.set(p.id, nid); return { ...p, id: nid }; });
-      const groups = sp.groups?.map((g) => { const nid = uid(); idMap.set(g.id, nid); return { ...g, id: nid, periodIds: g.periodIds.map((x) => idMap.get(x) || x) }; });
-      const ns = await save(db.subprojects, { ...sp, id: undefined, createdAt: undefined, projectId: np.id, status: 'demande', periods, groups });
-      const own = d.lines.filter((x) => x.subprojectId === sp.id);
-      for (const l of own) idMap.set(l.id, uid());
-      for (const l of own) {
-        await db.lines.put({
-          ...l, id: idMap.get(l.id)!, createdAt: nowIso(), updatedAt: nowIso(), projectId: np.id, subprojectId: ns.id, groupId: l.groupId ? idMap.get(l.groupId) : undefined,
-          parentLineId: l.parentLineId ? idMap.get(l.parentLineId) : undefined, outQty: undefined, inQty: undefined, outSerials: undefined, inSerials: undefined, consumed: undefined,
-        });
-      }
-      for (const c of projectCrew.filter((x) => x.subprojectId === sp.id)) await save(db.crew, { ...c, id: undefined, createdAt: undefined, projectId: np.id, subprojectId: ns.id, personId: undefined, periodId: c.periodId ? idMap.get(c.periodId) : undefined });
-      for (const v of d.projectVas.filter((x) => x.subprojectId === sp.id)) await save(db.vehicleAssignments, { ...v, id: undefined, createdAt: undefined, projectId: np.id, subprojectId: ns.id, periodId: v.periodId ? idMap.get(v.periodId) : undefined });
-    }
-    for (const c of d.costs) await save(db.costs, { ...c, id: undefined, createdAt: undefined, projectId: np.id });
-    nav('/projets/' + np.id);
+  const duplicate = async () => nav('/projets/' + (await copyProject(project.id)).id);
+  const saveAsTemplate = async () => {
+    const name = prompt('Nom du modèle :', project.name);
+    if (!name) return;
+    const t = await copyProject(project.id, { name, isTemplate: true, status: 'demande' });
+    nav('/projets/' + t.id);
   };
 
   return (
@@ -83,6 +72,8 @@ function ProjectPage({ d }: { d: ProjectData }) {
           {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
         <button className="secondary" onClick={duplicate}>Dupliquer</button>
+        {!project.isTemplate && <button className="secondary" onClick={() => setRepeat(true)}>Répéter…</button>}
+        {!project.isTemplate && <button className="secondary" onClick={saveAsTemplate}>Enregistrer comme modèle</button>}
         <button className="secondary" onClick={exportIcs}>Agenda .ics</button>
         <button className="danger" onClick={async () => {
           if (confirm('Supprimer le projet, ses salles, ses documents et ses fichiers ?')) { await deleteProject(project.id); nav('/projets'); }
@@ -102,7 +93,12 @@ function ProjectPage({ d }: { d: ProjectData }) {
           {open > 0 && <div><strong>{open} poste(s) à pourvoir</strong> — <a href="#" onClick={(e) => { e.preventDefault(); goTab('equipe'); }}>planifier l'équipe</a></div>}
         </div>
       )}
-      {project.status === 'demande' && <div className="info">Statut « Demande » : le matériel n'est pas encore bloqué. Passe en « Option » ou « Confirmé » pour le réserver.</div>}
+      {project.isTemplate && (
+        <div className="info" style={{ borderLeft: '4px solid #7c3aed' }}>
+          <strong>Modèle de projet</strong> — il n'apparaît pas dans le planning et ne réserve rien. Utilise-le depuis « Projets → + Nouveau projet → À partir d'un modèle ».
+        </div>
+      )}
+      {project.status === 'demande' && !project.isTemplate && <div className="info">Statut « Demande » : le matériel n'est pas encore bloqué. Passe en « Option » ou « Confirmé » pour le réserver.</div>}
 
       <div className="tabs project-tabs">
         {TABS.map(([k, label]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => goTab(k)}>{label}</button>)}
@@ -117,7 +113,46 @@ function ProjectPage({ d }: { d: ProjectData }) {
       {tab === 'souslocation' && <SubrentTab d={d} />}
       {tab === 'registre' && <LogTab projectId={project.id} />}
 
+      {repeat && <RepeatModal project={project} onClose={() => setRepeat(false)} />}
       {editSub && <SubprojectModal sp={editSub} project={project} onClose={() => setEditSub(null)} />}
     </>
+  );
+}
+
+/** Crée des copies du projet à intervalle régulier (projets récurrents). */
+function RepeatModal({ project, onClose }: { project: Project; onClose: () => void }) {
+  const nav = useNavigate();
+  const [freq, setFreq] = useState<'semaine' | '2semaines' | 'mois'>('semaine');
+  const [count, setCount] = useState(4);
+  const [keepPeople, setKeepPeople] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const starts = recurrenceStarts(project.start, freq, Math.max(1, Math.min(52, count)));
+  return (
+    <Modal title="Répéter le projet" onClose={onClose}>
+      <form className="form" onSubmit={async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        for (const st of starts) await copyProject(project.id, { name: project.name, status: project.status === 'annule' ? 'demande' : project.status, shift: shiftBetween(project.start, st), keepPeople });
+        setBusy(false);
+        onClose();
+        nav('/projets');
+      }}>
+        <Field label="Fréquence">
+          <select value={freq} onChange={(e) => setFreq(e.target.value as typeof freq)}>
+            <option value="semaine">Chaque semaine</option><option value="2semaines">Toutes les deux semaines</option><option value="mois">Chaque mois</option>
+          </select>
+        </Field>
+        <Field label="Nombre de répétitions"><input type="number" min={1} max={52} value={count} onChange={(e) => setCount(parseInt(e.target.value) || 1)} /></Field>
+        <Field label=" " full><label className="check-row"><input type="checkbox" checked={keepPeople} onChange={(e) => setKeepPeople(e.target.checked)} /> Garder les mêmes personnes sur les postes</label></Field>
+        <div className="field full">
+          <span>Nouvelles dates de début ({starts.length})</span>
+          <div className="muted">{starts.map((s) => fmtDate(s)).join(' · ')}</div>
+        </div>
+        <div className="form-actions">
+          <button type="button" className="secondary" onClick={onClose}>Annuler</button>
+          <button type="submit" disabled={busy}>{busy ? 'Création…' : `Créer ${starts.length} projet(s)`}</button>
+        </div>
+      </form>
+    </Modal>
   );
 }

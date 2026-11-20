@@ -25,7 +25,7 @@ export default function Dashboard() {
   const now = toLocalInput(new Date());
   const in30 = toLocalInput(new Date(Date.now() + 30 * 86400000));
   const upcoming = subs
-    .filter((s) => s.end >= now && s.start <= in30 && s.status !== 'annule')
+    .filter((s) => s.end >= now && s.start <= in30 && s.status !== 'annule' && !pMap.get(s.projectId)?.isTemplate)
     .sort((a, b) => a.start.localeCompare(b.start));
   const conflicts = av.conflicts().filter((c) => (sMap.get(c.subprojectId)?.end || '') >= now);
   const dueInspections = inspectionsDue(equipment, units, inspections).filter((d) => d.due <= in30.slice(0, 10)).length;
@@ -33,7 +33,7 @@ export default function Dashboard() {
   const overdue = useOverdue();
   const pendingSubrentals = subrentals.filter((s) => s.status === 'demande').length;
   const unstaffed = crew.filter((c) => !c.personId && c.end >= now && sMap.get(c.subprojectId)?.status !== 'annule');
-  const pendingQuotes = projects.filter((p) => p.status === 'option' || p.status === 'demande').length;
+  const pendingQuotes = projects.filter((p) => !p.isTemplate && (p.status === 'option' || p.status === 'demande')).length;
 
   return (
     <>

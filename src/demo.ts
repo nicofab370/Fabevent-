@@ -7,6 +7,7 @@ import { createDocument } from './documents';
 import type { ContactType, Equipment, PeriodKind, ProjectStatus } from './types';
 import { nowIso, syncPeriods, toLocalInput, uid } from './utils';
 import { tripKm, vehiclePrice } from './geo';
+import { copyProject } from './projectOps';
 
 export const DEMO_WORKSPACE = 'demo';
 
@@ -256,7 +257,7 @@ async function seedAll() {
     ['prestation', 'Prestation J2', at(7, 8), at(7, 17)],
     ['demontage', 'Démontage', at(7, 17), at(7, 21)],
   ];
-  await project('Conférence annuelle', cHotel, 'confirme', 'Hôtel Le Château, Spa', [
+  const pConf = await project('Conférence annuelle', cHotel, 'confirme', 'Hôtel Le Château, Spa', [
     { name: 'Salle plénière', periods: confPeriods,
       groups: [['Son & vidéo', []], ['Scène', []], ['Soirée de gala J1', ['Prestation J1']]],
       lines: [['kitconf', 1, { group: 'Son & vidéo' }], ['hf', 2, { group: 'Son & vidéo' }], ['vp', 1, { group: 'Son & vidéo' }], ['ecran', 1, { group: 'Son & vidéo' }],
@@ -349,6 +350,9 @@ async function seedAll() {
   for (const p of await db.projects.toArray()) {
     if (p.status === 'confirme' || p.status === 'option') await createDocument(p.id, 'devis');
   }
+
+  // Modèle de projet tiré de la conférence
+  await copyProject(pConf, { name: 'Modèle — Conférence 3 salles', isTemplate: true, status: 'demande' });
 
   // Sous-location déjà demandée pour une partie du manque du festival
   const fSub = (await db.subprojects.where({ projectId: pFest }).toArray()).find((s) => s.name === 'Grande scène')!;
