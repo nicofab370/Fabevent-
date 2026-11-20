@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { currentWorkspace } from './db';
+import Accounting from './pages/Accounting';
 import Calendar from './pages/Calendar';
 import Contacts from './pages/Contacts';
 import Crew from './pages/Crew';
@@ -22,6 +23,7 @@ const NAV = [
   ['/contacts', 'Contacts', '☰'],
   ['/equipe', 'Équipe', '☺'],
   ['/vehicules', 'Véhicules', '⛟'],
+  ['/comptabilite', 'Export comptable', '€'],
   ['/import', 'Import', '⇪'],
   ['/parametres', 'Paramètres', '⚙'],
 ] as const;
@@ -68,6 +70,7 @@ export default function App() {
           <Route path="/contacts" element={<Contacts />} />
           <Route path="/equipe" element={<Crew />} />
           <Route path="/vehicules" element={<Vehicles />} />
+          <Route path="/comptabilite" element={<Accounting />} />
           <Route path="/import" element={<ImportPage />} />
           <Route path="/parametres" element={<SettingsPage />} />
           <Route path="*" element={<p>Page introuvable.</p>} />
