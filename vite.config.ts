@@ -20,7 +20,8 @@ export default defineConfig({
         theme_color: '#0f172a',
         icons: [{ src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }],
       },
-      workbox: { globPatterns: ['**/*.{js,css,html,svg,png,ico}'] },
+      // tout est mis en cache pour fonctionner hors ligne, y compris le scanner (wasm) et le lecteur de PDF
+      workbox: { globPatterns: ['**/*.{js,mjs,css,html,svg,png,ico,wasm}'], maximumFileSizeToCacheInBytes: 6 * 1024 * 1024 },
     }),
   ],
 });

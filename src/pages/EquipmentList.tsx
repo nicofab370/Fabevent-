@@ -1,9 +1,10 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
+import { cleanLetter, newArticleCode, suggestCategoryLetter } from '../codegen';
 import { useNavigate } from 'react-router-dom';
 import { Empty, Field, Modal, NumInput, PageHead, useSettings } from '../components/ui';
 import { db } from '../db';
-import type { Equipment } from '../types';
+import type { Category, Equipment } from '../types';
 import { useAvailability } from '../data';
 import { resizeImage } from '../image';
 import { CsvButton, CustomFieldsEditor, exportCsv, TagInput, Tags } from '../components/extra';
@@ -15,23 +16,34 @@ const blank = (): Draft => ({ name: '', quantity: 1, dailyPrice: 0, isKit: false
 export function EquipmentForm({ initial, onDone }: { initial?: Draft; onDone: () => void }) {
   const [e, setE] = useState<Draft>(initial || blank());
   const [newCat, setNewCat] = useState('');
+  const [newLetter, setNewLetter] = useState('');
   const cats = useLiveQuery(() => db.categories.orderBy('name').toArray(), []) || [];
-  const depots = useSettings().depots || [];
+  const settings = useSettings();
+  const depots = settings.depots || [];
+  // code automatique F-S-0010 tant qu'il n'a pas été saisi à la main (jamais changé pour un article existant)
+  const [codeAuto, setCodeAuto] = useState(!initial?.code);
+  const letterSuggest = suggestCategoryLetter(newCat, cats.map((c) => c.letter || ''));
+  const previewCats = newCat.trim() ? [...cats, { id: '__new', name: newCat, letter: cleanLetter(newLetter) || letterSuggest } as Category] : cats;
   const all = useLiveQuery(() => db.equipment.orderBy('name').toArray(), []) || [];
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setE({ ...e, [k]: v });
 
   const submit = async (ev: React.FormEvent) => {
     ev.preventDefault();
     let categoryId = e.categoryId;
-    if (newCat.trim()) categoryId = (await save(db.categories, { name: newCat.trim() })).id;
-    await save(db.equipment, { ...e, categoryId } as Equipment);
+    if (newCat.trim()) categoryId = (await save(db.categories, { name: newCat.trim(), letter: cleanLetter(newLetter) || letterSuggest })).id;
+    let code = e.code?.trim();
+    if (!code && codeAuto) code = newArticleCode({ ...e, categoryId }, settings, await db.categories.toArray(), await db.equipment.toArray());
+    await save(db.equipment, { ...e, categoryId, code } as Equipment);
     onDone();
   };
 
   return (
     <form className="form" onSubmit={submit}>
       <Field label="Désignation *" full><input required autoFocus value={e.name} onChange={(x) => set('name', x.target.value)} /></Field>
-      <Field label="Référence / code"><input value={e.code || ''} onChange={(x) => set('code', x.target.value)} /></Field>
+      <Field label="Code (automatique : dépôt-catégorie-numéro)">
+        <input value={e.code || ''} onChange={(x) => { set('code', x.target.value); setCodeAuto(!x.target.value); }}
+          placeholder={codeAuto ? `auto : ${newArticleCode({ ...e, categoryId: newCat.trim() ? '__new' : e.categoryId }, settings, previewCats, all)}` : ''} />
+      </Field>
       <Field label="Code-barres / QR"><input value={e.barcode || ''} onChange={(x) => set('barcode', x.target.value)} /></Field>
       <Field label="Catégorie">
         <select value={e.categoryId || ''} onChange={(x) => set('categoryId', x.target.value || undefined)}>
@@ -40,6 +52,18 @@ export function EquipmentForm({ initial, onDone }: { initial?: Draft; onDone: ()
         </select>
       </Field>
       <Field label="…ou nouvelle catégorie"><input value={newCat} onChange={(x) => setNewCat(x.target.value)} placeholder="ex. Son, Lumière, Vidéo" /></Field>
+      {newCat.trim() && (
+        <Field label="Lettre de la nouvelle catégorie (dans les codes)">
+          <input value={newLetter} maxLength={3} onChange={(x) => setNewLetter(cleanLetter(x.target.value))} placeholder={letterSuggest} aria-label="Lettre de la catégorie" />
+        </Field>
+      )}
+      {depots.length > 1 && (
+        <Field label="Dépôt de base (lettre du code)">
+          <select value={e.homeDepotId || depots[0].id} onChange={(x) => set('homeDepotId', x.target.value)}>
+            {depots.map((d) => <option key={d.id} value={d.id}>{d.name} ({d.letter || '?'})</option>)}
+          </select>
+        </Field>
+      )}
       <Field label="Type">
         <select value={e.kind || 'location'} onChange={(x) => set('kind', x.target.value as Draft['kind'])}>
           <option value="location">Location (facturé par jour, revient au dépôt)</option>

@@ -1256,6 +1256,54 @@ await step('Inventaire : unités non vues → en réparation, visibles en mainte
 
 await ctx.close();
 
+console.log('\n  — codes du matériel —');
+ctx = await newContext();
+await step('Codes : nouvel article F-S-…, unités F-S-…-01, nouveau dépôt avec sa lettre', async () => {
+  await openDemo();
+  await go('materiel');
+  await page.click('text=+ Nouvel article');
+  await page.locator('.modal .field', { hasText: 'Désignation' }).locator('input').fill('Console Yamaha DM7');
+  await page.locator('.modal .field', { has: page.locator('span:text-is("Catégorie")') }).locator('select').selectOption({ label: 'Son' });
+  const placeholder = await page.locator('.modal .field', { hasText: 'Code (automatique' }).locator('input').getAttribute('placeholder');
+  expect(/auto : F-S-\d{4}/.test(placeholder || ''), `code proposé (${placeholder})`);
+  await page.locator('.modal label', { hasText: 'Suivi par numéro de série' }).locator('input').check();
+  await page.click('.modal button[type=submit]');
+  await page.waitForTimeout(400);
+  const row = await page.locator('table.list tr', { hasText: 'Console Yamaha DM7' }).innerText();
+  const code = (row.match(/F-S-\d{4}/) || [])[0];
+  expect(code, `code attribué : ${row}`);
+  await page.click('table.list strong:text-is("Console Yamaha DM7")');
+  await page.waitForTimeout(400);
+  for (let i = 1; i <= 2; i++) {
+    await page.click('button:text-is("+ Unité")');
+    expect(await page.locator('.modal input[aria-label="Code de l\'unité"]').inputValue() === `${code}-0${i}`, `unité ${i} : ${code}-0${i}`);
+    await page.click('.modal button[type=submit]');
+    await page.waitForTimeout(300);
+  }
+  expect((await page.locator('body').innerText()).includes(`${code}-02`), 'unités codées');
+  // nouvel article dans une nouvelle catégorie : la lettre est proposée
+  await go('materiel');
+  await page.click('text=+ Nouvel article');
+  await page.locator('.modal .field', { hasText: 'Désignation' }).locator('input').fill('Switch réseau 24 ports');
+  await page.locator('.modal .field', { hasText: 'nouvelle catégorie' }).locator('input').fill('Informatique');
+  expect(await page.locator('.modal input[aria-label="Lettre de la catégorie"]').getAttribute('placeholder') === 'IT', 'lettre IT proposée');
+  await page.click('.modal button[type=submit]');
+  await page.waitForTimeout(400);
+  expect(/F-IT-\d{4}/.test(await page.locator('table.list tr', { hasText: 'Switch réseau' }).innerText()), 'code F-IT-…');
+  // nouveau dépôt : nom puis lettre demandés
+  const answers = ['Dépôt Bruxelles', 'B'];
+  const onDialog = (d) => (d.type() === 'prompt' ? d.accept(answers.shift()) : d.accept());
+  page.removeAllListeners('dialog');
+  page.on('dialog', onDialog);
+  await go('parametres');
+  await page.click('button:text-is("+ Dépôt")');
+  await page.waitForTimeout(300);
+  expect(await page.locator('input[aria-label="Lettre du dépôt Dépôt Bruxelles"]').inputValue() === 'B', 'lettre du nouveau dépôt');
+  page.removeAllListeners('dialog');
+  page.on('dialog', (d) => (d.type() === 'prompt' ? d.accept(d.defaultValue()) : d.accept()));
+});
+await ctx.close();
+
 /* ---------- Synchronisation : deux appareils, le vrai serveur PHP ---------- */
 const hasPhp = spawnSync('php', ['-v']).status === 0;
 if (hasPhp) {
