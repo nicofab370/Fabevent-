@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Empty, Field, Modal, NumInput, PageHead, StatusBadge } from '../components/ui';
 import { Scanner } from '../components/Scanner';
-import { addExtraCode, findByCode, removeExtraCode, setUnitState, UNIT_STATE_LABELS, unitState, type UnitState } from '../codes';
+import { addExtraCode, contentsText, findByCode, removeExtraCode, setUnitState, UNIT_STATE_LABELS, unitState, type UnitState } from '../codes';
 import { useAvailability } from '../data';
 import { currentWorkspace, db } from '../db';
 import type { Equipment, SerialUnit } from '../types';
@@ -48,7 +48,7 @@ export default function Inventory() {
   const inDepot = (u: SerialUnit) => !multi || (u.depotId || av.mainDepot) === depot;
   /** unités attendues au dépôt : en service ou à réparer (les unités en réparation et perdues n'y sont pas) */
   const unitsHere = (eqId: string) => av.units.filter((u) => u.equipmentId === eqId && u.status === 'ok' && inDepot(u));
-  const items = av.equipment.filter((e) => !e.isKit && !e.archived);
+  const items = av.equipment.filter((e) => !e.isKit && !e.archived && !e.accessoryOnly);
   const expected = (e: Equipment) => (e.trackSerials ? unitsHere(e.id).length : stockIn(e, dep));
   const countOf = (e: Equipment): number | undefined => (e.trackSerials ? (unitsHere(e.id).some((u) => found.has(u.id)) ? unitsHere(e.id).filter((u) => found.has(u.id)).length : undefined) : ses.counted[e.id]);
   const setCount = (id: string, n: number | undefined) => setSes((s) => { const counted = { ...s.counted }; if (n === undefined) delete counted[id]; else counted[id] = n; return { ...s, counted }; });
@@ -286,6 +286,7 @@ export function ItemSheet({ id, onClose }: { id: string; onClose: () => void }) 
         <dt>Code</dt><dd>{e.code || '—'}{e.barcode && <span className="muted"> · étiquette {e.barcode}</span>}</dd>
         {e.location && <><dt>Emplacement</dt><dd>📍 {e.location}</dd></>}
         <dt>Stock</dt><dd><strong>{e.trackSerials ? units.filter((u) => u.status === 'ok').length : e.quantity}</strong>{e.trackSerials && ` unité(s) en service sur ${units.length}`}</dd>
+        {e.contents?.length ? <><dt>Contenu fourni</dt><dd>{contentsText(e)}</dd></> : null}
         <dt>Codes en plus</dt><dd>
           {(e.extraCodes || []).map((c) => <span key={c} className="tag small">{c} <button className="ghost small" aria-label={`Retirer ${c}`} onClick={() => removeExtraCode({ equipmentId: e.id }, c)}>✕</button></span>)}
           <form style={{ display: 'inline-flex', gap: 4, marginLeft: 4 }} onSubmit={async (ev) => { ev.preventDefault(); if (newCode.trim()) { await addExtraCode({ equipmentId: e.id }, newCode); setNewCode(''); } }}>

@@ -150,7 +150,7 @@ function TransferModal({ initial, onClose }: { initial: Partial<Transfer>; onClo
           <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
             <select value={pick} onChange={(e) => setPick(e.target.value)}>
               <option value="">Choisir un article…</option>
-              {av.equipment.filter((e) => !e.isKit && !lines.some((l) => l.equipmentId === e.id)).map((e) => (
+              {av.equipment.filter((e) => !e.isKit && !e.accessoryOnly && !lines.some((l) => l.equipmentId === e.id)).map((e) => (
                 <option key={e.id} value={e.id}>{e.name} ({t.fromDepotId ? e._stock?.[t.fromDepotId] ?? e.quantity : e.quantity} au départ)</option>
               ))}
             </select>

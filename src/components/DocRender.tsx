@@ -185,6 +185,7 @@ function Rooms({ doc, st }: { doc: Doc; st: DocStyle }) {
                         <td className="n">{l.qty}</td>
                         <td>{l.name}{st.showCode && l.code && <span className="muted"> ({l.code})</span>}{l.optional && ` — ${tr(doc, 'option')}`}
                           {l.periods && <div className="muted" style={{ fontSize: '0.85em' }}>{l.periods}</div>}
+                          {l.contents && <div className="muted" style={{ fontSize: '0.85em' }}>↳ avec : {l.contents}</div>}
                           {l.remark && <div className="muted" style={{ fontSize: '0.85em' }}>{l.remark}</div>}</td>
                         {showPrices && <>
                           <td className="n">{money(l.unitPrice)}</td>

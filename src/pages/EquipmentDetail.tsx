@@ -65,7 +65,7 @@ export default function EquipmentDetail() {
       {eq.archived && <div className="alert">Article archivé : il n'est plus proposé dans les projets.</div>}
       {eq.photo && <img src={eq.photo} alt="" style={{ maxHeight: 160, borderRadius: 10, marginBottom: 12 }} />}
       <div className="stats">
-        <div className="stat"><b>{eq.isKit ? 'Kit' : eq.quantity}</b><span>{eq.isKit ? 'composé' : eq.trackSerials ? 'unités en service' : 'en stock'}</span></div>
+        <div className="stat"><b>{eq.isKit ? 'Kit' : eq.accessoryOnly ? '—' : eq.quantity}</b><span>{eq.isKit ? 'composé' : eq.accessoryOnly ? 'hors inventaire' : eq.trackSerials ? 'unités en service' : 'en stock'}</span></div>
         <div className="stat"><b>{money(eq.dailyPrice)}</b><span>{eq.kind === 'vente' ? 'prix de vente / pièce' : 'prix / jour HT'}</span></div>
         <div className="stat"><b>{money(eq.replacementValue || 0)}</b><span>valeur de remplacement</span></div>
         <div className="stat"><b>{eq.code || '—'}</b><span>référence{eq.location ? ` · ${eq.location}` : ''}</span></div>
@@ -75,7 +75,14 @@ export default function EquipmentDetail() {
           {av.transfers.some((t) => t.status !== 'annule' && t.lines.some((l) => l.equipmentId === eq.id)) && <> — <a href="#/transferts">voir les transferts</a></>}</div>
       )}
 
-      {!eq.isKit && (
+      {eq.accessoryOnly && (
+        <div className="info">
+          <strong>Élément hors inventaire</strong> : ni stock, ni disponibilité, il n'apparaît pas dans le catalogue. Il est ajouté automatiquement
+          avec {(() => { const parents = av.equipment.filter((x) => x.accessories?.some((a) => a.equipmentId === eq.id)); return parents.length ? parents.map((x) => <Link key={x.id} to={'/materiel/' + x.id} style={{ marginRight: 8 }}>{x.name}</Link>) : 'aucun article pour l\'instant'; })()}
+          et se coche à la sortie et au retour.
+        </div>
+      )}
+      {!eq.isKit && !eq.accessoryOnly && (
         <div className="card">
           <div className="page-head" style={{ marginBottom: 8 }}>
             <h2 style={{ margin: 0 }}>Disponibilité sur 4 semaines</h2>
@@ -186,6 +193,7 @@ export default function EquipmentDetail() {
           </table>
         </div>
       )}
+      {eq.contents?.length ? <div className="card"><h2>Contenu fourni</h2><ul style={{ margin: 0 }}>{eq.contents.map((c, i) => <li key={i}>{c.qty > 1 ? `${c.qty} × ` : ''}{c.name}</li>)}</ul></div> : null}
       {eq.notes && <div className="card"><h2>Notes</h2><p style={{ whiteSpace: 'pre-wrap' }}>{eq.notes}</p></div>}
 
       {editing && <Modal title="Modifier l'article" onClose={() => setEditing(false)} wide><EquipmentForm initial={raw} onDone={() => setEditing(false)} /></Modal>}

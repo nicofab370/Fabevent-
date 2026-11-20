@@ -53,6 +53,7 @@ const openProject = async (name) => { await go('projets'); await page.click(`tex
 const tab = async (label) => { await page.click(`.project-tabs button:text-is("${label}")`); await page.waitForTimeout(300); };
 /** glisser-déposer HTML5 à la souris (la cible est d'abord ramenée à l'écran) */
 const drag = async (src, target) => {
+  await src.scrollIntoViewIfNeeded();
   await target.scrollIntoViewIfNeeded();
   await page.waitForTimeout(150);
   const a = await src.boundingBox(); const t = await target.boundingBox();
@@ -107,7 +108,7 @@ await step('Création complète : contact, article, projet, horaires, matériel,
   await page.click('.modal button[type=submit]');
   await tab('Équipement');
   await page.locator('button:has-text("+ Matériel")').first().click();
-  await page.locator('.modal tr', { hasText: 'Enceinte Test' }).locator('input').fill('4');
+  await page.locator('.modal .pick-row', { hasText: 'Enceinte Test' }).locator('input').fill('4');
   await page.click('.modal button:has-text("Ajouter (")');
   await page.waitForTimeout(300);
   await tab('Finances & documents');
@@ -991,7 +992,7 @@ await step('Matériel : glisser un article du catalogue dans un groupe', async (
 await step('Matériel : déplacer une ligne vers un autre groupe, « + » du catalogue sur le groupe choisi', async () => {
   const room = page.locator('.sub', { hasText: 'Salle plénière' });
   const scene = room.locator('.eq-group[data-group="Scène"]');
-  const son = room.locator('.eq-group[data-group="Son & vidéo"]');
+  const son = room.locator('.eq-group[data-group="Soirée de gala J1"]');
   await drag(scene.locator('tr', { hasText: 'Micro Shure SM58' }).locator('td.drag-handle'), son);
   expect((await son.innerText()).includes('Micro Shure SM58') && !(await scene.innerText()).includes('Micro Shure SM58'), 'ligne déplacée');
   await scene.locator('.eq-group-head strong').click();
@@ -1325,6 +1326,131 @@ await step('Téléphone : pas de zoom (champs ≥ 16 px, double tap, échelle bl
     expect(r.touch === 'manipulation', 'double tap sans zoom');
   }
   await c.close();
+});
+
+await step('Équipement : saisie rapide « 12 sm58 » + Entrée, quantité, flèches, code scanné', async () => {
+  ctx = await newContext();
+  await openDemo();
+  await openProject('Conférence annuelle');
+  await tab('Équipement');
+  const scene = page.locator('.sub', { hasText: 'Salle plénière' }).locator('.eq-group[data-group="Scène"]');
+  const qa = scene.locator('input[aria-label="Ajouter un article"]');
+  await qa.fill('12 sm58');
+  await qa.press('Enter');
+  await page.waitForTimeout(400);
+  expect(await scene.locator('tr', { hasText: 'Micro Shure SM58' }).locator('input').first().inputValue() === '12', '12 micros ajoutés en une saisie');
+  await scene.locator('input[aria-label="Quantité à ajouter"]').fill('5');
+  await qa.fill('xlr');
+  await qa.press('ArrowDown');
+  const second = (await scene.locator('.quick-add-list li').nth(1).innerText()).split('\n')[0].replace(/F-\S+/, '').trim();
+  await qa.press('Enter');
+  await page.waitForTimeout(400);
+  expect(await scene.locator('tr', { hasText: second }).locator('input').first().inputValue() === '5', `5 × ${second} (2e résultat, flèche bas)`);
+  await qa.fill('DEMO-SUB');
+  await qa.press('Enter');
+  await page.waitForTimeout(400);
+  expect(await scene.locator('tr', { hasText: 'Caisson SB18' }).count() === 1, 'code-barres scanné ajouté');
+  expect((await qa.inputValue()) === '', 'champ vidé, prêt pour le suivant');
+  await ctx.close();
+});
+
+await step('« + Matériel » : filtres, − / +, sélection, « Ajouter et continuer »', async () => {
+  ctx = await newContext();
+  await openDemo();
+  await openProject('Marché de Noël');
+  await tab('Équipement');
+  await page.locator('button:has-text("+ Matériel")').first().click();
+  const m = page.locator('.modal');
+  await m.locator('.chip', { hasText: 'Câblage' }).click();
+  const names = await m.locator('.pick-row strong').allInnerTexts();
+  expect(names.length > 0 && names.every((n) => /Câble|Rallonge/.test(n)), `filtre catégorie (${names.join(', ')})`);
+  await m.locator('button[aria-label="Plus Câble XLR 10 m"]').click();
+  await m.locator('button[aria-label="Plus Câble XLR 10 m"]').click();
+  await m.locator('.pick-row', { hasText: 'Câble XLR 5 m' }).locator('.pick-name').click(); // clic sur la ligne = +1
+  expect((await m.locator('.picker-selection').innerText()).includes('2 × Câble XLR 10 m'), 'sélection affichée');
+  await m.locator('button:text-is("Ajouter et continuer")').click();
+  await page.waitForTimeout(400);
+  expect((await m.locator('.flash').innerText()).includes('3 article(s)'), 'ajout sans fermer');
+  await m.locator('.chip', { hasText: 'Tout' }).click();
+  await m.locator('input[aria-label="Rechercher du matériel"]').fill('sm58');
+  await m.locator('input[aria-label="Quantité Micro Shure SM58"]').fill('10');
+  await m.locator('button:has-text("Ajouter (10)")').click();
+  await page.waitForTimeout(400);
+  const room = page.locator('.sub').first();
+  expect(await room.locator('tr', { hasText: 'Câble XLR 10 m' }).locator('input').first().inputValue() === '2', '2 câbles XLR 10 m');
+  expect(await room.locator('tr', { hasText: 'Micro Shure SM58' }).locator('input').first().inputValue() === '10', '10 micros');
+});
+
+await step('Contenu fourni : affiché à la checklist, au scan et sur le bon de sortie ; QR-lien ouvre la fiche', async () => {
+  // le vidéoprojecteur de la démo est livré avec télécommande, câble HDMI et câble secteur
+  await openProject('Conférence annuelle');
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Bon de sortie")');
+  await page.waitForSelector('.doc');
+  expect((await page.locator('.doc').innerText()).includes('avec : Télécommande, Câble HDMI 5 m, Câble secteur'), 'contenu sur le bon de sortie');
+  await go('entrepot');
+  await page.locator('table.list tr.click', { hasText: 'Conférence annuelle' }).filter({ hasText: 'Salle plénière' }).click();
+  await page.waitForSelector('.checklist-scan');
+  expect((await page.locator('.cl-line', { hasText: 'Vidéoprojecteur' }).innerText()).includes('avec : Télécommande'), 'contenu sur la checklist');
+  // QR « lien vers la fiche » : la page /q/<code> montre le contenu à cocher
+  await go('materiel');
+  const vpCode = (await page.locator('table.list tr', { hasText: 'Vidéoprojecteur' }).innerText()).match(/F-V-\d{4}/)[0];
+  await go(`q/${vpCode}-01`);
+  await page.waitForSelector('.qr-card');
+  const card = await page.locator('.qr-card').innerText();
+  expect(card.includes('Vidéoprojecteur') && card.includes('Câble HDMI 5 m') && card.includes('VP10K-1001'), `fiche ouverte par le QR (${card.slice(0, 120)})`);
+  for (const c of await page.locator('.qr-content input').all()) await c.check();
+  expect((await page.locator('.qr-card').innerText()).includes('Contenu complet ✓'), 'contenu coché');
+  // le scanner FabEvent lit aussi un QR-lien
+  await go('inventaire');
+  await page.fill('.scan-input', `https://fabri.live/fabevent/#/q/${vpCode}-02`);
+  await page.press('.scan-input', 'Enter');
+  await page.waitForTimeout(300);
+  expect((await page.locator('.flash').first().innerText()).includes('VP10K-1002'), 'QR-lien reconnu au scan');
+  await ctx.close();
+});
+
+await step('Élément hors inventaire : créé depuis un article, ajouté avec lui, coché à la checklist, absent du catalogue', async () => {
+  ctx = await newContext();
+  await openDemo();
+  await go('materiel');
+  await page.click('text=+ Nouvel article');
+  await page.locator('.modal .field', { hasText: 'Désignation' }).locator('input').fill('PC portable de régie');
+  const answers = ['Chargeur 65 W', 'Dock USB-C'];
+  page.removeAllListeners('dialog');
+  page.on('dialog', (d) => (d.type() === 'prompt' ? d.accept(answers.shift()) : d.accept()));
+  for (let i = 0; i < 2; i++) { await page.click('.modal button:has-text("+ Nouvel élément (hors inventaire)")'); await page.waitForTimeout(300); }
+  page.removeAllListeners('dialog');
+  page.on('dialog', (d) => (d.type() === 'prompt' ? d.accept(d.defaultValue()) : d.accept()));
+  await page.locator('.modal label', { hasText: 'Dépôt Liège' }).locator('input').fill('3');
+  await page.click('.modal button[type=submit]');
+  await page.waitForTimeout(400);
+  expect(await page.locator('table.list tr', { hasText: 'Chargeur 65 W' }).count() === 0, 'absent de la liste du matériel');
+  await page.locator('label', { hasText: 'Éléments hors inventaire' }).locator('input').check();
+  await page.waitForTimeout(200);
+  expect((await page.locator('table.list').innerText()).includes('Dock USB-C'), 'visible avec le filtre');
+  await go('inventaire');
+  expect(await page.locator('table.list tr', { hasText: 'Chargeur 65 W' }).count() === 0, 'absent de l’inventaire');
+  // ajouté à un projet : ses éléments suivent, sans dispo ni manque
+  await openProject('Mariage Dupont-Lemaire');
+  await tab('Équipement');
+  const qa = page.locator('input[aria-label="Ajouter un article"]').first();
+  await qa.fill('chargeur');
+  expect(await page.locator('.quick-add-list li', { hasText: 'Chargeur 65 W' }).count() === 0, 'absent de la saisie rapide');
+  await qa.fill('2 pc portable');
+  await qa.press('Enter');
+  await page.waitForTimeout(500);
+  const rows = page.locator('.sub').first();
+  expect(await rows.locator('tr', { hasText: 'Chargeur 65 W' }).locator('input').first().inputValue() === '2', '2 chargeurs ajoutés avec les 2 PC');
+  expect((await rows.locator('tr', { hasText: 'Dock USB-C' }).locator('td.eq-avail').innerText()).trim() === '—', 'pas de disponibilité pour un élément hors inventaire');
+  await go('penuries');
+  expect(!(await page.locator('body').innerText()).includes('Chargeur 65 W'), 'jamais en pénurie');
+  await openChecklist('Mariage Dupont-Lemaire');
+  const line = page.locator('.cl-line', { hasText: 'Chargeur 65 W' });
+  await line.locator('.cl-check').click();
+  await page.waitForTimeout(300);
+  expect((await line.getAttribute('class')).includes('done'), 'chargeurs cochés à la sortie');
+  await ctx.close();
 });
 
 /* ---------- Synchronisation : deux appareils, le vrai serveur PHP ---------- */

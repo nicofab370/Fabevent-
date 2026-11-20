@@ -3,7 +3,7 @@ import { useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Empty, Field, Modal, PageHead, StatusBadge } from '../components/ui';
 import { Scanner } from '../components/Scanner';
-import { addExtraCode, findByCode, setUnitState, unitState, type CodeHit } from '../codes';
+import { addExtraCode, contentsText, findByCode, setUnitState, unitState, type CodeHit } from '../codes';
 import { useAvailability } from '../data';
 import { db } from '../db';
 import { importFile, rowsFromText, type ImportedList } from '../importList';
@@ -37,6 +37,8 @@ export interface CLine {
   parentKey?: string;
   location?: string;
   remark?: string;
+  /** contenu fourni à vérifier (chargeur, dock…) */
+  contents?: string;
 }
 
 export interface ChecklistSource {
@@ -124,7 +126,7 @@ export function ChecklistView({ src }: { src: ChecklistSource }) {
       }
       await src.setSerials(line.key, ph, [...serials, unit.serial]);
       const n = serials.length + 1;
-      say({ ok: true, msg: `${ph === 'sortie' ? 'Sortie' : 'Retour'} : ${eq.name} n° ${unit.serial} — ${n}/${target(line, ph) || n}${warn}${unit.defect ? ` · ⚠ à réparer : ${unit.defect}` : ''}` });
+      say({ ok: true, msg: `${ph === 'sortie' ? 'Sortie' : 'Retour'} : ${eq.name} n° ${unit.serial} — ${n}/${target(line, ph) || n}${warn}${unit.defect ? ` · ⚠ à réparer : ${unit.defect}` : ''}${eq.contents?.length ? ` · vérifie le contenu : ${contentsText(eq)}` : ''}` });
       return true;
     }
     const cur = counted(line, ph);
@@ -135,7 +137,7 @@ export function ChecklistView({ src }: { src: ChecklistSource }) {
       return false;
     }
     await src.setCount(line.key, ph, cur + 1);
-    say({ ok: true, msg: `${ph === 'sortie' ? 'Sortie' : 'Retour'} : ${eq.name} — ${cur + 1}/${target(line, ph)}` });
+    say({ ok: true, msg: `${ph === 'sortie' ? 'Sortie' : 'Retour'} : ${eq.name} — ${cur + 1}/${target(line, ph)}${eq.contents?.length ? ` · vérifie le contenu : ${contentsText(eq)}` : ''}` });
     inputRef.current?.focus();
     return true;
   };
@@ -183,9 +185,11 @@ export function ChecklistView({ src }: { src: ChecklistSource }) {
                 <button className="cl-check" aria-label={state === 'done' ? 'Décocher' : 'Tout cocher'} disabled={serial}
                   onClick={() => src.setCount(l.key, ph, state === 'done' ? 0 : t)}>{state === 'done' ? '✓' : state === 'part' ? '◐' : ''}</button>
                 <div className="cl-name">
-                  <strong>{l.name}</strong> {l.code && <span className="muted">{l.code}</span>}
-                  {l.location && <span className="muted"> · 📍 {l.location}</span>}
-                  {l.remark && <div className="muted" style={{ fontSize: 12 }}>{l.remark}</div>}
+                  <div className="cl-title"><strong>{l.name}</strong></div>
+                  {(l.code || l.location || l.remark) && (
+                    <div className="cl-meta">{[l.code, l.location && `📍 ${l.location}`, l.remark].filter(Boolean).join(' · ')}</div>
+                  )}
+                  {l.contents && <div className="cl-meta cl-contents">↳ avec : {l.contents}</div>}
                   {serial && (
                     <div className="cl-units">
                       {(ph === 'sortie' ? l.outSerials : l.outSerials).map((s) => {
@@ -193,15 +197,15 @@ export function ChecklistView({ src }: { src: ChecklistSource }) {
                         const back = l.inSerials.includes(s);
                         return <span key={s} className={'unit-chip' + (ph === 'retour' ? (back ? ' ok' : ' miss') : ' ok')} title={u?.defect ? `À réparer : ${u.defect}` : ''}>n° {s}{ph === 'retour' && back ? ' ✓' : ''}{u?.defect ? ' 🔧' : ''}</span>;
                       })}
-                      {ph === 'sortie' && l.outSerials.length < l.qty && <span className="muted" style={{ fontSize: 12 }}>scanne chaque unité</span>}
+                      {ph === 'sortie' && l.outSerials.length < l.qty && <span className="muted cl-hint">📷 scanne chaque unité</span>}
                     </div>
                   )}
                 </div>
                 <div className="cl-count">
                   {!serial && <button className="ghost" aria-label="Moins" onClick={() => src.setCount(l.key, ph, Math.max(0, n - 1))}>−</button>}
-                  <span className="cl-n"><b>{n}</b>/{t}</span>
+                  <span className="cl-n" title={serial ? 'Scanne chaque unité' : undefined}>{serial && '📷 '}<b>{n}</b>/{t}</span>
                   {!serial && <button className="ghost" aria-label="Plus" onClick={() => (n < t || ph === 'retour' ? src.setCount(l.key, ph, Math.min(n + 1, ph === 'retour' ? t : n + 1)) : src.bumpQty(l.key, 1).then(() => src.setCount(l.key, ph, n + 1)))}>+</button>}
-                  {!serial && n < t && <button className="secondary small" onClick={() => src.setCount(l.key, ph, t)}>Tout</button>}
+                  {!serial && n < t && <button className="secondary small cl-all" onClick={() => src.setCount(l.key, ph, t)}>Tout</button>}
                   {ph === 'retour' && l.equipmentId && <button className="secondary small" onClick={() => setBroken(l)}>Cassé</button>}
                 </div>
               </div>
@@ -287,7 +291,8 @@ export async function stockMove(equipmentId: string, delta: number, text: string
   const e = await db.equipment.get(equipmentId);
   if (!e || !delta) return;
   await patch(db.equipment, e.id, {
-    quantity: Math.max(0, e.quantity + delta),
+    // élément hors inventaire : pas de stock, on garde seulement la trace
+    quantity: e.accessoryOnly ? e.quantity : Math.max(0, e.quantity + delta),
     stockLog: [...(e.stockLog || []), { at: nowIso(), delta, text: `[${new Date().toLocaleDateString('fr-FR')}] ${text}`, projectId }],
   });
 }
@@ -379,7 +384,7 @@ export function ProjectChecklist() {
     return {
       key: l.id, name: l.name, code: e?.code, equipmentId: l.equipmentId, qty: l.qty, out: l.outQty || 0, back: l.inQty || 0,
       outSerials: l.outSerials || [], inSerials: l.inSerials || [], cat: (l.groupId && groupName.get(l.groupId)) || l.group || (e?.categoryId && catName.get(e.categoryId)) || 'Matériel',
-      parentKey: l.parentLineId, location: e?.location, remark: [l.internalRemark || l.remark, kit.replace(/^ · /, '')].filter(Boolean).join(' — ') || undefined,
+      parentKey: l.parentLineId, location: e?.location, contents: contentsText(e) || undefined, remark: [l.internalRemark || l.remark, kit.replace(/^ · /, '')].filter(Boolean).join(' — ') || undefined,
     };
   };
   const after = () => warehouseStatus(sp.id);
@@ -426,6 +431,7 @@ export function FreeChecklistPage() {
       key: l.id, name: l.name, code: l.code, equipmentId: l.equipmentId, qty: l.qty, out: l.out, back: l.back,
       outSerials: l.outSerials || [], inSerials: l.inSerials || [], cat: l.cat, parentKey: l.parent || undefined,
       location: l.equipmentId ? eqMap.get(l.equipmentId)?.location : undefined,
+      contents: l.equipmentId ? contentsText(eqMap.get(l.equipmentId)) || undefined : undefined,
     })),
     missingSent: cl.missingSent,
     setCount: (key, ph, n) => updLine(key, ph === 'sortie' ? { out: Math.max(0, n) } : { back: Math.max(0, n) }),

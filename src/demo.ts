@@ -159,7 +159,7 @@ async function seedAll() {
   await item('grandma', 'Lumière', 'Console grandMA3 compact', 1, 220, { weight: 25, replacementValue: 18000, location: 'Flight L4', trackSerials: true });
   await item('fumee', 'Lumière', 'Machine à brouillard', 4, 30, { weight: 8, location: 'Bac L5', inspectionMonths: 12 });
   // Vidéo
-  await item('vp', 'Vidéo', 'Vidéoprojecteur 10 000 lm', 2, 180, { weight: 18, replacementValue: 9500, location: 'Flight V1', trackSerials: true });
+  await item('vp', 'Vidéo', 'Vidéoprojecteur 10 000 lm', 2, 180, { weight: 18, replacementValue: 9500, location: 'Flight V1', trackSerials: true, contents: [{ name: 'Télécommande', qty: 1 }, { name: 'Câble HDMI 5 m', qty: 1 }, { name: 'Câble secteur', qty: 1 }] });
   await item('ecran', 'Vidéo', 'Écran de projection 4 × 3 m', 3, 60, { weight: 22, location: 'Rack V2' });
   await item('tv', 'Vidéo', 'Écran TV 65″ sur pied', 6, 75, { weight: 30, location: 'Rack V3' });
   // Structure

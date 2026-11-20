@@ -9,12 +9,23 @@ export interface CodeHit {
 
 const norm = (s?: string) => (s || '').trim().toLowerCase();
 
+/** QR « lien vers la fiche » (…#/q/F-S-0010-03) : on en extrait le code. */
+export function codeFromScan(raw: string): string {
+  const m = raw.trim().match(/#\/q\/([^?#\s]+)/);
+  return m ? decodeURIComponent(m[1]) : raw.trim();
+}
+
+/** « Chargeur 65 W, 2 × Câble USB-C » */
+export function contentsText(e?: Pick<Equipment, 'contents'>): string {
+  return (e?.contents || []).map((c) => (c.qty > 1 ? `${c.qty} × ${c.name}` : c.name)).join(', ');
+}
+
 /**
  * Retrouve l'article (et l'unité) d'un code scanné : étiquette FabEvent, code article,
  * numéro de série, ou l'un des « codes en plus » (code-barres du fabricant, ancienne étiquette…).
  */
 export function findByCode(raw: string, equipment: Equipment[], units: SerialUnit[]): CodeHit | undefined {
-  const c = norm(raw);
+  const c = norm(codeFromScan(raw));
   if (!c) return undefined;
   const eqMap = new Map(equipment.map((e) => [e.id, e]));
   const unit = units.find((u) => norm(u.barcode) === c || norm(u.serial) === c || (u.extraCodes || []).some((x) => norm(x) === c));

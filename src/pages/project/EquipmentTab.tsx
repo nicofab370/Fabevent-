@@ -6,6 +6,7 @@ import { db } from '../../db';
 import type { EquipGroup, Equipment, EquipmentLine, Subproject } from '../../types';
 import { availableQty, blockPeriod, factorFor, fmtRange, lineBlock, lineDays, lineTotal, money, nowIso, round2, save, sortPeriods, uid, type Reservation, patch } from '../../utils';
 import { isPerPiece, type ProjectData } from './shared';
+import { codeFromScan, findByCode } from '../../codes';
 
 const EQ_MIME = 'application/x-fabevent-equipment';
 const LINE_MIME = 'application/x-fabevent-line';
@@ -18,7 +19,8 @@ export interface DropTarget { subId: string; groupId?: string }
  * Le catalogue à droite se glisse-dépose dans un groupe ; une ligne se glisse vers un autre groupe ou sous-projet.
  */
 export default function EquipmentTab({ d }: { d: ProjectData }) {
-  const [showCat, setShowCat] = useState(() => { try { return localStorage.getItem('fab.catalogue') !== '0'; } catch { return true; } });
+  // sur téléphone, le catalogue est replié par défaut : la saisie rapide le remplace
+  const [showCat, setShowCat] = useState(() => { try { const v = localStorage.getItem('fab.catalogue'); return v === null ? window.innerWidth > 900 : v !== '0'; } catch { return true; } });
   const [qty, setQty] = useState(1);
   const [target, setTarget] = useState<DropTarget | null>(d.subs[0] ? { subId: d.subs[0].id } : null);
   const toggle = () => { setShowCat(!showCat); try { localStorage.setItem('fab.catalogue', showCat ? '0' : '1'); } catch { /* sans stockage */ } };
@@ -82,7 +84,7 @@ function Catalogue({ d, qty, setQty, targetLabel, onAdd }: { d: ProjectData; qty
   const cats = useLiveQuery(() => db.categories.orderBy('name').toArray(), []) || [];
   const [b0, b1] = d.subs.length ? [d.subs.map((x) => blockPeriod(x)[0]).sort()[0], d.subs.map((x) => blockPeriod(x)[1]).sort().slice(-1)[0]] : [d.project.start, d.project.end];
   const list = d.av.equipment
-    .filter((e) => !e.archived && (!cat || e.categoryId === cat) && [e.name, e.code, e.barcode, ...(e.tags || [])].join(' ').toLowerCase().includes(q.toLowerCase()))
+    .filter((e) => !e.archived && !e.accessoryOnly && (!cat || e.categoryId === cat) && [e.name, e.code, e.barcode, ...(e.tags || [])].join(' ').toLowerCase().includes(q.toLowerCase()))
     .slice(0, 200);
   return (
     <aside className="eq-catalogue card">
@@ -179,16 +181,16 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
                 <button className="small" onClick={() => setPicking(group?.id ?? null)}>+ Matériel</button>
                 <button className="secondary small" onClick={() => save(db.lines, { projectId: sp.projectId, subprojectId: sp.id, groupId: group?.id, name: 'Prestation', qty: 1, unitPrice: 0, discount: 0, order: lines.length })}>+ Ligne libre</button>
               </div>
-              {ordered.length === 0 && <div className="drop-hint">Glisse du matériel ici</div>}
+              {ordered.length === 0 && <div className="drop-hint">Glisse du matériel ici, ou tape-le ci-dessous</div>}
               {ordered.length > 0 && (
                 <div className="table-wrap">
-                  <table className="list">
-                    <thead><tr><th aria-label="Déplacer" /><th>Qté</th><th>Désignation</th><th className="n">Dispo</th><th>P.U.</th><th>Remise %</th><th title="Ligne facultative proposée en option sur le devis">Option</th>{groups.length > 0 && <th>Groupe</th>}<th className="n">Total HT</th><th /></tr></thead>
+                  <table className="list eq-table">
+                    <thead><tr><th aria-label="Déplacer" /><th>Qté</th><th>Désignation</th><th className="n">Dispo</th><th className="hide-sm">P.U.</th><th className="hide-sm">Rem. %</th><th className="n">Total HT</th><th /></tr></thead>
                     <tbody>
                       {ordered.map((l) => {
                         const eq = l.equipmentId ? eqMap.get(l.equipmentId) : undefined;
                         const [b0, b1] = lineBlock(l, sp);
-                        const avail = eq ? availableQty(eq, av.equipment, av.res, b0, b1, l.id, d.depot) : null;
+                        const avail = eq && !eq.accessoryOnly ? availableQty(eq, av.equipment, av.res, b0, b1, l.id, d.depot) : null;
                         const perPiece = isPerPiece(l, eqMap);
                         return (
                           <tr key={l.id} style={l.optional ? { opacity: 0.6 } : undefined} draggable={!l.parentLineId}
@@ -198,10 +200,12 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
                             <td style={l.parentLineId ? { paddingLeft: 24 } : undefined}>
                               {l.parentLineId && <span className="muted">↳ </span>}
                               {eq ? <Link to={'/materiel/' + eq.id}>{l.name}</Link> : <input value={l.name} onChange={(e) => updLine(l, { name: e.target.value })} />}
+                              {eq?.code && <span className="muted eq-code"> {eq.code}</span>}
                               {perPiece && <span className="badge" style={{ marginLeft: 6 }}>vente</span>}
-                              {l.periodIds?.length ? <div className="muted" style={{ fontSize: 11 }}>🕑 {periods.filter((p) => l.periodIds!.includes(p.id)).map((p) => p.name).join(', ')} · {fmtRange(b0, b1)}</div> : null}
-                              {l.remark && <div className="muted" style={{ fontSize: 11 }}>Devis : {l.remark}</div>}
-                              {l.internalRemark && <div className="muted" style={{ fontSize: 11 }}>Entrepôt : {l.internalRemark}</div>}
+                              {l.optional && <span className="badge st-option" style={{ marginLeft: 6 }}>option</span>}
+                              {l.periodIds?.length ? <div className="muted eq-sub" style={{ fontSize: 11 }}>🕑 {periods.filter((p) => l.periodIds!.includes(p.id)).map((p) => p.name).join(', ')} · {fmtRange(b0, b1)}</div> : null}
+                              {l.remark && <div className="muted eq-sub" style={{ fontSize: 11 }}>Devis : {l.remark}</div>}
+                              {l.internalRemark && <div className="muted eq-sub" style={{ fontSize: 11 }}>Entrepôt : {l.internalRemark}</div>}
                             {eq && avail !== null && avail < l.qty && !l.optional && (eq.alternatives || []).map((altId) => {
                               const alt = eqMap.get(altId);
                               if (!alt || alt.archived) return null;
@@ -217,21 +221,12 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
                               ) : null;
                             })}
                             </td>
-                            <td className="n">{avail === null ? '—' : <span className={'avail ' + (avail >= l.qty || l.optional ? 'ok' : 'ko')}>{avail}</span>}</td>
-                            <td><NumInput className="w-price" value={l.unitPrice} onChange={(n) => updLine(l, { unitPrice: n })} /></td>
-                            <td><NumInput className="w-qty" value={l.discount} onChange={(n) => updLine(l, { discount: n })} /></td>
-                            <td><input type="checkbox" checked={!!l.optional} onChange={(e) => updLine(l, { optional: e.target.checked })} /></td>
-                            {groups.length > 0 && (
-                              <td>{!l.parentLineId && (
-                                <select value={l.groupId || ''} onChange={(e) => updLine(l, { groupId: e.target.value || undefined })}>
-                                  <option value="">—</option>
-                                  {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-                                </select>
-                              )}</td>
-                            )}
+                            <td className="n eq-avail">{avail === null ? '—' : <span className={'avail ' + (avail >= l.qty || l.optional ? 'ok' : 'ko')}><span className="show-sm">dispo </span>{avail}</span>}</td>
+                            <td className="hide-sm"><NumInput className="w-price" value={l.unitPrice} onChange={(n) => updLine(l, { unitPrice: n })} aria-label="Prix unitaire" /></td>
+                            <td className="hide-sm"><NumInput className="w-qty" value={l.discount} onChange={(n) => updLine(l, { discount: n })} aria-label="Remise" /></td>
                             <td className="n">{money(lineTotal(l, lineDays(l, sp), settings, perPiece))}</td>
                             <td className="nowrap">
-                              <button className="ghost" onClick={() => setEditLine(l)} title="Horaire propre et remarques" aria-label="Détails de la ligne">⋯</button>
+                              <button className="ghost" onClick={() => setEditLine(l)} title="Prix, option, groupe, horaire propre et remarques" aria-label="Détails de la ligne">⋯</button>
                               <button className="ghost" onClick={() => removeLine(l)} aria-label="Retirer">✕</button>
                             </td>
                           </tr>
@@ -241,6 +236,8 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
                   </table>
                 </div>
               )}
+              <QuickAdd equipment={av.equipment} units={av.units} availOf={(e) => { const [b0, b1] = lineBlock({ groupId: group?.id }, sp); return availableQty(e, av.equipment, av.res, b0, b1, undefined, d.depot); }}
+                onAdd={(eqId, n) => addEquipmentToSub(sp, av.equipment, lines, { [eqId]: n }, group?.id, d.client?.discounts?.equipment || 0)} />
             </div>
           );
         })}
@@ -261,11 +258,12 @@ function LineModal({ sp, line, accessories, onClose }: { sp: Subproject; line: E
   const [l, setL] = useState(line);
   const groupName = sp.groups?.find((g) => g.id === line.groupId)?.name;
   return (
-    <Modal title={`Ligne — ${line.name}`} onClose={onClose}>
+    <Modal title={`Ligne — ${line.name}`} onClose={onClose} wide>
       <form className="form" onSubmit={async (e) => {
         e.preventDefault();
         const periodIds = l.periodIds?.length ? l.periodIds : undefined;
-        await patch(db.lines, line.id, { periodIds, remark: l.remark?.trim() || undefined, internalRemark: l.internalRemark?.trim() || undefined });
+        await patch(db.lines, line.id, { periodIds, remark: l.remark?.trim() || undefined, internalRemark: l.internalRemark?.trim() || undefined, unitPrice: l.unitPrice, discount: l.discount, optional: l.optional || undefined, groupId: l.groupId || undefined });
+        if (l.groupId !== line.groupId) for (const c of accessories) await patch(db.lines, c.id, { groupId: l.groupId || undefined });
         // les accessoires suivent l'horaire de leur article
         for (const c of accessories) await patch(db.lines, c.id, { periodIds });
         onClose();
@@ -288,6 +286,17 @@ function LineModal({ sp, line, accessories, onClose }: { sp: Subproject; line: E
             </>
           )}
         </div>
+        <Field label="Prix unitaire HT"><NumInput value={l.unitPrice} onChange={(n) => setL({ ...l, unitPrice: n })} /></Field>
+        <Field label="Remise %"><NumInput value={l.discount} onChange={(n) => setL({ ...l, discount: n })} /></Field>
+        {(sp.groups || []).length > 0 && !line.parentLineId && (
+          <Field label="Groupe">
+            <select value={l.groupId || ''} onChange={(e) => setL({ ...l, groupId: e.target.value || undefined })}>
+              <option value="">Sans groupe</option>
+              {(sp.groups || []).map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+            </select>
+          </Field>
+        )}
+        <Field label=" "><label className="check-row"><input type="checkbox" checked={!!l.optional} onChange={(e) => setL({ ...l, optional: e.target.checked })} /> En option sur le devis (hors total)</label></Field>
         <Field label="Remarque pour le client (devis, facture)" full><input value={l.remark || ''} onChange={(e) => setL({ ...l, remark: e.target.value })} placeholder="ex. livré monté sur pied" /></Field>
         <Field label="Remarque pour l'entrepôt (bon de sortie)" full><input value={l.internalRemark || ''} onChange={(e) => setL({ ...l, internalRemark: e.target.value })} placeholder="ex. prendre les câbles neufs" /></Field>
         <div className="form-actions">
@@ -373,54 +382,181 @@ export async function addEquipmentToSub(sp: Subproject, equipment: Equipment[], 
   }
 }
 
+/**
+ * Fenêtre « + Matériel » : chercher, filtrer (catégorie, disponible, étiquette), mettre des quantités
+ * avec − / + (ou un clic sur la ligne = +1), voir la sélection, puis ajouter (et continuer si besoin).
+ */
 function EquipmentPicker({ sp, groupId, depot, discount, equipment, res, existing, onClose }: { sp: Subproject; groupId?: string; depot?: string; discount: number; equipment: Equipment[]; res: Reservation[]; existing: EquipmentLine[]; onClose: () => void }) {
   const [q, setQ] = useState('');
   const [qty, setQty] = useState<Record<string, number>>({});
-  const cats = useLiveQuery(() => db.categories.toArray(), []) || [];
+  const [cat, setCat] = useState('');
+  const [onlyAvail, setOnlyAvail] = useState(false);
+  const [tag, setTag] = useState('');
+  const [sort, setSort] = useState<'nom' | 'dispo' | 'prix'>('nom');
+  const [target, setTarget] = useState(groupId || '');
+  const [added, setAdded] = useState('');
+  const cats = useLiveQuery(() => db.categories.orderBy('name').toArray(), []) || [];
   const units = useLiveQuery(() => db.units.toArray(), []) || [];
   const catName = new Map(cats.map((c) => [c.id, c.name]));
-  const [bStart, bEnd] = lineBlock({ groupId }, sp);
-  const groupName = sp.groups?.find((g) => g.id === groupId)?.name;
-  const list = equipment.filter((e) => !e.archived && [e.name, e.code, e.barcode, e.categoryId && catName.get(e.categoryId)].join(' ').toLowerCase().includes(q.toLowerCase()));
-  const count = Object.values(qty).reduce((a, b) => a + (b || 0), 0);
+  const [bStart, bEnd] = lineBlock({ groupId: target || undefined }, sp);
+  const groups = sp.groups || [];
+  const avail = new Map(equipment.map((e) => [e.id, availableQty(e, equipment, res, bStart, bEnd, undefined, depot)]));
+  const inProject = new Map<string, number>();
+  for (const l of existing) if (l.equipmentId && !l.parentLineId) inProject.set(l.equipmentId, (inProject.get(l.equipmentId) || 0) + l.qty);
+  const tags = Array.from(new Set(equipment.flatMap((e) => e.tags || []))).sort();
+  const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const base = equipment.filter((e) => !e.archived && !e.accessoryOnly && words.every((w) => [e.name, e.code, e.barcode, ...(e.extraCodes || []), e.categoryId && catName.get(e.categoryId), ...(e.tags || [])].join(' ').toLowerCase().includes(w)));
+  const list = base
+    .filter((e) => (!cat || e.categoryId === cat) && (!tag || e.tags?.includes(tag)) && (!onlyAvail || (avail.get(e.id) || 0) > 0))
+    .sort((a, b) => sort === 'dispo' ? (avail.get(b.id) || 0) - (avail.get(a.id) || 0) : sort === 'prix' ? a.dailyPrice - b.dailyPrice : a.name.localeCompare(b.name));
+  const selected = equipment.filter((e) => (qty[e.id] || 0) > 0);
+  const count = selected.reduce((a, e) => a + (qty[e.id] || 0), 0);
+  const bump = (id: string, d: number) => setQty((x) => ({ ...x, [id]: Math.max(0, (x[id] || 0) + d) }));
+  const commit = async (close: boolean) => {
+    await addEquipmentToSub(sp, equipment, existing, qty, target || undefined, discount);
+    if (close) return onClose();
+    setAdded(`${count} article(s) ajouté(s)`);
+    setQty({});
+  };
 
   return (
-    <Modal title={`Ajouter du matériel — ${sp.name}${groupName ? ` · ${groupName}` : ''}`} onClose={onClose} wide>
-      <p className="muted" style={{ marginTop: 0 }}>Disponibilités du {fmtRange(bStart, bEnd)}</p>
-      <div className="toolbar">
-        <input autoFocus placeholder="Rechercher ou scanner un code-barres…" value={q} onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key !== 'Enter') return;
-            const code = q.trim();
-            const hit = equipment.find((x) => x.barcode && x.barcode === code) || equipment.find((x) => x.id === units.find((u) => u.barcode === code || u.serial === code)?.equipmentId);
-            if (hit) { setQty({ ...qty, [hit.id]: (qty[hit.id] || 0) + 1 }); setQ(''); }
-          }} />
-      </div>
-      <div className="pick-list">
-        {list.length === 0 ? <Empty>Aucun article.</Empty> : (
-          <table className="list">
-            <thead><tr><th>Article</th><th className="n">Dispo</th><th className="n">Prix</th><th>Qté</th></tr></thead>
-            <tbody>
-              {list.map((e) => {
-                const avail = availableQty(e, equipment, res, bStart, bEnd, undefined, depot);
-                return (
-                  <tr key={e.id}>
-                    <td>{e.photo && <img src={e.photo} alt="" className="thumb" />}{e.name} {e.isKit && <span className="badge">Kit</span>} {e.kind === 'vente' && <span className="badge">vente</span>} <span className="muted">{e.code}</span>
-                      {e.accessories?.length ? <div className="muted" style={{ fontSize: 11 }}>+ accessoires automatiques</div> : null}</td>
-                    <td className="n"><span className={'avail ' + (avail - (qty[e.id] || 0) >= 0 ? 'ok' : 'ko')}>{avail}</span></td>
-                    <td className="n">{money(e.dailyPrice)}{e.kind === 'vente' ? '' : '/j'}</td>
-                    <td><NumInput className="w-qty" step="1" min={0} value={qty[e.id] || 0} onChange={(n) => setQty({ ...qty, [e.id]: n })} /></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+    <Modal title={`Ajouter du matériel — ${sp.name}`} onClose={onClose} wide>
+      <div className="picker">
+        <div className="picker-filters">
+          <input autoFocus placeholder="Rechercher (nom, code, étiquette) ou scanner…" value={q} aria-label="Rechercher du matériel"
+            onChange={(e) => { setQ(e.target.value); setAdded(''); }}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter') return;
+              const hit = findByCode(q, equipment, units)?.equipment || (list.length === 1 ? list[0] : undefined);
+              if (hit) { bump(hit.id, 1); setQ(''); }
+            }} />
+          <div className="chips">
+            <button className={'chip' + (!cat ? ' on' : '')} onClick={() => setCat('')}>Tout ({base.length})</button>
+            {cats.map((c) => {
+              const n = base.filter((e) => e.categoryId === c.id).length;
+              return n ? <button key={c.id} className={'chip' + (cat === c.id ? ' on' : '')} onClick={() => setCat(cat === c.id ? '' : c.id)}>{c.name} ({n})</button> : null;
+            })}
+          </div>
+          <div className="toolbar" style={{ marginBottom: 0 }}>
+            <label className="check-row"><input type="checkbox" checked={onlyAvail} onChange={(e) => setOnlyAvail(e.target.checked)} /> Disponibles seulement</label>
+            {tags.length > 0 && (
+              <select value={tag} onChange={(e) => setTag(e.target.value)} style={{ width: 'auto' }} aria-label="Étiquette">
+                <option value="">Toutes étiquettes</option>
+                {tags.map((t) => <option key={t}>{t}</option>)}
+              </select>
+            )}
+            <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} style={{ width: 'auto' }} aria-label="Trier">
+              <option value="nom">Trier par nom</option><option value="dispo">Plus disponibles d'abord</option><option value="prix">Prix croissant</option>
+            </select>
+            {groups.length > 0 && (
+              <select value={target} onChange={(e) => setTarget(e.target.value)} style={{ width: 'auto' }} aria-label="Groupe de destination">
+                <option value="">→ Sans groupe</option>
+                {groups.map((g) => <option key={g.id} value={g.id}>→ {g.name}</option>)}
+              </select>
+            )}
+            <span className="muted" style={{ fontSize: 12 }}>Dispo du {fmtRange(bStart, bEnd)}</span>
+          </div>
+        </div>
+        <div className="pick-list">
+          {list.length === 0 ? <Empty>Aucun article.</Empty> : list.map((e) => {
+            const a = avail.get(e.id) || 0, n = qty[e.id] || 0;
+            return (
+              <div key={e.id} className={'pick-row' + (n ? ' on' : '')} onClick={(ev) => { if (!(ev.target as HTMLElement).closest('input,button')) bump(e.id, 1); }} title="Clic : +1">
+                {e.photo ? <img src={e.photo} alt="" className="thumb" /> : <span className="thumb" />}
+                <div className="pick-name">
+                  <div><strong>{e.name}</strong> {e.isKit && <span className="badge">Kit</span>} {e.kind === 'vente' && <span className="badge">vente</span>}</div>
+                  <div className="muted" style={{ fontSize: 11 }}>{[e.code, e.categoryId && catName.get(e.categoryId), inProject.get(e.id) ? `déjà ${inProject.get(e.id)} dans le projet` : '', e.contents?.length ? `avec ${e.contents.map((c) => c.name).join(', ')}` : ''].filter(Boolean).join(' · ')}</div>
+                </div>
+                <span className={'avail ' + (a - n >= 0 ? 'ok' : 'ko')} title="Disponible">{a}</span>
+                <span className="muted pick-price">{money(e.dailyPrice)}{e.kind === 'vente' ? '' : '/j'}</span>
+                <div className="stepper">
+                  <button type="button" className="ghost" aria-label={`Moins ${e.name}`} disabled={!n} onClick={() => bump(e.id, -1)}>−</button>
+                  <NumInput className="w-qty" value={n} placeholder="0" onChange={(v) => setQty((x) => ({ ...x, [e.id]: v }))} aria-label={`Quantité ${e.name}`} />
+                  <button type="button" className="ghost" aria-label={`Plus ${e.name}`} onClick={() => bump(e.id, 1)}>+</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {selected.length > 0 && (
+          <div className="picker-selection">
+            <strong>Sélection :</strong> {selected.map((e) => (
+              <span key={e.id} className="tag small">{qty[e.id]} × {e.name} <button className="ghost small" aria-label={`Retirer ${e.name}`} onClick={() => setQty((x) => ({ ...x, [e.id]: 0 }))}>✕</button></span>
+            ))}
+          </div>
         )}
+        {added && <div className="flash ok">{added}</div>}
       </div>
       <div className="form-actions" style={{ marginTop: 12, display: 'flex' }}>
-        <button className="secondary" onClick={onClose}>Annuler</button>
-        <button disabled={!count} onClick={async () => { await addEquipmentToSub(sp, equipment, existing, qty, groupId, discount); onClose(); }}>Ajouter {count > 0 ? `(${count})` : ''}</button>
+        <button className="secondary" onClick={onClose}>Fermer</button>
+        <button className="secondary" disabled={!count} onClick={() => commit(false)}>Ajouter et continuer</button>
+        <button disabled={!count} onClick={() => commit(true)}>Ajouter {count > 0 ? `(${count})` : ''}</button>
       </div>
     </Modal>
+  );
+}
+
+/**
+ * Saisie rapide (comme dans Rentman) : taper un nom ou un code, Entrée ajoute le premier résultat.
+ * « 12 sm58 » + Entrée ajoute directement 12 micros ; un code-barres scanné ajoute l'article.
+ * Les flèches choisissent un autre résultat ; la quantité peut aussi se mettre dans la petite case.
+ */
+export function QuickAdd({ equipment, units, availOf, onAdd }: {
+  equipment: Equipment[]; units: { equipmentId: string; barcode?: string; serial: string; extraCodes?: string[] }[];
+  availOf: (e: Equipment) => number; onAdd: (equipmentId: string, n: number) => Promise<void>;
+}) {
+  const [q, setQ] = useState('');
+  const [qty, setQty] = useState(1);
+  const [hi, setHi] = useState(0);
+  const [msg, setMsg] = useState('');
+  const m = q.match(/^\s*(\d+)\s*[x×*]?\s+(.+)$/i);
+  const n = m ? parseInt(m[1], 10) : qty || 1;
+  const term = (m ? m[2] : q).trim().toLowerCase();
+  const words = term.split(/\s+/).filter(Boolean);
+  const results = term.length < 1 ? [] : equipment
+    .filter((e) => !e.archived && !e.accessoryOnly && words.every((w) => [e.name, e.code, e.barcode, ...(e.extraCodes || [])].join(' ').toLowerCase().includes(w)))
+    .sort((a, b) => Number(!(a.code || '').toLowerCase().startsWith(term)) - Number(!(b.code || '').toLowerCase().startsWith(term)) || a.name.localeCompare(b.name))
+    .slice(0, 8);
+  const add = async (e: Equipment) => {
+    await onAdd(e.id, n);
+    setMsg(`+${n} × ${e.name}`);
+    setQ(''); setQty(1); setHi(0);
+  };
+  return (
+    <div className="quick-add">
+      <NumInput className="w-qty" value={qty} onChange={setQty} aria-label="Quantité à ajouter" />
+      <div className="quick-add-box">
+        <input value={q} placeholder="+ Ajouter… (ex. « 12 sm58 » + Entrée)" aria-label="Ajouter un article"
+          onChange={(e) => { setQ(e.target.value); setHi(0); setMsg(''); }}
+          onKeyDown={async (e) => {
+            if (e.key === 'ArrowDown') { e.preventDefault(); setHi((h) => Math.min(h + 1, results.length - 1)); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); setHi((h) => Math.max(h - 1, 0)); }
+            else if (e.key === 'Escape') { setQ(''); }
+            else if (e.key === 'Enter') {
+              e.preventDefault();
+              // code-barres scanné : correspondance exacte
+              const code = codeFromScan(q).toLowerCase();
+              const u = units.find((x) => [x.barcode, x.serial, ...(x.extraCodes || [])].some((c) => c?.toLowerCase() === code));
+              const exact = equipment.find((x) => x.id === u?.equipmentId) || equipment.find((x) => [x.barcode, x.code, ...(x.extraCodes || [])].some((c) => c?.toLowerCase() === code));
+              const pick = exact || results[hi];
+              if (pick) await add(pick);
+            }
+          }} />
+        {results.length > 0 && (
+          <ul className="quick-add-list" role="listbox">
+            {results.map((e, i) => {
+              const a = availOf(e);
+              return (
+                <li key={e.id} role="option" aria-selected={i === hi} className={i === hi ? 'on' : ''} onMouseDown={(ev) => { ev.preventDefault(); add(e); }}>
+                  <span>{e.name} <span className="muted">{e.code}</span></span>
+                  <span className={'avail ' + (a >= n ? 'ok' : 'ko')} title="Disponible">{a}</span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+      {msg && <span className="avail ok">{msg}</span>}
+    </div>
   );
 }
