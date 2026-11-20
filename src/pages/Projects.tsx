@@ -122,7 +122,7 @@ export default function Projects() {
         {templates.length > 0 && <button className="secondary" onClick={() => setFromTemplate(true)}>+ À partir d'un modèle</button>}
         <button onClick={() => setCreating(true)}>+ Nouveau projet</button>
       </PageHead>
-      {showTemplates && <div className="info">Un modèle se crée depuis un projet existant (« Enregistrer comme modèle ») : il garde salles, horaires, matériel, postes et coûts, sans rien réserver.</div>}
+      {showTemplates && <div className="info">Un modèle se crée depuis un projet existant (« Enregistrer comme modèle ») : il garde sous-projets, horaires, matériel, postes et coûts, sans rien réserver.</div>}
       <div className="card">
         <div className="toolbar">
           <input placeholder="Rechercher…" value={q} onChange={(e) => setQ(e.target.value)} />

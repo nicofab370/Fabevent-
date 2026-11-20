@@ -183,7 +183,7 @@ export async function createDocument(projectId: string, type: DocType, opts: Doc
   const partials = projectDocs.filter((d) => d.type === 'facture' && d.subprojectIds?.length && !fullyCredited.has(d.number));
   const alreadyInvoiced = partials.flatMap((d) => d.subprojectIds || []);
   const only = type !== 'facture' ? undefined : opts.subIds?.length ? { include: opts.subIds.filter((x) => !alreadyInvoiced.includes(x)) } : alreadyInvoiced.length ? { exclude: alreadyInvoiced } : undefined;
-  if (only?.include && !only.include.length) throw new Error('Ces salles sont déjà facturées.');
+  if (only?.include && !only.include.length) throw new Error('Ces sous-projets sont déjà facturés.');
   let snapshot = await buildSnapshot(projectId, type, only);
   if (type === 'facture' && partials.length && !opts.subIds?.length) {
     snapshot = { ...snapshot, partialInvoices: partials.map((d) => ({ number: d.number, rooms: d.snapshot.subprojects.map((x) => x.name), ht: d.snapshot.totalHT })) };

@@ -49,6 +49,17 @@ async function step(name, fn) {
 const go = async (hash) => { await page.goto(U + '#/' + hash); await page.waitForTimeout(400); };
 const openProject = async (name) => { await go('projets'); await page.click(`text=${name}`); await page.waitForSelector('.project-tabs'); await page.waitForTimeout(300); };
 const tab = async (label) => { await page.click(`.project-tabs button:text-is("${label}")`); await page.waitForTimeout(300); };
+/** glisser-déposer HTML5 à la souris (la cible est d'abord ramenée à l'écran) */
+const drag = async (src, target) => {
+  await target.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(150);
+  const a = await src.boundingBox(); const t = await target.boundingBox();
+  await page.mouse.move(a.x + 10, a.y + a.height / 2); await page.mouse.down();
+  await page.mouse.move(a.x + 30, a.y + a.height / 2, { steps: 5 });
+  await page.mouse.move(t.x + 60, t.y + 20, { steps: 10 }); await page.mouse.up();
+  await page.waitForTimeout(500);
+};
+const crewMode = async (n) => { await page.click(`.crew-modes button:has-text("${n === 1 ? '1. Postes' : '2. Attribution'}")`); await page.waitForTimeout(200); };
 const field = (label) => page.locator('.field', { hasText: label });
 async function openDemo() {
   await go('');
@@ -256,6 +267,7 @@ await step('Projet récurrent : 2 répétitions hebdomadaires', async () => {
 await step('Personnel : heures sup., trajet sur la feuille de route, documents à renouveler', async () => {
   await openProject('Festival des Lumières');
   await tab('Équipe & transport');
+  await crewMode(1);
   expect(await page.locator('text=/h sup\\./').count(), 'heures supplémentaires affichées');
   await openProject('Conférence annuelle');
   await tab('Finances & documents');
@@ -273,8 +285,9 @@ await step('Sous-traitants : changer de rigger change la marge, pas le prix clie
   const totalBefore = await head().nth(2).innerText();
   const marginBefore = await head().nth(3).innerText();
   await tab('Équipe & transport');
-  const row = page.locator('table.list tbody tr', { has: page.locator('input[value="Rigger"]') }).first();
-  const select = row.locator('select').nth(1);
+  await crewMode(2);
+  const row = page.locator('table.crew-assign tbody tr', { hasText: 'Rigger' }).first();
+  const select = row.locator('select[aria-label="Technicien"]');
   const options = await select.locator('option').allInnerTexts();
   expect(options.some((o) => o.includes('Sam Moreau') && o.includes('260')), `coût de chaque candidat affiché : ${options.join(' | ')}`);
   await select.selectOption({ label: options.find((o) => o.includes('Sam Moreau')) });
@@ -390,12 +403,14 @@ await step('Consommables : passés en « Terminé », ils sortent du stock', asy
 await step('Indisponibilité d’un technicien signalée sur un poste', async () => {
   await openProject('Festival des Lumières');
   await tab('Équipe & transport');
+  await crewMode(2);
   expect(await page.locator('.avail.ko', { hasText: 'Indisponible' }).count(), 'Emma (congés) signalée indisponible');
 });
 
 await step('Véhicule réservé deux fois : conflit signalé', async () => {
   await openProject('Beurs Maastricht');
   await tab('Équipe & transport');
+  await crewMode(1);
   await page.locator('input[type=datetime-local]').last().fill('2030-01-01T00:00');
   await page.waitForTimeout(300);
   const va = page.locator('table.list').last().locator('tbody tr').first();
@@ -593,6 +608,7 @@ await step('Planification provisoire : « à confirmer » sur la feuille de rout
   expect((await page.locator('.doc').innerText()).includes('à confirmer'), 'poste provisoire masqué au technicien');
   await openProject('Festival des Lumières');
   await tab('Équipe & transport');
+  await crewMode(2);
   const stat = () => page.locator('.stat', { hasText: 'postes provisoires' }).locator('b').innerText();
   expect(Number(await stat()) > 0, 'postes provisoires comptés');
   await page.click('text=Rendre toute la planification finale');
@@ -600,10 +616,10 @@ await step('Planification provisoire : « à confirmer » sur la feuille de rout
   expect(Number(await stat()) === 0, 'plus aucun poste provisoire');
 });
 
-await step('Facture d’une salle, puis facture finale qui l’exclut', async () => {
+await step('Facture d’un sous-projet, puis facture finale qui l’exclut', async () => {
   await openProject('Conférence annuelle');
   await tab('Finances & documents');
-  await page.click('text=+ Facture d\'une salle');
+  await page.click('text=+ Facture d\'un sous-projet');
   await page.locator('.modal label', { hasText: 'Salle atelier 1' }).locator('input').check();
   await page.click('.modal button[type=submit]');
   await page.waitForSelector('.doc');
@@ -656,6 +672,7 @@ await step('Rendez-vous : affiché au planning et rend le participant indisponib
   await page.waitForTimeout(300);
   await openProject('Conférence annuelle');
   await tab('Équipe & transport');
+  await crewMode(2);
   expect(await page.locator('.avail.ko', { hasText: 'Indisponible' }).count(), 'Hugo indisponible pendant le rendez-vous');
 });
 
@@ -944,15 +961,95 @@ await step('Lieu : plusieurs endroits avec leur adresse, choisis par projet et p
   expect(fr.includes('Coffret 32 A près du kiosque') && fr.includes('portail N2'), 'infos pratiques des endroits');
 });
 
-await step('Salle : changer d’endroit dans la fenêtre de la salle', async () => {
+await step('Sous-projet : changer d’endroit dans sa fenêtre', async () => {
   await openProject('Festival des Lumières');
   await tab('Planning');
   const room = page.locator('.card', { has: page.locator('h2', { hasText: 'Scène acoustique' }) });
   await room.locator('button:has-text("Modifier les horaires")').click();
-  await page.locator('select[aria-label="Endroit de la salle"]').selectOption({ label: 'Loges artistes' });
+  await page.locator('select[aria-label="Endroit du sous-projet"]').selectOption({ label: 'Loges artistes' });
   await page.click('.modal button[type=submit]');
   await page.waitForTimeout(300);
   expect((await room.innerText()).includes('Loges artistes'), 'endroit de la salle mis à jour');
+});
+
+console.log('\n  — glisser-déposer, champs numériques, postes et attribution —');
+await step('Matériel : glisser un article du catalogue dans un groupe', async () => {
+  await resetDemo();
+  await openProject('Conférence annuelle');
+  await tab('Équipement');
+  const scene = page.locator('.sub', { hasText: 'Salle plénière' }).locator('.eq-group[data-group="Scène"]');
+  const before = await scene.locator('tbody tr').count();
+  await page.fill('.eq-catalogue input[aria-label="Rechercher dans le catalogue"]', 'SM58');
+  await drag(page.locator('.eq-catalogue .eq-cat-item', { hasText: 'Micro Shure SM58' }), scene);
+  expect((await scene.locator('tbody tr').count()) > before, 'ligne ajoutée au groupe Scène');
+  expect((await scene.innerText()).includes('Micro Shure SM58'), 'article déposé');
+});
+
+await step('Matériel : déplacer une ligne vers un autre groupe, « + » du catalogue sur le groupe choisi', async () => {
+  const room = page.locator('.sub', { hasText: 'Salle plénière' });
+  const scene = room.locator('.eq-group[data-group="Scène"]');
+  const son = room.locator('.eq-group[data-group="Son & vidéo"]');
+  await drag(scene.locator('tr', { hasText: 'Micro Shure SM58' }).locator('td.drag-handle'), son);
+  expect((await son.innerText()).includes('Micro Shure SM58') && !(await scene.innerText()).includes('Micro Shure SM58'), 'ligne déplacée');
+  await scene.locator('.eq-group-head strong').click();
+  await page.fill('.eq-catalogue input[aria-label="Quantité déposée"]', '3');
+  await page.fill('.eq-catalogue input[aria-label="Rechercher dans le catalogue"]', 'DI passive');
+  await page.locator('.eq-catalogue button[aria-label^="Ajouter"]').first().click();
+  await page.waitForTimeout(500);
+  const row = scene.locator('tr', { hasText: 'Boîte de direct DI passive' });
+  expect(await row.locator('input').first().inputValue() === '3', 'trois DI ajoutées au groupe choisi');
+});
+
+await step('Champ numérique : on peut le vider sans qu’un 0 reste', async () => {
+  const qtyInput = page.locator('.sub', { hasText: 'Salle plénière' }).locator('tr', { hasText: 'Boîte de direct DI passive' }).locator('input').first();
+  await qtyInput.fill('');
+  await page.waitForTimeout(300);
+  expect(await qtyInput.inputValue() === '', 'champ vide pendant la saisie');
+  await qtyInput.pressSequentially('5');
+  await page.waitForTimeout(300);
+  expect(await qtyInput.inputValue() === '5', `« 5 » et pas « 05 » (${await qtyInput.inputValue()})`);
+  await go('parametres');
+  const vat = page.locator('.field', { hasText: 'Taux de TVA' }).locator('input');
+  await vat.fill('');
+  expect(await vat.inputValue() === '', 'paramètre vidé sans 0');
+});
+
+await step('Sous-projets : le vocabulaire « sous-projet » remplace « salle »', async () => {
+  await openProject('Conférence annuelle');
+  await tab('Planning');
+  expect(await page.locator('button:has-text("+ Ajouter un sous-projet")').count() === 1, 'bouton « Ajouter un sous-projet »');
+  expect((await page.locator('.stats').first().innerText()).includes('sous-projet(s)'), 'compteur de sous-projets');
+});
+
+await step('Postes : prévoir 3 techniciens sur un créneau, sans les attribuer', async () => {
+  await openProject('Conférence annuelle');
+  await tab('Équipe & transport');
+  await crewMode(1);
+  const room = page.locator('.sub', { hasText: 'Salle atelier 2' });
+  const before = await room.locator('table.crew-posts tbody tr').count();
+  await room.locator('input[aria-label="Nombre de postes"]').fill('3');
+  await room.locator('input[aria-label="Fonction à ajouter"]').fill('Technicien');
+  await room.locator('button:has-text("+ Ajouter les postes")').click();
+  await page.waitForTimeout(600);
+  expect((await room.locator('table.crew-posts tbody tr').count()) === before + 3, 'trois postes créés');
+  expect((await room.locator('table.crew-posts tbody tr', { hasText: 'à pourvoir' }).count()) >= 3, 'postes à pourvoir');
+  expect((await room.locator('select[aria-label="Technicien"]').count()) === 0, 'pas de choix de technicien dans les postes');
+  await crewMode(2);
+  expect((await room.locator('table.crew-assign select[aria-label="Technicien"]').count()) === before + 3, 'attribution : un choix par poste');
+});
+
+await step('Attribution : page de tous les projets, candidats disponibles d’abord', async () => {
+  await go('attribution');
+  const row = page.locator('tr', { hasText: 'Conférence annuelle' }).filter({ hasText: 'Technicien' }).first();
+  await row.waitFor({ timeout: 5000 });
+  const sel = row.locator('select[aria-label="Technicien"]');
+  const opts = (await sel.locator('option').allInnerTexts()).slice(1);
+  const firstBusy = opts.findIndex((o) => /indisponible|déjà planifié/.test(o));
+  expect(firstBusy === -1 || opts.slice(firstBusy).every((o) => /indisponible|déjà planifié/.test(o)), `disponibles en premier : ${opts.join(' | ')}`);
+  const before = await page.locator('select[aria-label="Technicien"]').count();
+  await sel.selectOption({ index: 1 });
+  await page.waitForTimeout(500);
+  expect((await page.locator('select[aria-label="Technicien"]').count()) === before - 1, 'poste pourvu retiré de la liste « à pourvoir »');
 });
 
 await ctx.close();

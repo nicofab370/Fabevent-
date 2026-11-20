@@ -226,7 +226,7 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
           <h2 style={{ margin: 0 }}>Planning</h2>
           <button className="secondary small" onClick={() => goTab('planning')}>Gérer le planning</button>
         </div>
-        {subs.length === 0 ? <Empty>Aucune salle.</Empty> : (
+        {subs.length === 0 ? <Empty>Aucun sous-projet.</Empty> : (
           <table className="list">
             <tbody>
               {subs.map((sp) => {

@@ -13,7 +13,7 @@ const fr = {
   extras: 'Frais supplémentaires', amountExcl: 'Montant HT', options: 'Options proposées (non incluses dans le total)', totalIncl: 'Total TTC',
   remaining: 'Montant restant dû', deposit: 'Acompte', toPay: 'Reste à payer', securityDeposit: 'Caution à verser (non soumise à la TVA)', depositPaid: 'payée', depositRefunded: 'remboursée', terms: 'Conditions générales', notes: 'Remarques', venue: 'Lieu', approval: 'Bon pour accord (date, signature, cachet)',
   preparedBy: 'Préparé par', checkedBy: 'Vérifié / retour par', pay: 'Merci de verser', onAccount: 'sur le compte', withComm: 'avec la communication',
-  structured: 'structurée', scan: 'Scannez le QR code avec votre application bancaire.', partial: 'Facture partielle — salles facturées',
+  structured: 'structurée', scan: 'Scannez le QR code avec votre application bancaire.', partial: 'Facture partielle — sous-projets facturés',
   alreadyInvoiced: 'Déjà facturé séparément :', toConfirm: 'à confirmer',
 };
 type Dict = typeof fr;
@@ -28,7 +28,7 @@ const nl: Dict = {
   extras: 'Bijkomende kosten', amountExcl: 'Bedrag excl. btw', options: 'Voorgestelde opties (niet inbegrepen in het totaal)', totalIncl: 'Totaal incl. btw',
   remaining: 'Openstaand bedrag', deposit: 'Voorschot', toPay: 'Te betalen saldo', securityDeposit: 'Waarborg (niet onderworpen aan btw)', depositPaid: 'betaald', depositRefunded: 'terugbetaald', terms: 'Algemene voorwaarden', notes: 'Opmerkingen', venue: 'Locatie', approval: 'Voor akkoord (datum, handtekening, stempel)',
   preparedBy: 'Voorbereid door', checkedBy: 'Gecontroleerd / retour door', pay: 'Gelieve', onAccount: 'over te schrijven op rekening', withComm: 'met de',
-  structured: 'gestructureerde mededeling', scan: 'Scan de QR-code met uw bankapp.', partial: 'Gedeeltelijke factuur — gefactureerde zalen',
+  structured: 'gestructureerde mededeling', scan: 'Scan de QR-code met uw bankapp.', partial: 'Gedeeltelijke factuur — gefactureerde deelprojecten',
   alreadyInvoiced: 'Reeds apart gefactureerd:', toConfirm: 'te bevestigen',
 };
 
@@ -42,7 +42,7 @@ const en: Dict = {
   extras: 'Additional costs', amountExcl: 'Amount excl. VAT', options: 'Proposed options (not included in the total)', totalIncl: 'Total incl. VAT',
   remaining: 'Amount outstanding', deposit: 'Deposit', toPay: 'Balance due', securityDeposit: 'Security deposit (not subject to VAT)', depositPaid: 'paid', depositRefunded: 'refunded', terms: 'Terms and conditions', notes: 'Notes', venue: 'Venue', approval: 'Approved (date, signature, stamp)',
   preparedBy: 'Prepared by', checkedBy: 'Checked / returned by', pay: 'Please transfer', onAccount: 'to account', withComm: 'with the',
-  structured: 'structured reference', scan: 'Scan the QR code with your banking app.', partial: 'Partial invoice — rooms invoiced',
+  structured: 'structured reference', scan: 'Scan the QR code with your banking app.', partial: 'Partial invoice — sub-projects invoiced',
   alreadyInvoiced: 'Already invoiced separately:', toConfirm: 'to be confirmed',
 };
 

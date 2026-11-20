@@ -111,7 +111,7 @@ export default function FinanceTab({ d }: { d: ProjectData }) {
       <div className="card">
         <h2>Devis, factures et documents</h2>
         <div className="toolbar">
-          {d.subs.length > 1 && <button className="secondary" disabled={busy} onClick={() => setRoomInvoice(true)}>+ Facture d'une salle</button>}
+          {d.subs.length > 1 && <button className="secondary" disabled={busy} onClick={() => setRoomInvoice(true)}>+ Facture d'un sous-projet</button>}
           {(['devis', 'acompte', 'facture', 'bon_sortie', 'feuille_route'] as DocType[]).map((t) => (
             <button key={t} disabled={busy} className={t === 'devis' ? '' : 'secondary'} onClick={() => generate(t)}>+ {DOC_LABELS[t]}</button>
           ))}
@@ -137,7 +137,7 @@ export default function FinanceTab({ d }: { d: ProjectData }) {
         )}
       </div>
       {roomInvoice && (
-        <Modal title="Facturer une ou plusieurs salles" onClose={() => setRoomInvoice(false)}>
+        <Modal title="Facturer un ou plusieurs sous-projets" onClose={() => setRoomInvoice(false)}>
           <form onSubmit={async (e) => {
             e.preventDefault();
             const ids = [...new FormData(e.currentTarget).keys()];
@@ -145,10 +145,10 @@ export default function FinanceTab({ d }: { d: ProjectData }) {
             setBusy(true);
             try { nav('/documents/' + (await createDocument(project.id, 'facture', { subIds: ids })).id); } catch (err) { alert((err as Error).message); } finally { setBusy(false); }
           }}>
-            <p className="muted" style={{ marginTop: 0 }}>La facture finale du projet exclura ensuite automatiquement ces salles. Les frais supplémentaires et les acomptes restent sur la facture finale.</p>
+            <p className="muted" style={{ marginTop: 0 }}>La facture finale du projet exclura ensuite automatiquement ces sous-projets. Les frais supplémentaires et les acomptes restent sur la facture finale.</p>
             {d.subs.filter((sp) => sp.status !== 'annule').map((sp) => (
               <label key={sp.id} className="check-row" style={{ marginBottom: 6 }}>
-                <input type="checkbox" name={sp.id} disabled={invoicedRooms.has(sp.id)} /> {sp.name}{invoicedRooms.has(sp.id) && <span className="muted"> — déjà facturée</span>}
+                <input type="checkbox" name={sp.id} disabled={invoicedRooms.has(sp.id)} /> {sp.name}{invoicedRooms.has(sp.id) && <span className="muted"> — déjà facturé</span>}
               </label>
             ))}
             <div className="form-actions" style={{ display: 'flex' }}>

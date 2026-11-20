@@ -180,7 +180,7 @@ let logSuppressed = false;
 export function suppressLog(v: boolean) { logSuppressed = v; }
 
 const LOGGED: Record<string, string> = {
-  projects: 'Projet', subprojects: 'Salle', lines: 'Matériel', crew: 'Poste', vehicleAssignments: 'Transport',
+  projects: 'Projet', subprojects: 'Sous-projet', lines: 'Matériel', crew: 'Poste', vehicleAssignments: 'Transport',
   costs: 'Coût supplémentaire', docs: 'Document', subrentals: 'Sous-location', files: 'Fichier',
 };
 const FIELD_LABELS: Record<string, string> = {

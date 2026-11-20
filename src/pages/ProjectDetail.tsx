@@ -6,7 +6,7 @@ import type { ProjectStatus, Subproject } from '../types';
 import { STATUS_LABELS } from '../types';
 import { buildIcs, deleteProject, download, fmtDate, fmtRange, money } from '../utils';
 import { copyProject, recurrenceStarts, shiftBetween } from '../projectOps';
-import { Field, Modal } from '../components/ui';
+import { Field, Modal, NumInput } from '../components/ui';
 import type { Project } from '../types';
 import CostsTab from './project/CostsTab';
 import CrewTab from './project/CrewTab';
@@ -77,13 +77,13 @@ function ProjectPage({ d }: { d: ProjectData }) {
         {!project.isTemplate && <button className="secondary" onClick={saveAsTemplate}>Enregistrer comme modèle</button>}
         <button className="secondary" onClick={exportIcs}>Agenda .ics</button>
         <button className="danger" onClick={async () => {
-          if (confirm('Supprimer le projet, ses salles, ses documents et ses fichiers ?')) { await deleteProject(project.id); nav('/projets'); }
+          if (confirm('Supprimer le projet, ses sous-projets, ses documents et ses fichiers ?')) { await deleteProject(project.id); nav('/projets'); }
         }}>Supprimer</button>
       </PageHead>
 
       <div className="stats" style={project.color ? { borderLeft: `4px solid ${project.color}`, paddingLeft: 10 } : undefined}>
         <div className="stat"><b style={{ fontSize: 15 }}>{client?.company || '—'}</b><span>client{project.contactPerson && ` · ${project.contactPerson}`}</span></div>
-        <div className="stat"><b style={{ fontSize: 15 }}>{fmtRange(project.start, project.end)}</b><span>{project.venue || 'lieu non défini'} · {subs.length} salle(s)</span></div>
+        <div className="stat"><b style={{ fontSize: 15 }}>{fmtRange(project.start, project.end)}</b><span>{project.venue || 'lieu non défini'} · {subs.length} sous-projet(s)</span></div>
         <div className="stat"><b>{money(finance.totalHT)}</b><span>total HT</span></div>
         <div className="stat"><b style={{ color: finance.margin < 0 ? 'var(--danger)' : undefined }}>{money(finance.margin)}</b><span>marge</span></div>
       </div>
@@ -151,7 +151,7 @@ function RepeatModal({ project, onClose }: { project: Project; onClose: () => vo
             <option value="semaine">Chaque semaine</option><option value="2semaines">Toutes les deux semaines</option><option value="mois">Chaque mois</option>
           </select>
         </Field>
-        <Field label="Nombre de répétitions"><input type="number" min={1} max={52} value={count} onChange={(e) => setCount(parseInt(e.target.value) || 1)} /></Field>
+        <Field label="Nombre de répétitions"><NumInput min={1} value={count} onChange={(n) => setCount(n || 1)} /></Field>
         <Field label=" " full><label className="check-row"><input type="checkbox" checked={keepPeople} onChange={(e) => setKeepPeople(e.target.checked)} /> Garder les mêmes personnes sur les postes</label></Field>
         <div className="field full">
           <span>Nouvelles dates de début ({starts.length})</span>

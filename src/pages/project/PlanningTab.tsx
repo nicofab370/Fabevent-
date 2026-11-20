@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
-import { Empty, Field, Modal, StatusBadge } from '../../components/ui';
+import { Empty, Field, Modal, NumInput, StatusBadge } from '../../components/ui';
 import { db } from '../../db';
 import type { Period, PeriodKind, Project, ProjectStatus, Subproject } from '../../types';
 import { FIRM, PERIOD_LABELS, STATUS_LABELS } from '../../types';
@@ -20,10 +20,10 @@ export default function PlanningTab({ d, onEditSub }: { d: ProjectData; onEditSu
       </div>
       {shifting && <ShiftModal d={d} onClose={() => setShifting(false)} />}
       <div className="info">
-        Découpe le projet en salles / zones, puis donne à chacune ses créneaux : montage, jours de prestation, démontage.
+        Découpe le projet en sous-projets (salle, scène, zone, jour…), puis donne à chacun ses créneaux : montage, jours de prestation, démontage.
         Le matériel est bloqué du premier au dernier créneau ; seuls les jours de prestation sont facturés.
       </div>
-      {subs.length === 0 && <Empty>Aucune salle.</Empty>}
+      {subs.length === 0 && <Empty>Aucun sous-projet.</Empty>}
       {subs.map((sp) => {
         const [b0, b1] = blockPeriod(sp);
         const ps = sortPeriods(sp.periods || []);
@@ -35,11 +35,11 @@ export default function PlanningTab({ d, onEditSub }: { d: ProjectData; onEditSu
                 <div className="muted">{sp.venue || project.venue} · matériel bloqué {fmtRange(b0, b1)} · {usageDays(sp)} j facturé(s)</div>
               </div>
               <div className="actions">
-                <label className="check-row" title="L'entrepôt voit cette salle et peut commencer à préparer le matériel">
+                <label className="check-row" title="L'entrepôt voit ce sous-projet et peut commencer à préparer le matériel">
                   <input type="checkbox" checked={!!sp.readyToPack} onChange={(e) => patch(db.subprojects, sp.id, { readyToPack: e.target.checked })} /> Prête pour la préparation
                 </label>
                 {!FIRM.includes(sp.status) && sp.status !== 'annule' && (
-                  <label className="check-row" title="Le matériel de cette salle passe en réservation ferme, prioritaire sur les autres options">
+                  <label className="check-row" title="Le matériel de ce sous-projet passe en réservation ferme, prioritaire sur les autres options">
                     <input type="checkbox" checked={!!sp.reserve} onChange={(e) => patch(db.subprojects, sp.id, { reserve: e.target.checked })} /> Réserver le matériel
                   </label>
                 )}
@@ -64,7 +64,7 @@ export default function PlanningTab({ d, onEditSub }: { d: ProjectData; onEditSu
           </div>
         );
       })}
-      <button className="secondary" onClick={() => onEditSub(newSubDraft(d))}>+ Ajouter une salle / un sous-projet</button>
+      <button className="secondary" onClick={() => onEditSub(newSubDraft(d))}>+ Ajouter un sous-projet</button>
     </>
   );
 }
@@ -72,7 +72,7 @@ export default function PlanningTab({ d, onEditSub }: { d: ProjectData; onEditSu
 export function newSubDraft(d: ProjectData): Partial<Subproject> {
   const { project, subs } = d;
   return {
-    projectId: project.id, name: `Salle ${subs.length + 1}`, status: project.status, start: project.start, end: project.end, venue: project.venue, order: subs.length,
+    projectId: project.id, name: `Sous-projet ${subs.length + 1}`, status: project.status, start: project.start, end: project.end, venue: project.venue, order: subs.length,
     // mêmes horaires que la première salle, modifiables
     periods: subs[0]?.periods?.map((p) => ({ ...p, id: uid() })),
   };
@@ -139,7 +139,7 @@ export function SubprojectModal({ sp, project, onClose }: { sp: Partial<Subproje
   };
 
   return (
-    <Modal title={d.id ? `Salle / sous-projet : ${d.name}` : 'Nouvelle salle / sous-projet'} onClose={onClose} wide>
+    <Modal title={d.id ? `Sous-projet : ${d.name}` : 'Nouveau sous-projet'} onClose={onClose} wide>
       <form className="form" onSubmit={async (e) => {
         e.preventDefault();
         if (periods.some((p) => p.end < p.start)) return alert('Chaque créneau doit finir après son début.');
@@ -163,10 +163,10 @@ export function SubprojectModal({ sp, project, onClose }: { sp: Partial<Subproje
         }
         onClose();
       }}>
-        <Field label="Nom (salle, zone…) *"><input required autoFocus value={d.name || ''} onChange={(e) => set('name', e.target.value)} placeholder="ex. Salle 1, Plénière, Scène extérieure" /></Field>
+        <Field label="Nom du sous-projet *"><input required autoFocus value={d.name || ''} onChange={(e) => set('name', e.target.value)} placeholder="ex. Salle 1, Plénière, Scène extérieure" /></Field>
         {venueC?.spots?.length ? (
           <Field label={`Endroit dans ${venueC.company}`}>
-            <select aria-label="Endroit de la salle" value={d.spotId || ''} onChange={(e) => {
+            <select aria-label="Endroit du sous-projet" value={d.spotId || ''} onChange={(e) => {
               const spot = spotOf(venueC, e.target.value);
               setD({ ...d, spotId: spot?.id, venue: spot ? placeName(venueC, spot) : undefined });
             }}>
@@ -234,7 +234,7 @@ export function SubprojectModal({ sp, project, onClose }: { sp: Partial<Subproje
         <Field label="Notes" full><textarea value={d.notes || ''} onChange={(e) => set('notes', e.target.value)} /></Field>
         <div className="form-actions">
           {d.id && <button type="button" className="danger" style={{ marginRight: 'auto' }} onClick={async () => {
-            if (confirm('Supprimer cette salle / ce sous-projet et son contenu ?')) { await deleteSubproject(d.id!); onClose(); }
+            if (confirm('Supprimer ce sous-projet et son contenu ?')) { await deleteSubproject(d.id!); onClose(); }
           }}>Supprimer</button>}
           <button type="button" className="secondary" onClick={onClose}>Annuler</button>
           <button type="submit">Enregistrer</button>
@@ -273,12 +273,12 @@ function ShiftModal({ d, onClose }: { d: ProjectData; onClose: () => void }) {
           <Field label="Le projet commencera le" full><input type="datetime-local" value={newStart} onChange={(e) => setNewStart(e.target.value)} /></Field>
         ) : (
           <>
-            <Field label="Jours (négatif = avancer)"><input type="number" value={days} onChange={(e) => setDays(parseInt(e.target.value) || 0)} /></Field>
-            <Field label="Heures"><input type="number" step="0.5" value={hours} onChange={(e) => setHours(parseFloat(e.target.value) || 0)} /></Field>
+            <Field label="Jours (négatif = avancer)"><NumInput value={days} onChange={(n) => setDays(n)} /></Field>
+            <Field label="Heures"><NumInput step="0.5" value={hours} onChange={(n) => setHours(n)} /></Field>
           </>
         )}
         <div className="field full">
-          <span>Salles à décaler</span>
+          <span>Sous-projets à décaler</span>
           {subs.map((s) => (
             <label key={s.id} className="check-row">
               <input type="checkbox" checked={selected.includes(s.id)} onChange={(e) => setSelected(e.target.checked ? [...selected, s.id] : selected.filter((x) => x !== s.id))} />

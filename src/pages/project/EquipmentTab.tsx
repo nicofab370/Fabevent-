@@ -4,23 +4,117 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Empty, Field, Modal, NumInput, StatusBadge } from '../../components/ui';
 import { db } from '../../db';
 import type { EquipGroup, Equipment, EquipmentLine, Subproject } from '../../types';
-import { availableQty, factorFor, fmtRange, lineBlock, lineDays, lineTotal, money, nowIso, round2, save, sortPeriods, uid, type Reservation, patch } from '../../utils';
+import { availableQty, blockPeriod, factorFor, fmtRange, lineBlock, lineDays, lineTotal, money, nowIso, round2, save, sortPeriods, uid, type Reservation, patch } from '../../utils';
 import { isPerPiece, type ProjectData } from './shared';
 
-/** Onglet Équipement : le matériel de chaque salle, organisé en groupes rattachés à des créneaux. */
+const EQ_MIME = 'application/x-fabevent-equipment';
+const LINE_MIME = 'application/x-fabevent-line';
+
+/** Cible du glisser-déposer (ou du bouton « + » du catalogue sur tablette) : un groupe d'un sous-projet. */
+export interface DropTarget { subId: string; groupId?: string }
+
+/**
+ * Onglet Équipement : le matériel de chaque sous-projet, organisé en groupes rattachés à des créneaux.
+ * Le catalogue à droite se glisse-dépose dans un groupe ; une ligne se glisse vers un autre groupe ou sous-projet.
+ */
 export default function EquipmentTab({ d }: { d: ProjectData }) {
+  const [showCat, setShowCat] = useState(() => { try { return localStorage.getItem('fab.catalogue') !== '0'; } catch { return true; } });
+  const [qty, setQty] = useState(1);
+  const [target, setTarget] = useState<DropTarget | null>(d.subs[0] ? { subId: d.subs[0].id } : null);
+  const toggle = () => { setShowCat(!showCat); try { localStorage.setItem('fab.catalogue', showCat ? '0' : '1'); } catch { /* sans stockage */ } };
+
+  /** dépôt d'un article du catalogue ou d'une ligne existante dans un groupe */
+  const drop = async (t: DropTarget, e: React.DragEvent) => {
+    const sp = d.subs.find((x) => x.id === t.subId);
+    if (!sp) return;
+    const eqId = e.dataTransfer.getData(EQ_MIME);
+    const lineId = e.dataTransfer.getData(LINE_MIME);
+    if (eqId) await addEquipmentToSub(sp, d.av.equipment, d.lines.filter((l) => l.subprojectId === sp.id), { [eqId]: qty || 1 }, t.groupId, d.client?.discounts?.equipment || 0);
+    else if (lineId) await moveLine(d, lineId, t);
+    setTarget(t);
+  };
+  const addTo = async (eqId: string) => {
+    const sp = d.subs.find((x) => x.id === target?.subId) || d.subs[0];
+    if (!sp) return;
+    await addEquipmentToSub(sp, d.av.equipment, d.lines.filter((l) => l.subprojectId === sp.id), { [eqId]: qty || 1 }, target?.subId === sp.id ? target.groupId : undefined, d.client?.discounts?.equipment || 0);
+  };
+  const targetLabel = (() => {
+    const sp = d.subs.find((x) => x.id === target?.subId);
+    if (!sp) return '';
+    const g = sp.groups?.find((x) => x.id === target?.groupId);
+    return `${sp.name}${g ? ` · ${g.name}` : ''}`;
+  })();
+
   return (
     <>
-      <div className="info">
-        Organise le matériel en <strong>groupes</strong> (par type : son, lumière… ; par emplacement : scène, bar… ; ou par jour).
-        Un groupe rattaché à certains créneaux ne bloque et ne facture le matériel que sur ces créneaux.
+      <div className="info" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span style={{ flex: 1, minWidth: 260 }}>
+          Organise le matériel en <strong>groupes</strong> (par type : son, lumière… ; par emplacement : scène, bar… ; ou par jour).
+          <strong> Glisse</strong> un article du catalogue vers un groupe, ou une ligne (⠿) vers un autre groupe ou sous-projet.
+        </span>
+        <button className="secondary small" onClick={toggle}>{showCat ? 'Masquer le catalogue' : 'Afficher le catalogue'}</button>
       </div>
-      {d.subs.map((sp) => <RoomEquipment key={sp.id} d={d} sp={sp} />)}
+      <div className={'eq-layout' + (showCat ? ' with-cat' : '')}>
+        <div className="eq-main">
+          {d.subs.map((sp) => <RoomEquipment key={sp.id} d={d} sp={sp} onDrop={drop} target={target} setTarget={setTarget} />)}
+        </div>
+        {showCat && <Catalogue d={d} qty={qty} setQty={setQty} targetLabel={targetLabel} onAdd={addTo} />}
+      </div>
     </>
   );
 }
 
-function RoomEquipment({ d, sp }: { d: ProjectData; sp: Subproject }) {
+/** Déplace une ligne (et ses accessoires) vers un autre groupe, éventuellement d'un autre sous-projet. */
+async function moveLine(d: ProjectData, lineId: string, t: DropTarget) {
+  const line = d.lines.find((l) => l.id === lineId);
+  if (!line || line.parentLineId) return;
+  const changes: Partial<EquipmentLine> = { subprojectId: t.subId, groupId: t.groupId };
+  // un horaire propre ne vaut que dans son sous-projet
+  if (t.subId !== line.subprojectId) Object.assign(changes, { periodIds: undefined, order: d.lines.filter((l) => l.subprojectId === t.subId).length });
+  await patch(db.lines, line.id, changes);
+  for (const c of d.lines.filter((x) => x.parentLineId === line.id)) await patch(db.lines, c.id, changes);
+}
+
+/** Catalogue latéral : recherche, catégories, disponibilité, articles à glisser. */
+function Catalogue({ d, qty, setQty, targetLabel, onAdd }: { d: ProjectData; qty: number; setQty: (n: number) => void; targetLabel: string; onAdd: (id: string) => void }) {
+  const [q, setQ] = useState('');
+  const [cat, setCat] = useState('');
+  const cats = useLiveQuery(() => db.categories.orderBy('name').toArray(), []) || [];
+  const [b0, b1] = d.subs.length ? [d.subs.map((x) => blockPeriod(x)[0]).sort()[0], d.subs.map((x) => blockPeriod(x)[1]).sort().slice(-1)[0]] : [d.project.start, d.project.end];
+  const list = d.av.equipment
+    .filter((e) => !e.archived && (!cat || e.categoryId === cat) && [e.name, e.code, e.barcode, ...(e.tags || [])].join(' ').toLowerCase().includes(q.toLowerCase()))
+    .slice(0, 200);
+  return (
+    <aside className="eq-catalogue card">
+      <h3 style={{ marginTop: 0 }}>Catalogue</h3>
+      <input placeholder="Rechercher…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Rechercher dans le catalogue" />
+      <select value={cat} onChange={(e) => setCat(e.target.value)} style={{ marginTop: 6 }}>
+        <option value="">Toutes catégories</option>
+        {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+      </select>
+      <label className="check-row" style={{ marginTop: 6 }}>Quantité déposée <NumInput className="w-qty" value={qty} onChange={setQty} aria-label="Quantité déposée" /></label>
+      <p className="muted" style={{ fontSize: 12, margin: '6px 0' }}>Glisse vers un groupe, ou « + » pour ajouter à : <strong>{targetLabel || '—'}</strong>. Dispo sur la durée du projet.</p>
+      <div className="eq-cat-list">
+        {list.map((e) => {
+          const avail = availableQty(e, d.av.equipment, d.av.res, b0, b1, undefined, d.depot);
+          return (
+            <div key={e.id} className="eq-cat-item" draggable
+              onDragStart={(ev) => { ev.dataTransfer.setData(EQ_MIME, e.id); ev.dataTransfer.effectAllowed = 'copy'; }}>
+              {e.photo ? <img src={e.photo} alt="" className="thumb" /> : <span className="drag-handle" aria-hidden>⠿</span>}
+              <span style={{ flex: 1, minWidth: 0 }}>{e.name}{e.isKit && <span className="badge" style={{ marginLeft: 4 }}>Kit</span>}<span className="muted" style={{ display: 'block', fontSize: 11 }}>{e.code} · {money(e.dailyPrice)}{e.kind === 'vente' ? '' : '/j'}</span></span>
+              <span className={'avail ' + (avail > 0 ? 'ok' : 'ko')} title="Disponible">{avail}</span>
+              <button className="ghost small" aria-label={`Ajouter ${e.name}`} onClick={() => onAdd(e.id)}>+</button>
+            </div>
+          );
+        })}
+        {list.length === 0 && <p className="muted">Aucun article.</p>}
+      </div>
+    </aside>
+  );
+}
+
+function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; sp: Subproject; onDrop: (t: DropTarget, e: React.DragEvent) => void; target: DropTarget | null; setTarget: (t: DropTarget) => void }) {
+  const [over, setOver] = useState<string | null>(null);
   const nav = useNavigate();
   const { settings, av, eqMap } = d;
   const [picking, setPicking] = useState<string | null | undefined>(undefined);
@@ -67,23 +161,29 @@ function RoomEquipment({ d, sp }: { d: ProjectData; sp: Subproject }) {
       </div>
       <div className="sub-body">
         {sections.map(({ group, lines: gl }) => {
-          if (!group && !gl.length && groups.length) return null;
+          // la zone « Sans groupe » reste visible pour pouvoir y déposer
           const ordered = gl.filter((l) => !l.parentLineId || !gl.some((x) => x.id === l.parentLineId)).flatMap((l) => [l, ...gl.filter((c) => c.parentLineId === l.id)]);
           const gp = group?.periodIds.length ? periods.filter((p) => group.periodIds.includes(p.id)) : [];
           return (
-            <div key={group?.id || 'none'} className="eq-group">
+            <div key={group?.id || 'none'} data-group={group?.name || 'Sans groupe'}
+              className={'eq-group drop-zone' + (over === (group?.id || 'none') ? ' drop-on' : '') + (target?.subId === sp.id && (target.groupId || undefined) === group?.id ? ' drop-target' : '')}
+              onClick={() => setTarget({ subId: sp.id, groupId: group?.id })}
+              onDragOver={(e) => { if (e.dataTransfer.types.includes(EQ_MIME) || e.dataTransfer.types.includes(LINE_MIME)) { e.preventDefault(); setOver(group?.id || 'none'); } }}
+              onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setOver(null); }}
+              onDrop={(e) => { e.preventDefault(); setOver(null); onDrop({ subId: sp.id, groupId: group?.id }, e); }}>
               <div className="eq-group-head">
                 <strong>{group ? group.name : groups.length ? 'Sans groupe' : 'Matériel'}</strong>
-                <span className="muted">{gp.length ? gp.map((p) => p.name).join(', ') : 'toute la salle'}{gl[0] && ` · ${lineDays(gl[0], sp)} j facturé(s)`}</span>
+                <span className="muted">{gp.length ? gp.map((p) => p.name).join(', ') : 'tout le sous-projet'}{gl[0] && ` · ${lineDays(gl[0], sp)} j facturé(s)`}</span>
                 {group && <button className="ghost small" onClick={() => setEditGroup(group)}>Modifier</button>}
                 <span style={{ flex: 1 }} />
                 <button className="small" onClick={() => setPicking(group?.id ?? null)}>+ Matériel</button>
                 <button className="secondary small" onClick={() => save(db.lines, { projectId: sp.projectId, subprojectId: sp.id, groupId: group?.id, name: 'Prestation', qty: 1, unitPrice: 0, discount: 0, order: lines.length })}>+ Ligne libre</button>
               </div>
+              {ordered.length === 0 && <div className="drop-hint">Glisse du matériel ici</div>}
               {ordered.length > 0 && (
                 <div className="table-wrap">
                   <table className="list">
-                    <thead><tr><th>Qté</th><th>Désignation</th><th className="n">Dispo</th><th>P.U.</th><th>Remise %</th><th title="Ligne facultative proposée en option sur le devis">Option</th>{groups.length > 0 && <th>Groupe</th>}<th className="n">Total HT</th><th /></tr></thead>
+                    <thead><tr><th aria-label="Déplacer" /><th>Qté</th><th>Désignation</th><th className="n">Dispo</th><th>P.U.</th><th>Remise %</th><th title="Ligne facultative proposée en option sur le devis">Option</th>{groups.length > 0 && <th>Groupe</th>}<th className="n">Total HT</th><th /></tr></thead>
                     <tbody>
                       {ordered.map((l) => {
                         const eq = l.equipmentId ? eqMap.get(l.equipmentId) : undefined;
@@ -91,7 +191,9 @@ function RoomEquipment({ d, sp }: { d: ProjectData; sp: Subproject }) {
                         const avail = eq ? availableQty(eq, av.equipment, av.res, b0, b1, l.id, d.depot) : null;
                         const perPiece = isPerPiece(l, eqMap);
                         return (
-                          <tr key={l.id} style={l.optional ? { opacity: 0.6 } : undefined}>
+                          <tr key={l.id} style={l.optional ? { opacity: 0.6 } : undefined} draggable={!l.parentLineId}
+                            onDragStart={(e) => { e.dataTransfer.setData(LINE_MIME, l.id); e.dataTransfer.effectAllowed = 'move'; }}>
+                            <td className="drag-handle" title={l.parentLineId ? 'Accessoire : suit son article' : 'Glisser vers un autre groupe ou sous-projet'}>{l.parentLineId ? '' : '⠿'}</td>
                             <td><NumInput className="w-qty" step="1" min={0} value={l.qty} onChange={(n) => updLine(l, { qty: n })} /></td>
                             <td style={l.parentLineId ? { paddingLeft: 24 } : undefined}>
                               {l.parentLineId && <span className="muted">↳ </span>}
@@ -170,7 +272,7 @@ function LineModal({ sp, line, accessories, onClose }: { sp: Subproject; line: E
       }}>
         <div className="field full">
           <span>Horaire propre à la ligne</span>
-          {periods.length === 0 ? <p className="muted" style={{ margin: 0 }}>Ajoute des créneaux à la salle (onglet Planning) pour donner un horaire propre à cet article.</p> : (
+          {periods.length === 0 ? <p className="muted" style={{ margin: 0 }}>Ajoute des créneaux au sous-projet (onglet Planning) pour donner un horaire propre à cet article.</p> : (
             <>
               {periods.map((p) => (
                 <label key={p.id} className="check-row">
@@ -180,7 +282,7 @@ function LineModal({ sp, line, accessories, onClose }: { sp: Subproject; line: E
                 </label>
               ))}
               <p className="muted" style={{ margin: '4px 0 0' }}>
-                Aucun coché = horaire {groupName ? `du groupe « ${groupName} »` : 'de la salle'}. L'article n'est bloqué et facturé que sur les créneaux cochés :
+                Aucun coché = horaire {groupName ? `du groupe « ${groupName} »` : 'du sous-projet'}. L'article n'est bloqué et facturé que sur les créneaux cochés :
                 il reste disponible pour un autre projet le reste du temps.
               </p>
             </>
@@ -212,7 +314,7 @@ function GroupModal({ sp, group, onClose }: { sp: Subproject; group: Partial<Equ
         <Field label="Nom du groupe *" full><input required autoFocus value={g.name || ''} onChange={(e) => setG({ ...g, name: e.target.value })} placeholder="ex. Son, Lumière, Scène, Jour 1" /></Field>
         <div className="field full">
           <span>Créneaux couverts</span>
-          {periods.length === 0 ? <p className="muted" style={{ margin: 0 }}>Cette salle n'a pas de créneaux détaillés : le groupe couvre toute la salle.</p> : (
+          {periods.length === 0 ? <p className="muted" style={{ margin: 0 }}>Ce sous-projet n'a pas de créneaux détaillés : le groupe couvre tout le sous-projet.</p> : (
             <>
               {periods.map((p) => (
                 <label key={p.id} className="check-row">
@@ -221,7 +323,7 @@ function GroupModal({ sp, group, onClose }: { sp: Subproject; group: Partial<Equ
                   {p.name} <span className="muted">{fmtRange(p.start, p.end)}</span>
                 </label>
               ))}
-              <p className="muted" style={{ margin: '4px 0 0' }}>Aucun coché = toute la salle (du premier au dernier créneau).</p>
+              <p className="muted" style={{ margin: '4px 0 0' }}>Aucun coché = tout le sous-projet (du premier au dernier créneau).</p>
             </>
           )}
         </div>

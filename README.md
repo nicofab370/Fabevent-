@@ -18,12 +18,12 @@ npm run test:e2e  # parcours complet dans un navigateur (nécessite Playwright e
 **Projets** — fiche organisée en onglets, sur le modèle du « projet standard » de Rentman :
 - *Général* : nom, type (avec couleur), statut, numéro, référence externe, client et personne de contact, lieu (itinéraire),
   avancée du projet, résumé du planning, tâches, notes, fichiers joints, bons de sortie et feuilles de route.
-- *Planning* : toutes les salles et leurs créneaux. *Équipement* : groupes (par type, emplacement ou jour) rattachés à des créneaux.
+- *Planning* : tous les sous-projets et leurs créneaux. *Équipement* : groupes (par type, emplacement ou jour) rattachés à des créneaux.
 - *Équipe & transport* : postes et véhicules par créneau, disponibilités, envoi du planning à chaque personne.
 - *Coûts supplémentaires* (refacturés ou non, bon de commande), *Finances & documents* (marge par catégorie, déjà facturé),
   *Sous-locations & commandes*, *Registre* (historique des modifications).
-- Projets découpés en **salles / sous-projets** (Salle 1, Salle 2, scène…), chacun avec son matériel, son équipe et ses véhicules. Duplication d'une salle.
-- **Horaires par salle** : montage, Prestation J1, J2…, démontage. Le matériel est bloqué du premier au dernier créneau ;
+- Projets découpés en **sous-projets** (une salle, une scène, une zone, un jour…), chacun avec son matériel, son équipe et ses véhicules. Duplication d'un sous-projet.
+- **Horaires par sous-projet** : montage, Prestation J1, J2…, démontage. Le matériel est bloqué du premier au dernier créneau ;
   seuls les jours de prestation sont facturés (une fin de soirée après minuit compte pour la veille). Les postes de l'équipe se rattachent à un créneau.
 - Statuts, duplication de projet, interlocuteur client.
 - Onglet Finances : chiffre d'affaires, coûts (personnel, sous-locations, consommables, frais divers), marge.
@@ -80,8 +80,8 @@ chaque technicien ou sous-traitant a son propre coût, qui ne joue que sur la ma
 par fournisseur (impression, email), coûts par fournisseur dans les finances. Planification **provisoire ou finale** des postes
 (seuls les postes finals sont envoyés aux techniciens).
 
-**Documents en français, néerlandais ou anglais** selon le client ou le projet. **Facture d'une salle** (facture partielle),
-la facture finale excluant les salles déjà facturées. **Champs personnalisés** (projets, contacts, matériel) utilisables dans les documents,
+**Documents en français, néerlandais ou anglais** selon le client ou le projet. **Facture d'un sous-projet** (facture partielle),
+la facture finale excluant les sous-projets déjà facturés. **Champs personnalisés** (projets, contacts, matériel) utilisables dans les documents,
 **étiquettes** et filtres, **rendez-vous** hors projet dans le planning, **export CSV** de toutes les listes, **modification groupée** du matériel.
 
 **Équipe** : postes à la journée ou à l'heure avec heures supplémentaires majorées, temps de trajet dans les horaires
@@ -90,8 +90,8 @@ communiqués, documents du personnel avec date d'expiration.
 **Statuts comme Rentman (2026)** : Demande, Brouillon, En attente, Confirmé, En cours, Exécution terminée, Terminé, Annulé.
 Un devis émis met le projet « en attente », un devis accepté le confirme, la première sortie d'entrepôt le passe « en cours »
 et le retour complet en « exécution terminée ». Tous les projets non annulés comptent dans les disponibilités, mais seuls les
-projets confirmés (ou une salle « matériel réservé ») passent en priorité : la page **Pénuries** distingue les manques réels de la
-simple concurrence entre options. L'entrepôt voit les salles confirmées et celles marquées « prêtes pour la préparation ».
+projets confirmés (ou un sous-projet « matériel réservé ») passent en priorité : la page **Pénuries** distingue les manques réels de la
+simple concurrence entre options. L'entrepôt voit les sous-projets confirmés et ceux marqués « prêtes pour la préparation ».
 
 **Facturation par moments** : moments paramétrables (ex. 30 % à la confirmation, solde après la prestation), choisis par type
 de projet, par client ou par projet ; échéancier dans l'onglet Finances et liste **À facturer** (rouge si en retard) avec
@@ -109,12 +109,22 @@ sur la feuille de route et le bon de sortie). Recherche dans les commentaires, h
 
 **Endroits d'un lieu** : un lieu peut regrouper plusieurs endroits (bâtiments, scènes, salles d'un hôtel…), chacun avec
 sa propre adresse et ses infos pratiques. On choisit l'endroit pour tout le projet (adresse, itinéraire et distance suivent)
-ou salle par salle ; la feuille de route indique l'adresse de chaque salle.
+ou pour chaque sous-projet ; la feuille de route indique l'adresse de chacun.
 
 **Services et interlocuteurs des clients** : une société peut avoir plusieurs services (Communication, Culture…), chacun avec
 ses coordonnées (adresse de facturation, email) et ses personnes. Sur un projet, un seul menu propose les personnes rangées
 par service, ou un service sans personne précise ; « + » ajoute une personne (et au besoin son service) sans quitter le projet.
 Le devis et la facture reprennent le service, son adresse et l'interlocuteur ; la recherche des contacts trouve aussi les personnes.
+
+**Glisser-déposer du matériel** : dans l'onglet Équipement, un catalogue latéral (recherche, catégories, disponibilité) se
+glisse vers n'importe quel groupe d'un sous-projet ; une ligne se glisse vers un autre groupe ou un autre sous-projet.
+Sur tablette, le bouton « + » ajoute au groupe sélectionné.
+
+**Postes, puis attribution** : on prévoit d'abord les postes du projet (« 3 × Technicien sur le montage », tarif client, transport),
+puis on attribue les techniciens à part — dans l'onglet du projet ou, pour tous les projets, dans le menu **Attribution**
+(postes jour par jour, techniciens disponibles en premier puis du moins cher au plus cher).
+
+**Champs numériques** : un champ vidé reste vide (plus de « 0 » qui traîne), et son contenu est sélectionné au clic.
 
 **Démo** : Paramètres → « Ouvrir la base de démo » crée une base séparée avec des clients, du matériel, une équipe et 8 projets fictifs (réinitialisable).
 

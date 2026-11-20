@@ -239,7 +239,7 @@ function SpotsEditor({ venue }: { venue: Contact }) {
       <h2>Endroits ({spots.length})</h2>
       <p className="muted" style={{ marginTop: 0 }}>
         Plusieurs endroits dans un même lieu (bâtiments d'un campus, scènes d'un festival, salles d'un hôtel…), chacun avec son adresse
-        s'il en a une différente. Sur un projet, tu choisis l'endroit pour tout le projet ou salle par salle.
+        s'il en a une différente. Sur un projet, tu choisis l'endroit pour tout le projet ou pour chaque sous-projet.
       </p>
       {spots.length > 0 && (
         <div className="table-wrap">

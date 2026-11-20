@@ -76,7 +76,7 @@ export const VARIABLE_GROUPS: { label: string; items: [string, string][] }[] = [
     ['total.ht', 'Total HT'], ['total.tva', 'TVA'], ['total.taux_tva', 'Taux de TVA'], ['total.ttc', 'Total TTC'], ['total.remise', 'Remise'], ['total.reste', 'Reste à payer'],
   ] },
   { label: 'Blocs générés', items: [
-    ['bloc.entete', 'En-tête (gabarit ci-dessus)'], ['bloc.introduction', "Texte d'introduction"], ['bloc.salles', 'Salles : horaires, matériel, personnel, transport'],
+    ['bloc.entete', 'En-tête (gabarit ci-dessus)'], ['bloc.introduction', "Texte d'introduction"], ['bloc.salles', 'Sous-projets : horaires, matériel, personnel, transport'],
     ['bloc.frais', 'Frais supplémentaires'], ['bloc.lignes_simples', 'Lignes acompte / avoir'], ['bloc.options', 'Total des options'], ['bloc.totaux', 'Tableau des totaux'],
     ['bloc.conclusion', 'Texte de fin'], ['bloc.signature', 'Cadre de signature'], ['bloc.paiement', 'Paiement : IBAN, communication, QR'],
     ['bloc.mention_tva', 'Mention de TVA (sinon sous les totaux)'], ['bloc.notes', 'Notes du projet et infos du lieu prévues pour ce document'],

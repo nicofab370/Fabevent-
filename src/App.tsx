@@ -25,6 +25,7 @@ import SettingsPage from './pages/Settings';
 import Vehicles from './pages/Vehicles';
 import Shortages from './pages/Shortages';
 import Venues, { VenueDetail } from './pages/Venues';
+import CrewAssignmentPage from './pages/crewAssign';
 
 const NAV = [
   ['/', 'Tableau de bord', '◧'],
@@ -39,6 +40,7 @@ const NAV = [
   ['/contacts', 'Contacts', '☰'],
   ['/lieux', 'Lieux', '⌂'],
   ['/equipe', 'Équipe', '☺'],
+  ['/attribution', 'Attribution', '✓'],
   ['/vehicules', 'Véhicules', '⛟'],
   ['/comptabilite', 'Export comptable', '€'],
   ['/rapports', 'Rapports', '↗'],
@@ -90,6 +92,7 @@ export default function App() {
           <Route path="/lieux" element={<Venues />} />
           <Route path="/lieux/:id" element={<VenueDetail />} />
           <Route path="/contacts" element={<Contacts />} />
+          <Route path="/attribution" element={<CrewAssignmentPage />} />
           <Route path="/equipe" element={<Crew />} />
           <Route path="/vehicules" element={<Vehicles />} />
           <Route path="/comptabilite" element={<Accounting />} />

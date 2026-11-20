@@ -284,7 +284,7 @@ function BulkEdit({ ids, onClose }: { ids: string[]; onClose: (done: boolean) =>
         setMsg(`${n} article(s) mis à jour.`);
         setTimeout(() => onClose(true), 700);
       }}>
-        <Field label="Variation des prix (%)"><input type="number" step="any" value={pct} onChange={(e) => setPct(parseFloat(e.target.value) || 0)} /></Field>
+        <Field label="Variation des prix (%)"><NumInput step="any" value={pct} onChange={(n) => setPct(n)} /></Field>
         <Field label=" "><label className="check-row"><input type="checkbox" checked={round} onChange={(e) => setRound(e.target.checked)} /> Arrondir aux 0,50 €</label></Field>
         <Field label="Catégorie">
           <select value={catId} onChange={(e) => setCatId(e.target.value)}>
