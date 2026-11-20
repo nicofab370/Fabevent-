@@ -87,7 +87,7 @@ function RoomEquipment({ d, sp }: { d: ProjectData; sp: Subproject }) {
                       {ordered.map((l) => {
                         const eq = l.equipmentId ? eqMap.get(l.equipmentId) : undefined;
                         const [b0, b1] = lineBlock(l, sp);
-                        const avail = eq ? availableQty(eq, av.equipment, av.res, b0, b1, l.id) : null;
+                        const avail = eq ? availableQty(eq, av.equipment, av.res, b0, b1, l.id, d.depot) : null;
                         const perPiece = isPerPiece(l, eqMap);
                         return (
                           <tr key={l.id} style={l.optional ? { opacity: 0.6 } : undefined}>
@@ -124,7 +124,7 @@ function RoomEquipment({ d, sp }: { d: ProjectData; sp: Subproject }) {
         <p className="muted" style={{ marginBottom: 0 }}>Coefficient de durée : {lineDays({}, sp)} j → ×{factorFor(lineDays({}, sp), settings)} (hors groupes rattachés à des créneaux).</p>
       </div>
       {picking !== undefined && (
-        <EquipmentPicker sp={sp} groupId={picking || undefined} equipment={av.equipment} res={av.res} existing={lines} onClose={() => setPicking(undefined)} />
+        <EquipmentPicker sp={sp} groupId={picking || undefined} depot={d.depot} equipment={av.equipment} res={av.res} existing={lines} onClose={() => setPicking(undefined)} />
       )}
       {editGroup && <GroupModal sp={sp} group={editGroup} onClose={() => setEditGroup(null)} />}
     </div>
@@ -205,7 +205,7 @@ export async function addEquipmentToSub(sp: Subproject, equipment: Equipment[], 
   }
 }
 
-function EquipmentPicker({ sp, groupId, equipment, res, existing, onClose }: { sp: Subproject; groupId?: string; equipment: Equipment[]; res: Reservation[]; existing: EquipmentLine[]; onClose: () => void }) {
+function EquipmentPicker({ sp, groupId, depot, equipment, res, existing, onClose }: { sp: Subproject; groupId?: string; depot?: string; equipment: Equipment[]; res: Reservation[]; existing: EquipmentLine[]; onClose: () => void }) {
   const [q, setQ] = useState('');
   const [qty, setQty] = useState<Record<string, number>>({});
   const cats = useLiveQuery(() => db.categories.toArray(), []) || [];
@@ -234,7 +234,7 @@ function EquipmentPicker({ sp, groupId, equipment, res, existing, onClose }: { s
             <thead><tr><th>Article</th><th className="n">Dispo</th><th className="n">Prix</th><th>Qté</th></tr></thead>
             <tbody>
               {list.map((e) => {
-                const avail = availableQty(e, equipment, res, bStart, bEnd);
+                const avail = availableQty(e, equipment, res, bStart, bEnd, undefined, depot);
                 return (
                   <tr key={e.id}>
                     <td>{e.name} {e.isKit && <span className="badge">Kit</span>} {e.kind === 'vente' && <span className="badge">vente</span>} <span className="muted">{e.code}</span>

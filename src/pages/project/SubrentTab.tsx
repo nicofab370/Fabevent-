@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { Empty } from '../../components/ui';
 import { db, nextNumber } from '../../db';
 import { SUBRENT_LABELS } from '../../types';
-import { blockPeriod, fmtRange, money, save } from '../../utils';
+import { availableQty, blockPeriod, fmtRange, money, save } from '../../utils';
 import type { ProjectData } from './shared';
 
 /** Onglet Sous-locations & bons de commande. */
@@ -22,6 +22,27 @@ export default function SubrentTab({ d }: { d: ProjectData }) {
     nav('/souslocations/' + sr.id);
   };
 
+  /** Dépôts qui ont encore le matériel manquant sur la période. */
+  const transferOptions = (sid: string) => {
+    if (!d.depot) return [];
+    const sp = subs.find((s) => s.id === sid)!;
+    const [start, end] = blockPeriod(sp);
+    const items = conflicts.filter((c) => c.subprojectId === sid);
+    return d.av.depots.filter((dp) => dp.id !== d.depot).map((dp) => ({
+      depot: dp,
+      lines: items.map((c) => ({ equipmentId: c.equipment.id, name: c.equipment.name, qty: Math.min(c.shortage, Math.max(0, availableQty(c.equipment, d.av.equipment, d.av.res, start, end, undefined, dp.id))) })).filter((l) => l.qty > 0),
+    })).filter((o) => o.lines.length);
+  };
+  const transfer = async (sid: string, fromDepotId: string, lines: { equipmentId: string; qty: number }[]) => {
+    const sp = subs.find((s) => s.id === sid)!;
+    const [start, end] = blockPeriod(sp);
+    const t = await save(db.transfers, {
+      number: await nextNumber('TR'), fromDepotId, toDepotId: d.depot!, start, end, status: 'planifie', projectId: project.id,
+      lines: lines.map(({ equipmentId, qty }) => ({ equipmentId, qty })), notes: `Pour ${project.number} ${project.name} — ${sp.name}`,
+    });
+    nav('/transferts?id=' + t.id);
+  };
+
   const orders = [
     ...subrentals.map((s) => ({ key: s.id, kind: 'Sous-location', ref: s.number, supplier: s.supplierId, amount: s.lines.reduce((a, l) => a + l.cost, 0), status: SUBRENT_LABELS[s.status], go: () => nav('/souslocations/' + s.id) })),
     ...costs.filter((c) => c.supplierId).map((c) => ({ key: c.id, kind: 'Coût supplémentaire', ref: c.label, supplier: c.supplierId, amount: c.amount, status: '—', go: undefined })),
@@ -38,7 +59,13 @@ export default function SubrentTab({ d }: { d: ProjectData }) {
                 <tr key={sid}>
                   <td><strong>{subs.find((s) => s.id === sid)?.name}</strong></td>
                   <td>{conflicts.filter((c) => c.subprojectId === sid).map((c) => `${c.shortage} × ${c.equipment.name}`).join(', ')}</td>
-                  <td><button className="small" onClick={() => subrent(sid)}>Sous-louer le manque</button></td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    {transferOptions(sid).map((o) => (
+                      <button key={o.depot.id} className="secondary small" style={{ marginRight: 6 }} onClick={() => transfer(sid, o.depot.id, o.lines)}
+                        title={o.lines.map((l) => `${l.qty} × ${l.name}`).join(', ')}>Transférer depuis {o.depot.name}</button>
+                    ))}
+                    <button className="small" onClick={() => subrent(sid)}>Sous-louer le manque</button>
+                  </td>
                 </tr>
               ))}
             </tbody>

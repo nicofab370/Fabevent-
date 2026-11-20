@@ -1,6 +1,6 @@
 import Dexie, { type Table } from 'dexie';
 import type {
-  Category, Contact, CrewAssignment, Doc, Equipment, EquipmentLine, Inspection, LogEntry, Person, Project, ProjectCost, ProjectFile, Repair,
+  Category, Contact, CrewAssignment, Doc, Transfer, Equipment, EquipmentLine, Inspection, LogEntry, Person, Project, ProjectCost, ProjectFile, Repair,
   SerialUnit, Settings, Subproject, Subrental, Unavailability, Vehicle, VehicleAssignment,
 } from './types';
 
@@ -55,6 +55,7 @@ export class FabDB extends Dexie {
   unavailability!: Table<Unavailability, string>;
   files!: Table<ProjectFile, string>;
   log!: Table<LogEntry, string>;
+  transfers!: Table<Transfer, string>;
 
   constructor(name: string) {
     super(name);
@@ -84,6 +85,9 @@ export class FabDB extends Dexie {
       files: 'id, projectId',
       log: 'id, projectId, at',
     });
+    this.version(4).stores({
+      transfers: 'id, fromDepotId, toDepotId, status, start',
+    });
   }
 }
 
@@ -91,8 +95,17 @@ export const db = new FabDB('fabevent_' + currentWorkspace());
 
 export const TABLES = [
   'contacts', 'categories', 'equipment', 'projects', 'subprojects', 'lines', 'people', 'crew', 'vehicles',
-  'vehicleAssignments', 'docs', 'settings', 'units', 'repairs', 'inspections', 'subrentals', 'costs', 'unavailability', 'files', 'log',
+  'vehicleAssignments', 'docs', 'settings', 'units', 'repairs', 'inspections', 'subrentals', 'costs', 'unavailability', 'files', 'log', 'transfers',
 ] as const;
+
+/** Identifiant du dépôt principal (ou 'main' s'il n'y a pas de dépôts déclarés). */
+export function mainDepotId(s: Pick<Settings, 'depots'>): string {
+  return s.depots?.[0]?.id || 'main';
+}
+/** Plusieurs dépôts déclarés ? Sinon tout fonctionne comme avec un dépôt unique. */
+export function multiDepot(s: Pick<Settings, 'depots'>): boolean {
+  return (s.depots?.length || 0) > 1;
+}
 
 export const DEFAULT_PROJECT_TYPES = [
   { name: 'Prestation', color: '#2563eb' },
@@ -122,7 +135,7 @@ export async function getSettings(): Promise<Settings> {
 }
 
 /** Numérotation : P-2026-001, D-2026-001, F-2026-001… */
-export async function nextNumber(kind: 'P' | 'D' | 'F' | 'AV' | 'BS' | 'FR' | 'SL'): Promise<string> {
+export async function nextNumber(kind: 'P' | 'D' | 'F' | 'AV' | 'BS' | 'FR' | 'SL' | 'TR'): Promise<string> {
   return db.transaction('rw', db.settings, async () => {
     const s = await getSettings();
     const year = new Date().getFullYear();

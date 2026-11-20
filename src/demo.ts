@@ -33,6 +33,9 @@ export async function seedDemo() {
   }
 }
 
+const DEPOT_LIEGE = 'depot-liege';
+const DEPOT_NAMUR = 'depot-namur';
+
 async function seedAll() {
   await db.transaction('rw', TABLES.map((n) => db.table(n)), async () => {
     for (const n of TABLES) await db.table(n).clear();
@@ -52,6 +55,10 @@ async function seedAll() {
     pricePerKm: 1.1,
     defaultTrips: 2,
     projectTypes: DEFAULT_PROJECT_TYPES,
+    depots: [
+      { id: DEPOT_LIEGE, name: 'Dépôt Liège', street: 'Rue de l\'Exemple 12', postalCode: '4000', city: 'Liège', country: 'BE' },
+      { id: DEPOT_NAMUR, name: 'Dépôt Namur', street: 'Rue du Dépôt 5', postalCode: '5000', city: 'Namur', country: 'BE' },
+    ],
     footer: 'Données fictives — base de démonstration FabEvent.',
   });
 
@@ -129,12 +136,17 @@ async function seedAll() {
   });
   await item('kitpar', 'Lumière', 'Pack ambiance 8 PAR LED', 0, 60, { isKit: true, kitItems: [{ equipmentId: eq.par, qty: 8 }] });
 
+  // Stock au dépôt de Namur (le reste est à Liège)
+  for (const [key, n] of [['par', 8], ['x12', 2], ['tv', 2], ['pc16', 10], ['truss', 4], ['sm58', 4]] as [string, number][]) {
+    await db.equipment.update(eq[key], { stock: { [DEPOT_NAMUR]: n } });
+  }
+
   // Unités pour le matériel suivi par numéro de série
   const serials: [string, number, string][] = [['ampli', 3, 'LA4X'], ['cl5', 1, 'CL5'], ['qu16', 2, 'QU16'], ['hf', 6, 'ULXD'], ['lyre', 8, 'LW600'], ['spot', 4, 'ESP'], ['grandma', 1, 'MA3'], ['vp', 2, 'VP10K']];
   for (const [key, n, prefix] of serials) {
     for (let i = 1; i <= n; i++) {
       const serial = `${prefix}-${String(1000 + i)}`;
-      await db.units.put({ ...base(), equipmentId: eq[key], serial, barcode: 'SN-' + serial, status: 'ok', lastInspection: dayOnly(-300 - i * 10) });
+      await db.units.put({ ...base(), equipmentId: eq[key], serial, barcode: 'SN-' + serial, status: 'ok', depotId: key === 'qu16' && i === 2 ? DEPOT_NAMUR : DEPOT_LIEGE, lastInspection: dayOnly(-300 - i * 10) });
     }
   }
   // Une lyre en réparation, un contrôle bientôt dû
@@ -180,7 +192,7 @@ async function seedAll() {
     crew?: [string, string | undefined, number, number?, string?][];
     vehicles?: [string, string | undefined][];
   };
-  type Extra = { distanceKm?: number; discount?: number; contactPerson?: string; notes?: string; typeName?: string; externalRef?: string; venueId?: string; tasks?: [string, boolean, number?][] };
+  type Extra = { depotId?: string; distanceKm?: number; discount?: number; contactPerson?: string; notes?: string; typeName?: string; externalRef?: string; venueId?: string; tasks?: [string, boolean, number?][] };
   const project = async (name: string, clientId: string, status: ProjectStatus, venue: string, defs: SubDef[], extra: Extra = {}) => {
     // les horaires détaillés donnent les dates de la salle
     const subs = defs.map((d) => {
@@ -194,7 +206,7 @@ async function seedAll() {
       ...base(), number: `P-${year}-${String(++counter).padStart(3, '0')}`, name, clientId, status, venue,
       start: starts[0], end: ends[ends.length - 1], discount: extra.discount || 0, contactPerson: extra.contactPerson, notes: extra.notes,
       typeName: extra.typeName || 'Prestation', color: DEFAULT_PROJECT_TYPES.find((t) => t.name === (extra.typeName || 'Prestation'))?.color,
-      externalRef: extra.externalRef, venueId: extra.venueId,
+      externalRef: extra.externalRef, venueId: extra.venueId, depotId: extra.depotId || DEPOT_LIEGE,
       distanceKm: extra.distanceKm, travelMinutes: extra.distanceKm ? Math.round(extra.distanceKm / 75 * 60) + 10 : undefined,
       tasks: extra.tasks?.map(([text, done, dueIn]) => ({ id: uid(), text, done, due: dueIn !== undefined ? dayOnly(dueIn) : undefined })),
     };
@@ -309,7 +321,7 @@ async function seedAll() {
   // 6. Marché de Noël en option sur un mois
   await project('Marché de Noël', cNamur, 'option', 'Place d\'Armes, Namur', [
     { name: 'Exploitation', start: at(25, 10), end: at(40, 22), lines: [['par', 16], ['pc16', 10], ['x12', 2], ['qu16', 1], ['distro', 1]], crew: [['Technicien d\'astreinte', pHugo, 250]] },
-  ], { contactPerson: 'Julie Martin', discount: 15, distanceKm: 65 });
+  ], { contactPerson: 'Julie Martin', discount: 15, distanceKm: 2, depotId: DEPOT_NAMUR });
 
   // 7. Séminaire annulé
   await project('Séminaire printemps', cAgence, 'annule', 'Bruxelles', [
@@ -319,7 +331,7 @@ async function seedAll() {
   // 8. Prestation en cours aujourd'hui
   await project('Salon de l\'emploi', cNamur, 'en_cours', 'Namur Expo', [
     { name: 'Salon', start: at(-1, 8), end: at(1, 19), lines: [['tv', 4], ['kitconf', 1], ['par', 8], ['gaffer', 2]], crew: [['Technicien', pLea, 340, 230]] },
-  ], { contactPerson: 'Marc Lambert', distanceKm: 65 });
+  ], { contactPerson: 'Marc Lambert', distanceKm: 4, depotId: DEPOT_NAMUR });
 
   // Documents : devis puis acompte et facture pour le gala, devis pour d'autres
   await createDocument(pGala, 'devis');
@@ -338,5 +350,10 @@ async function seedAll() {
     start: fSub.prepStart!, end: fSub.returnEnd!, lines: [{ equipmentId: eq.x12, name: 'Enceinte L-Acoustics X12', qty: 2, cost: 160 }],
   });
   await db.costs.put({ ...base(), projectId: pGala, label: 'Carburant et péages', amount: 95 });
-  await db.settings.update('main', { counters: { ...(await db.settings.get('main'))!.counters, [`P-${year}`]: counter, [`SL-${year}`]: 1 } });
+  // Transfert définitif déjà effectué : des rallonges et du truss partis renforcer Namur
+  await db.transfers.put({
+    ...base(), number: `TR-${year}-001`, fromDepotId: DEPOT_LIEGE, toDepotId: DEPOT_NAMUR, start: at(-30, 9), status: 'effectue',
+    lines: [{ equipmentId: eq.pc16, qty: 5 }], notes: 'Renfort du dépôt de Namur pour la saison d\'hiver',
+  });
+  await db.settings.update('main', { counters: { ...(await db.settings.get('main'))!.counters, [`P-${year}`]: counter, [`SL-${year}`]: 1, [`TR-${year}`]: 1 } });
 }

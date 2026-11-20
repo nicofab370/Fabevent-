@@ -3,7 +3,7 @@ import { Field, PageHead, useSettings } from '../components/ui';
 import { currentWorkspace, db, DEFAULT_PROJECT_TYPES, listWorkspaces, switchWorkspace, TABLES } from '../db';
 import { DEMO_WORKSPACE, seedDemo } from '../demo';
 import type { Settings } from '../types';
-import { download } from '../utils';
+import { download, uid } from '../utils';
 
 export default function SettingsPage() {
   const current = useSettings();
@@ -86,6 +86,30 @@ export default function SettingsPage() {
           </Field>
           {s.company.logo && <div className="field"><img src={s.company.logo} alt="Logo" style={{ maxHeight: 50, maxWidth: 160 }} /><button type="button" className="ghost small" onClick={() => setCo('logo', '')}>Retirer le logo</button></div>}
         </div>
+
+        <h2 style={{ marginTop: 20 }}>Dépôts</h2>
+        <p className="muted" style={{ marginTop: 0 }}>
+          Avec un seul dépôt, rien à faire. Avec plusieurs, le stock se répartit par dépôt, chaque projet part d'un dépôt
+          et tu peux transférer du matériel de l'un à l'autre. Le premier est le dépôt principal.
+        </p>
+        {(s.depots || []).map((dp, i, all) => {
+          const upd = (patch: Partial<typeof dp>) => setS({ ...s, depots: all.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
+          return (
+            <div key={dp.id} className="depot-row">
+              <input value={dp.name} onChange={(e) => upd({ name: e.target.value })} placeholder="Nom" />
+              <input value={dp.street || ''} onChange={(e) => upd({ street: e.target.value })} placeholder="Rue et numéro" />
+              <input value={dp.postalCode || ''} onChange={(e) => upd({ postalCode: e.target.value })} placeholder="CP" />
+              <input value={dp.city || ''} onChange={(e) => upd({ city: e.target.value })} placeholder="Ville" />
+              <span className="muted" style={{ fontSize: 12, alignSelf: 'center' }}>{i === 0 ? 'principal' : ''}</span>
+              <button type="button" className="ghost" disabled={i === 0} title={i === 0 ? 'Le dépôt principal ne peut pas être supprimé' : 'Supprimer'}
+                onClick={() => confirm(`Supprimer le dépôt « ${dp.name} » ? Son matériel sera compté dans le dépôt principal.`) && setS({ ...s, depots: all.filter((_, j) => j !== i) })}>✕</button>
+            </div>
+          );
+        })}
+        <button type="button" className="secondary small" onClick={() => {
+          const list = s.depots?.length ? s.depots : [{ id: uid(), name: 'Dépôt principal', street: s.company.street, postalCode: s.company.postalCode, city: s.company.city, country: s.company.country }];
+          setS({ ...s, depots: [...list, { id: uid(), name: `Dépôt ${list.length + 1}` }] });
+        }}>+ Dépôt</button>
 
         <h2 style={{ marginTop: 20 }}>Types de projet</h2>
         <p className="muted" style={{ marginTop: 0 }}>Chaque type a une couleur, reprise dans la liste des projets.</p>

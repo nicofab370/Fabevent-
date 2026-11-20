@@ -1,6 +1,6 @@
 import type { Table } from 'dexie';
 import { db } from './db';
-import type { Base, Equipment, EquipmentLine, Inspection, Period, Repair, SerialUnit, Settings, Subproject, Subrental } from './types';
+import type { Base, Equipment, EquipmentLine, Inspection, Period, Repair, SerialUnit, Settings, Subproject, Subrental, Transfer } from './types';
 import { RESERVING } from './types';
 
 export function uid(): string {
@@ -82,20 +82,49 @@ export interface Reservation {
   lineId: string;
   subprojectId: string;
   projectId: string;
-  source: 'projet' | 'reparation' | 'souslocation';
+  source: 'projet' | 'reparation' | 'souslocation' | 'transfert';
+  depotId?: string;
 }
 
 export interface AvailabilityExtras {
   repairs?: Repair[];
   subrentals?: Subrental[];
+  transfers?: Transfer[];
+  /** dépôt de chaque projet */
+  projectDepots?: Map<string, string | undefined>;
+  mainDepot?: string;
+  units?: SerialUnit[];
 }
 
 /** Stock réel : pour le matériel suivi par n° de série = unités en service. */
-export function effectiveEquipment(equipment: Equipment[], units: SerialUnit[]): Equipment[] {
-  if (!units.length) return equipment;
+export function effectiveEquipment(equipment: Equipment[], units: SerialUnit[], depotIds: string[] = []): Equipment[] {
+  const main = depotIds[0] || 'main';
   const count = new Map<string, number>();
-  for (const u of units) if (u.status === 'ok') count.set(u.equipmentId, (count.get(u.equipmentId) || 0) + 1);
-  return equipment.map((e) => (e.trackSerials ? { ...e, quantity: count.get(e.id) || 0 } : e));
+  const byDepot = new Map<string, Record<string, number>>();
+  for (const u of units) {
+    if (u.status !== 'ok') continue;
+    count.set(u.equipmentId, (count.get(u.equipmentId) || 0) + 1);
+    const m = byDepot.get(u.equipmentId) || {};
+    const d = u.depotId && depotIds.includes(u.depotId) ? u.depotId : main;
+    m[d] = (m[d] || 0) + 1;
+    byDepot.set(u.equipmentId, m);
+  }
+  return equipment.map((e) => {
+    if (e.trackSerials) return { ...e, quantity: count.get(e.id) || 0, _stock: byDepot.get(e.id) || {} };
+    if (depotIds.length < 2) return e;
+    // vrac : les dépôts secondaires ont leur quantité, le principal a le reste
+    const st: Record<string, number> = {};
+    let others = 0;
+    for (const d of depotIds.slice(1)) { st[d] = e.stock?.[d] || 0; others += st[d]; }
+    st[main] = Math.max(0, e.quantity - others);
+    return { ...e, _stock: st };
+  });
+}
+
+/** Quantité d'un article dans un dépôt (sans dépôt = tout le parc). */
+export function stockIn(eq: Equipment, depotId?: string): number {
+  if (!depotId || !eq._stock) return eq.quantity;
+  return eq._stock[depotId] || 0;
 }
 
 /** Développe lignes (kits → composants), réparations et sous-locations en réservations datées. */
@@ -103,6 +132,9 @@ export function buildReservations(lines: EquipmentLine[], subs: Subproject[], eq
   const subMap = new Map(subs.map((s) => [s.id, s]));
   const eqMap = new Map(equipment.map((e) => [e.id, e]));
   const out: Reservation[] = [];
+  const main = extras.mainDepot || 'main';
+  const depotOf = (projectId: string) => extras.projectDepots?.get(projectId) || main;
+  const unitDepot = new Map((extras.units || []).map((u) => [u.id, u.depotId || main]));
   const push = (eqId: string, qty: number, l: EquipmentLine, sp: Subproject, depth: number) => {
     const eq = eqMap.get(eqId);
     if (!eq || depth > 4) return;
@@ -113,7 +145,7 @@ export function buildReservations(lines: EquipmentLine[], subs: Subproject[], eq
       // un consommable vendu ne revient pas
       const sold = eq.kind === 'vente';
       if (sold && l.consumed) return;
-      out.push({ equipmentId: eqId, qty, start, end: sold ? FOREVER : end, lineId: l.id, subprojectId: sp.id, projectId: sp.projectId, source: 'projet' });
+      out.push({ equipmentId: eqId, qty, start, end: sold ? FOREVER : end, lineId: l.id, subprojectId: sp.id, projectId: sp.projectId, source: 'projet', depotId: depotOf(sp.projectId) });
     }
   };
   for (const l of lines) {
@@ -123,22 +155,32 @@ export function buildReservations(lines: EquipmentLine[], subs: Subproject[], eq
   }
   for (const r of extras.repairs || []) {
     if (r.status !== 'ouvert') continue;
-    out.push({ equipmentId: r.equipmentId, qty: r.qty, start: r.start, end: r.end || FOREVER, lineId: r.id, subprojectId: '', projectId: '', source: 'reparation' });
+    out.push({ equipmentId: r.equipmentId, qty: r.qty, start: r.start, end: r.end || FOREVER, lineId: r.id, subprojectId: '', projectId: '', source: 'reparation', depotId: (r.unitId && unitDepot.get(r.unitId)) || main });
   }
   for (const sr of extras.subrentals || []) {
     if (sr.status !== 'confirme' && sr.status !== 'recu') continue;
     for (const l of sr.lines) {
-      if (l.equipmentId) out.push({ equipmentId: l.equipmentId, qty: -l.qty, start: sr.start, end: sr.end, lineId: sr.id, subprojectId: sr.subprojectId || '', projectId: sr.projectId, source: 'souslocation' });
+      if (l.equipmentId) out.push({ equipmentId: l.equipmentId, qty: -l.qty, start: sr.start, end: sr.end, lineId: sr.id, subprojectId: sr.subprojectId || '', projectId: sr.projectId, source: 'souslocation', depotId: depotOf(sr.projectId) });
+    }
+  }
+  // transfert : sort du dépôt d'origine et entre dans le dépôt de destination sur la période (ou pour toujours)
+  for (const t of extras.transfers || []) {
+    if (t.status === 'annule') continue;
+    for (const l of t.lines) {
+      const base = { equipmentId: l.equipmentId, start: t.start, end: t.end || FOREVER, lineId: t.id, subprojectId: '', projectId: t.projectId || '', source: 'transfert' as const };
+      out.push({ ...base, qty: l.qty, depotId: t.fromDepotId });
+      out.push({ ...base, qty: -l.qty, depotId: t.toDepotId });
     }
   }
   return out;
 }
 
 /** Pic de quantité réservée sur la période (balayage des intervalles). */
-export function peakReserved(res: Reservation[], equipmentId: string, start: string, end: string, excludeLineId?: string): number {
+export function peakReserved(res: Reservation[], equipmentId: string, start: string, end: string, excludeLineId?: string, depotId?: string): number {
   const events: [string, number][] = [];
   for (const r of res) {
     if (r.equipmentId !== equipmentId || r.lineId === excludeLineId) continue;
+    if (depotId && r.depotId !== depotId) continue;
     if (!overlaps(r.start, r.end, start, end)) continue;
     events.push([r.start < start ? start : r.start, r.qty]);
     events.push([r.end > end ? end : r.end, -r.qty]);
@@ -154,7 +196,7 @@ export function peakReserved(res: Reservation[], equipmentId: string, start: str
 
 /** Quantité encore disponible (un kit = min de ses composants). */
 export function availableQty(
-  eq: Equipment, all: Equipment[], res: Reservation[], start: string, end: string, excludeLineId?: string,
+  eq: Equipment, all: Equipment[], res: Reservation[], start: string, end: string, excludeLineId?: string, depotId?: string,
 ): number {
   if (eq.isKit && eq.kitItems.length) {
     const map = new Map(all.map((e) => [e.id, e]));
@@ -162,11 +204,11 @@ export function availableQty(
     for (const k of eq.kitItems) {
       const c = map.get(k.equipmentId);
       if (!c) return 0;
-      min = Math.min(min, Math.floor(availableQty(c, all, res, start, end, excludeLineId) / Math.max(1, k.qty)));
+      min = Math.min(min, Math.floor(availableQty(c, all, res, start, end, excludeLineId, depotId) / Math.max(1, k.qty)));
     }
     return min === Infinity ? 0 : min;
   }
-  return eq.quantity - peakReserved(res, eq.id, start, end, excludeLineId);
+  return stockIn(eq, depotId) - peakReserved(res, eq.id, start, end, excludeLineId, depotId);
 }
 
 export interface Conflict {
@@ -174,6 +216,7 @@ export interface Conflict {
   subprojectId: string;
   projectId: string;
   shortage: number;
+  depotId?: string;
 }
 
 export function findConflicts(res: Reservation[], equipment: Equipment[]): Conflict[] {
@@ -187,8 +230,10 @@ export function findConflicts(res: Reservation[], equipment: Equipment[]): Confl
     seen.add(key);
     const eq = eqMap.get(r.equipmentId);
     if (!eq) continue;
-    const peak = peakReserved(res, eq.id, r.start, r.end === FOREVER ? r.start : r.end);
-    if (peak > eq.quantity) out.push({ equipment: eq, subprojectId: r.subprojectId, projectId: r.projectId, shortage: peak - eq.quantity });
+    const depot = eq._stock ? r.depotId : undefined;
+    const peak = peakReserved(res, eq.id, r.start, r.end === FOREVER ? r.start : r.end, undefined, depot);
+    const have = stockIn(eq, depot);
+    if (peak > have) out.push({ equipment: eq, subprojectId: r.subprojectId, projectId: r.projectId, shortage: peak - have, depotId: depot });
   }
   return out;
 }

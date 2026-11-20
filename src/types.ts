@@ -57,8 +57,39 @@ export interface Accessory extends KitItem {
 /** location = facturé par jour et revient ; vente = consommable vendu à l'unité */
 export type EquipmentKind = 'location' | 'vente';
 
+/** Dépôt / emplacement de stock. Le premier de la liste est le dépôt principal. */
+export interface Depot {
+  id: ID;
+  name: string;
+  street?: string;
+  postalCode?: string;
+  city?: string;
+  country?: string;
+}
+
+export type TransferStatus = 'planifie' | 'effectue' | 'annule';
+export const TRANSFER_LABELS: Record<TransferStatus, string> = { planifie: 'Planifié', effectue: 'Effectué', annule: 'Annulé' };
+
+/** Déplacement de matériel entre dépôts : définitif (sans date de retour) ou temporaire. */
+export interface Transfer extends Base {
+  number: string;
+  fromDepotId: ID;
+  toDepotId: ID;
+  start: string;
+  /** retour au dépôt d'origine ; vide = transfert définitif */
+  end?: string;
+  status: TransferStatus;
+  lines: { equipmentId: ID; qty: number }[];
+  projectId?: ID;
+  notes?: string;
+}
+
 export interface Equipment extends Base {
   name: string;
+  /** quantités dans les dépôts secondaires (matériel en vrac) ; le dépôt principal a le reste */
+  stock?: Record<ID, number>;
+  /** calculé, jamais enregistré : quantité par dépôt */
+  _stock?: Record<ID, number>;
   kind?: EquipmentKind;
   trackSerials?: boolean;
   accessories?: Accessory[];
@@ -108,6 +139,8 @@ export interface Project extends Base {
   externalRef?: string;
   /** lieu de prestation (contact de type « lieu ») */
   venueId?: ID;
+  /** dépôt d'où part le matériel */
+  depotId?: ID;
   /** distance aller dépôt → lieu (km) et temps de trajet (min) */
   distanceKm?: number;
   travelMinutes?: number;
@@ -250,6 +283,7 @@ export interface SerialUnit extends Base {
   barcode?: string;
   /** hs / perdu = sorti définitivement du stock */
   status: 'ok' | 'hs' | 'perdu';
+  depotId?: ID;
   lastInspection?: string;
   notes?: string;
 }
@@ -458,4 +492,5 @@ export interface Settings {
   appUrl: string;
   counters: Record<string, number>;
   projectTypes?: { name: string; color: string }[];
+  depots?: Depot[];
 }

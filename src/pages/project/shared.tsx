@@ -33,8 +33,11 @@ export function useProjectData(id: string) {
     ? computeFinance(project, subs, lines, projectCrew, projectVas, costs, people, eqMap, settings,
       subrentals.filter((s) => s.status !== 'annule').reduce((a, s) => a + s.lines.reduce((b, l) => b + l.cost, 0), 0))
     : null;
+  const depotId = project ? av.projectDepots.get(project.id) : undefined;
+  /** dépôt du projet pour les disponibilités (undefined si un seul dépôt) */
+  const depot = av.depots.length > 1 ? depotId : undefined;
   return {
-    settings, av, project, client, subs, crew, projectCrew, people, unav, vehicles, vas, projectVas, docs, costs, contacts,
+    settings, av, project, client, depot, subs, crew, projectCrew, people, unav, vehicles, vas, projectVas, docs, costs, contacts,
     eqMap, lines, conflicts, subrentals, finance,
   };
 }

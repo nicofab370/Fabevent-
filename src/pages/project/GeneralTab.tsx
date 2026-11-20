@@ -29,7 +29,10 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
   const types = settings.projectTypes?.length ? settings.projectTypes : DEFAULT_PROJECT_TYPES;
   const venue = contacts.find((c) => c.id === project.venueId);
   const venueAddress = venue ? [venue.address, venue.postalCode, venue.city].filter(Boolean).join(', ') : project.venue || '';
-  const origin = [settings.company.street, settings.company.postalCode, settings.company.city].filter(Boolean).join(', ') || settings.company.address?.replace(/\n/g, ', ') || '';
+  const depots = settings.depots || [];
+  const depot = depots.find((x) => x.id === (project.depotId || depots[0]?.id));
+  const origin = (depot?.street || depot?.city ? [depot.street, depot.postalCode, depot.city].filter(Boolean).join(', ') : '')
+    || [settings.company.street, settings.company.postalCode, settings.company.city].filter(Boolean).join(', ') || settings.company.address?.replace(/\n/g, ', ') || '';
   const route = venueAddress ? `https://www.google.com/maps/dir/?api=1${origin ? `&origin=${encodeURIComponent(origin)}` : ''}&destination=${encodeURIComponent(venueAddress)}` : '';
 
   // Avancée du projet
@@ -74,6 +77,13 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
             </Field>
             <Field label="Numéro"><LazyInput value={project.number} onSave={(v) => v.trim() && upd({ number: v.trim() })} /></Field>
             <Field label="Couleur"><input type="color" value={project.color || '#2563eb'} onChange={(e) => upd({ color: e.target.value })} style={{ height: 36, padding: 2 }} /></Field>
+            {depots.length > 1 && (
+              <Field label="Dépôt (emplacement de stock)" full>
+                <select value={project.depotId || depots[0].id} onChange={(e) => upd({ depotId: e.target.value })}>
+                  {depots.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                </select>
+              </Field>
+            )}
             <Field label="Référence externe (n° de commande client)" full><LazyInput value={project.externalRef} onSave={(v) => upd({ externalRef: v || undefined })} /></Field>
           </div>
         </div>
