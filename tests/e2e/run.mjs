@@ -265,6 +265,23 @@ await step('Personnel : heures sup., trajet sur la feuille de route, documents �
   expect(await page.locator('text=à renouveler').count(), 'document à renouveler signalé');
 });
 
+await step('Sous-traitants : changer de rigger change la marge, pas le prix client', async () => {
+  await openProject('Festival des Lumières');
+  // résumé en tête de projet : client, dates, total HT, marge
+  const head = () => page.locator('.stats').first().locator('.stat');
+  const totalBefore = await head().nth(2).innerText();
+  const marginBefore = await head().nth(3).innerText();
+  await tab('Équipe & transport');
+  const row = page.locator('table.list tbody tr', { has: page.locator('input[value="Rigger"]') }).first();
+  const select = row.locator('select').nth(1);
+  const options = await select.locator('option').allInnerTexts();
+  expect(options.some((o) => o.includes('Sam Moreau') && o.includes('260')), `coût de chaque candidat affiché : ${options.join(' | ')}`);
+  await select.selectOption({ label: options.find((o) => o.includes('Sam Moreau')) });
+  await page.waitForTimeout(400);
+  expect((await head().nth(2).innerText()) === totalBefore, 'total client inchangé');
+  expect((await head().nth(3).innerText()) !== marginBefore, `marge modifiée (${marginBefore})`);
+});
+
 await step('Matériel archivé masqué, visible avec le filtre', async () => {
   await go('materiel');
   expect(!(await page.locator('text=Console analogique Mackie').count()), 'archivé masqué');

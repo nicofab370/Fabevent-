@@ -4,7 +4,7 @@ import { useAvailability } from '../../data';
 import { db } from '../../db';
 import type { CrewAssignment, Equipment, EquipmentLine, Person, Project, ProjectCost, Settings, Subproject, Unavailability, VehicleAssignment } from '../../types';
 import { INVOICE_TYPES, RESERVING } from '../../types';
-import { crewAmount, lineDays, lineTotal, overlaps, round2, save } from '../../utils';
+import { crewAmount, crewCostRate, lineDays, lineTotal, overlaps, round2, save } from '../../utils';
 import { tripKm, vehiclePrice } from '../../geo';
 
 /** Toutes les données d'un projet, en temps réel, partagées par les onglets. */
@@ -77,7 +77,7 @@ export function computeFinance(
   let crewRev = 0, crewCost = 0;
   for (const c of crew) {
     if (!active.has(c.subprojectId)) continue;
-    const a = crewAmount(c, s, project.travelMinutes, (c.personId ? (c.rateUnit === 'heure' ? pMap.get(c.personId)?.hourlyCost : pMap.get(c.personId)?.costRate) : undefined) ?? 0);
+    const a = crewAmount(c, s, project.travelMinutes, crewCostRate(c, c.personId ? pMap.get(c.personId) : undefined));
     if (c.billable) crewRev += a.billed;
     crewCost += a.cost;
   }

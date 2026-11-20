@@ -47,7 +47,7 @@ export default function Crew() {
         {people.length === 0 ? <Empty>Ajoute tes techniciens (salariés, intermittents, sous-traitants).</Empty> : (
           <div className="table-wrap">
             <table className="list">
-              <thead><tr><th>Nom</th><th>Fonction</th><th>Statut</th><th>Téléphone</th><th className="n">Tarif/j</th><th>Prochaines missions</th><th /></tr></thead>
+              <thead><tr><th>Nom</th><th>Fonction</th><th>Statut</th><th>Téléphone</th><th className="n">Coût/j</th><th className="n">Coût/h</th><th>Prochaines missions</th><th /></tr></thead>
               <tbody>
                 {people.map((p) => {
                   const next = assignmentsOf(p.id).filter((c) => c.end >= nowS);
@@ -57,7 +57,8 @@ export default function Crew() {
                       <td>{p.role}</td>
                       <td><span className="badge">{p.external ? 'Sous-traitant' : 'Interne'}</span></td>
                       <td>{p.phone}</td>
-                      <td className="n">{money(p.dailyRate)}</td>
+                      <td className="n">{p.costRate ? money(p.costRate) : <span className="muted">—</span>}</td>
+                      <td className="n">{p.hourlyCost ? money(p.hourlyCost) : <span className="muted">—</span>}</td>
                       <td>{next.length === 0 ? <span className="muted">—</span> : next.slice(0, 3).map((c) => (
                         <div key={c.id} style={{ fontSize: 12 }}>{pMap.get(c.projectId)?.name} · {fmtRange(c.start, c.end)}</div>
                       ))}{next.length > 3 && <span className="muted">+{next.length - 3}</span>}</td>
@@ -86,10 +87,11 @@ export default function Crew() {
           <form className="form" onSubmit={async (e) => { e.preventDefault(); await save(db.people, edit as Person); setEdit(null); }}>
             <Field label="Nom *" full><input required autoFocus value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></Field>
             <Field label="Fonction principale"><input value={edit.role || ''} onChange={(e) => setEdit({ ...edit, role: e.target.value })} placeholder="ex. Régisseur son" /></Field>
-            <Field label="Tarif facturé / jour HT (€)"><NumInput value={edit.dailyRate} onChange={(n) => setEdit({ ...edit, dailyRate: n })} /></Field>
-            <Field label="Coût pour toi / jour (€)"><NumInput value={edit.costRate || 0} onChange={(n) => setEdit({ ...edit, costRate: n })} /></Field>
-            <Field label="Tarif facturé / heure HT (€)"><NumInput value={edit.hourlyRate || 0} onChange={(n) => setEdit({ ...edit, hourlyRate: n || undefined })} /></Field>
-            <Field label="Coût pour toi / heure (€)"><NumInput value={edit.hourlyCost || 0} onChange={(n) => setEdit({ ...edit, hourlyCost: n || undefined })} /></Field>
+            <Field label="Ce qu'il te coûte / jour (€ HT)"><NumInput value={edit.costRate || 0} onChange={(n) => setEdit({ ...edit, costRate: n })} /></Field>
+            <Field label="Ce qu'il te coûte / heure (€ HT)"><NumInput value={edit.hourlyCost || 0} onChange={(n) => setEdit({ ...edit, hourlyCost: n || undefined })} /></Field>
+            <p className="muted field full" style={{ margin: 0 }}>Le prix facturé au client vient de la fonction (Paramètres → Fonctions et tarifs clients). Ci-dessous, un tarif de secours si la fonction n'est pas au catalogue :</p>
+            <Field label="Tarif client de secours / jour (€ HT)"><NumInput value={edit.dailyRate} onChange={(n) => setEdit({ ...edit, dailyRate: n })} /></Field>
+            <Field label="Tarif client de secours / heure (€ HT)"><NumInput value={edit.hourlyRate || 0} onChange={(n) => setEdit({ ...edit, hourlyRate: n || undefined })} /></Field>
             <Field label="Email"><input type="email" value={edit.email || ''} onChange={(e) => setEdit({ ...edit, email: e.target.value })} /></Field>
             <Field label="Téléphone"><input value={edit.phone || ''} onChange={(e) => setEdit({ ...edit, phone: e.target.value })} /></Field>
             <Field label=" " full><label className="check-row"><input type="checkbox" checked={edit.external} onChange={(e) => setEdit({ ...edit, external: e.target.checked })} /> Sous-traitant / freelance externe</label></Field>

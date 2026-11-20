@@ -73,6 +73,9 @@ remises par défaut du client.
 **Matériel** : étiquettes QR imprimables (planches A4, rouleau), articles de remplacement proposés en cas de manque,
 archivage, photos, inventaire par scan avec mise à jour du stock, valeur du parc.
 
+**Sous-traitants et marge** : le client paie la fonction (catalogue de tarifs dans Paramètres), quel que soit le prestataire ;
+chaque technicien ou sous-traitant a son propre coût, qui ne joue que sur la marge (affichée poste par poste, candidats triés par coût).
+
 **Équipe** : postes à la journée ou à l'heure avec heures supplémentaires majorées, temps de trajet dans les horaires
 communiqués, documents du personnel avec date d'expiration.
 
