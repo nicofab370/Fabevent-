@@ -124,7 +124,7 @@ function RoomEquipment({ d, sp }: { d: ProjectData; sp: Subproject }) {
         <p className="muted" style={{ marginBottom: 0 }}>Coefficient de durée : {lineDays({}, sp)} j → ×{factorFor(lineDays({}, sp), settings)} (hors groupes rattachés à des créneaux).</p>
       </div>
       {picking !== undefined && (
-        <EquipmentPicker sp={sp} groupId={picking || undefined} depot={d.depot} equipment={av.equipment} res={av.res} existing={lines} onClose={() => setPicking(undefined)} />
+        <EquipmentPicker sp={sp} groupId={picking || undefined} depot={d.depot} discount={d.client?.discounts?.equipment || 0} equipment={av.equipment} res={av.res} existing={lines} onClose={() => setPicking(undefined)} />
       )}
       {editGroup && <GroupModal sp={sp} group={editGroup} onClose={() => setEditGroup(null)} />}
     </div>
@@ -175,7 +175,7 @@ function GroupModal({ sp, group, onClose }: { sp: Subproject; group: Partial<Equ
 }
 
 /** Ajoute des articles (et leurs accessoires automatiques) à une salle, dans un groupe éventuel. */
-export async function addEquipmentToSub(sp: Subproject, equipment: Equipment[], existing: EquipmentLine[], items: Record<string, number>, groupId?: string) {
+export async function addEquipmentToSub(sp: Subproject, equipment: Equipment[], existing: EquipmentLine[], items: Record<string, number>, groupId?: string, discount = 0) {
   const eqMap = new Map(equipment.map((e) => [e.id, e]));
   let order = existing.length;
   const t = nowIso();
@@ -193,7 +193,7 @@ export async function addEquipmentToSub(sp: Subproject, equipment: Equipment[], 
     } else {
       total = n;
       lineId = uid();
-      await db.lines.put({ id: lineId, createdAt: t, updatedAt: t, projectId: sp.projectId, subprojectId: sp.id, groupId, equipmentId: eqId, name: eq.name, qty: n, unitPrice: eq.dailyPrice, discount: 0, order: order++ });
+      await db.lines.put({ id: lineId, createdAt: t, updatedAt: t, projectId: sp.projectId, subprojectId: sp.id, groupId, equipmentId: eqId, name: eq.name, qty: n, unitPrice: eq.dailyPrice, discount, order: order++ });
     }
     for (const a of eq.accessories || []) {
       const acc = eqMap.get(a.equipmentId);
@@ -205,7 +205,7 @@ export async function addEquipmentToSub(sp: Subproject, equipment: Equipment[], 
   }
 }
 
-function EquipmentPicker({ sp, groupId, depot, equipment, res, existing, onClose }: { sp: Subproject; groupId?: string; depot?: string; equipment: Equipment[]; res: Reservation[]; existing: EquipmentLine[]; onClose: () => void }) {
+function EquipmentPicker({ sp, groupId, depot, discount, equipment, res, existing, onClose }: { sp: Subproject; groupId?: string; depot?: string; discount: number; equipment: Equipment[]; res: Reservation[]; existing: EquipmentLine[]; onClose: () => void }) {
   const [q, setQ] = useState('');
   const [qty, setQty] = useState<Record<string, number>>({});
   const cats = useLiveQuery(() => db.categories.toArray(), []) || [];
@@ -251,7 +251,7 @@ function EquipmentPicker({ sp, groupId, depot, equipment, res, existing, onClose
       </div>
       <div className="form-actions" style={{ marginTop: 12, display: 'flex' }}>
         <button className="secondary" onClick={onClose}>Annuler</button>
-        <button disabled={!count} onClick={async () => { await addEquipmentToSub(sp, equipment, existing, qty, groupId); onClose(); }}>Ajouter {count > 0 ? `(${count})` : ''}</button>
+        <button disabled={!count} onClick={async () => { await addEquipmentToSub(sp, equipment, existing, qty, groupId, discount); onClose(); }}>Ajouter {count > 0 ? `(${count})` : ''}</button>
       </div>
     </Modal>
   );

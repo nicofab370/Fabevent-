@@ -3,7 +3,8 @@
  * Les variables sont échappées ; les blocs sont du HTML généré par l'application.
  */
 import type { Doc, DocHtml } from './types';
-import { DOC_LABELS, INVOICE_TYPES } from './types';
+import { DOC_LABELS, INVOICE_TYPES, VAT_REGIME_LABELS } from './types';
+import { epcPayload, qrSvg } from './payment';
 import { fmtDate, money } from './utils';
 
 export const DEFAULT_HTML: DocHtml = {
@@ -63,13 +64,17 @@ export const VARIABLE_GROUPS: { label: string; items: [string, string][] }[] = [
     ['projet.nom', 'Nom'], ['projet.numero', 'Numéro'], ['projet.lieu', 'Lieu'], ['projet.debut', 'Début'], ['projet.fin', 'Fin'],
     ['projet.reference_client', 'Référence du client'], ['projet.reference_bloc', 'Ligne « Votre référence »'], ['projet.notes', 'Notes'],
   ] },
+  { label: 'Paiement & TVA', items: [
+    ['paiement.communication', 'Communication (structurée)'], ['paiement.qr', 'QR code de virement'], ['tva.regime', 'Régime de TVA'], ['tva.mention', 'Mention légale de TVA'],
+  ] },
   { label: 'Totaux', items: [
     ['total.ht', 'Total HT'], ['total.tva', 'TVA'], ['total.taux_tva', 'Taux de TVA'], ['total.ttc', 'Total TTC'], ['total.remise', 'Remise'], ['total.reste', 'Reste à payer'],
   ] },
   { label: 'Blocs générés', items: [
     ['bloc.entete', 'En-tête (gabarit ci-dessus)'], ['bloc.introduction', "Texte d'introduction"], ['bloc.salles', 'Salles : horaires, matériel, personnel, transport'],
     ['bloc.frais', 'Frais supplémentaires'], ['bloc.lignes_simples', 'Lignes acompte / avoir'], ['bloc.options', 'Total des options'], ['bloc.totaux', 'Tableau des totaux'],
-    ['bloc.conclusion', 'Texte de fin'], ['bloc.signature', 'Cadre de signature'], ['bloc.paiement', 'Informations de paiement'], ['bloc.pied', 'Pied de page (gabarit)'],
+    ['bloc.conclusion', 'Texte de fin'], ['bloc.signature', 'Cadre de signature'], ['bloc.paiement', 'Paiement : IBAN, communication, QR'],
+    ['bloc.mention_tva', 'Mention de TVA (sinon sous les totaux)'], ['bloc.pied', 'Pied de page (gabarit)'],
   ] },
 ];
 
@@ -98,6 +103,7 @@ export function docValues(doc: Doc): Record<string, string> {
     'projet.fin': fmtDate(s.project.end), 'projet.reference_client': s.project.externalRef || '', 'projet.notes': s.project.notes || '',
     'total.ht': money(s.totalHT), 'total.tva': money(s.vat), 'total.taux_tva': `${s.vatRate} %`, 'total.ttc': money(s.totalTTC),
     'total.remise': s.discountAmount ? money(s.discountAmount) : '', 'total.reste': money(s.totalTTC - deposits),
+    'paiement.communication': s.payment?.communication || '', 'tva.regime': s.vatRegime ? VAT_REGIME_LABELS[s.vatRegime] : '', 'tva.mention': s.vatMention || '',
   };
 }
 
@@ -119,6 +125,11 @@ function composite(doc: Doc, v: Record<string, string>): Record<string, string> 
       s.refNumber && `Réf. : ${doc.type === 'avoir' ? 'facture' : 'devis'} ${esc(s.refNumber)}`,
     ]),
     'projet.reference_bloc': s.project.externalRef && !isRoadmap ? `<div>Votre référence : ${esc(s.project.externalRef)}</div>` : '',
+    'paiement.qr': (() => {
+      const amount = s.totalTTC - (s.deposits || []).reduce((a, d) => a + d.ttc, 0);
+      if (!s.company.iban || amount <= 0 || !s.payment) return '';
+      try { return qrSvg(epcPayload({ name: s.company.name, iban: s.company.iban, bic: s.company.bic, amount, communication: s.payment.communication })); } catch { return ''; }
+    })(),
   };
 }
 

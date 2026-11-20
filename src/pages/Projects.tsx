@@ -27,7 +27,11 @@ export function ProjectForm({ initial, onDone }: { initial?: Draft; onDone: (p?:
     if (p.end < p.start) return alert('La fin doit être après le début.');
     const isNew = !p.id;
     const number = p.number || (await nextNumber('P'));
-    const saved = await save(db.projects, { ...p, number } as Project);
+    // nouveau projet : régime de TVA et remise globale par défaut du client
+    const client = isNew && p.clientId ? clients.find((c) => c.id === p.clientId) : undefined;
+    const saved = await save(db.projects, {
+      ...p, number, vatRegime: p.vatRegime ?? client?.vatRegime, discount: p.discount || client?.discounts?.total || 0,
+    } as Project);
     if (isNew) {
       // Un premier sous-projet est créé automatiquement
       await save(db.subprojects, { projectId: saved.id, name: 'Principal', venue: saved.venue, status: saved.status, start: saved.start, end: saved.end, order: 0 });

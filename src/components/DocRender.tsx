@@ -2,6 +2,7 @@ import { Fragment, useMemo, type CSSProperties, type ReactElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server';
 import { DEFAULT_DOC_STYLE } from '../db';
 import { DEFAULT_HTML, fillTemplate, stripScripts } from '../docTemplate';
+import { epcPayload, qrSvg } from '../payment';
 import type { Doc, DocStyle } from '../types';
 import { INVOICE_TYPES } from '../types';
 import { fmtDate, money } from '../utils';
@@ -24,7 +25,9 @@ export const DOC_CSS = `
 .doc .totals{margin-left:auto;width:300px;margin-top:12px}
 .doc .totals td{border:none;padding:3px 6px}.doc .totals tr.grand td{font-weight:700;font-size:15px;border-top:2px solid var(--accent)}
 .doc .foot{margin-top:28px;font-size:11px;color:#666;border-top:1px solid #ddd;padding-top:8px;white-space:pre-wrap}
-.doc .text{white-space:pre-wrap;margin:14px 0}.doc .pre{white-space:pre-line}
+.doc .text{white-space:pre-wrap;margin:14px 0}.doc .mention{font-size:12px;font-style:italic;text-align:right}
+.doc .pay{display:flex;gap:16px;align-items:center;border:1px solid #ddd;border-radius:6px;padding:10px 12px;margin-top:16px}.doc .pay svg{flex:none}
+.doc .pay .comm{font-family:ui-monospace,Menlo,monospace;font-size:15px;font-weight:700}.doc .pre{white-space:pre-line}
 .doc tr.opt td{color:#666;font-style:italic}
 .doc .sign{display:flex;gap:24px;margin-top:24px}.doc .sign div{flex:1;border:1px solid #ccc;height:80px;padding:6px;border-radius:6px}
 @media print{.doc{padding:0;max-width:none}}
@@ -54,9 +57,10 @@ export function buildDocHtml(doc: Doc): string {
   const depositsTTC = (s.deposits || []).reduce((a, d) => a + d.ttc, 0);
   const r = (el: ReactElement) => renderToStaticMarkup(el);
   const text = (v?: string) => (v ? `<div class="text">${fillTemplate(v, doc)}</div>` : '');
+  const intro = t?.intro || (s.reminder ? DEFAULT_REMINDER_TEXT[Math.min(3, s.reminder.level) as 1 | 2 | 3] : '');
 
   const blocks: Record<string, string> = {
-    'bloc.introduction': text(t?.intro),
+    'bloc.introduction': text(intro),
     'bloc.conclusion': text(t?.outro),
     'bloc.salles': r(<Rooms doc={doc} st={st} />),
     'bloc.frais': s.extras?.length && showPrices ? r(
@@ -79,9 +83,9 @@ export function buildDocHtml(doc: Doc): string {
       <table className="totals">
         <tbody>
           {s.discountAmount > 0 && <tr><td>Remise ({s.project.discount} %)</td><td className="n">− {money(s.discountAmount)}</td></tr>}
-          <tr><td>Total HT</td><td className="n">{money(s.totalHT)}</td></tr>
-          <tr><td>TVA {s.vatRate} %</td><td className="n">{money(s.vat)}</td></tr>
-          <tr className="grand"><td>Total TTC</td><td className="n">{money(s.totalTTC)}</td></tr>
+          {!s.reminder && <tr><td>Total HT</td><td className="n">{money(s.totalHT)}</td></tr>}
+          {!s.reminder && <tr><td>TVA {s.vatRate} %{s.vatRegime && s.vatRegime !== 'normal' ? ` (${VAT_REGIME_SHORT[s.vatRegime]})` : ''}</td><td className="n">{money(s.vat)}</td></tr>}
+          <tr className="grand"><td>{s.reminder ? 'Montant restant dû' : 'Total TTC'}</td><td className="n">{money(s.totalTTC)}</td></tr>
           {(s.deposits || []).map((d) => <tr key={d.number}><td>Acompte {d.number}</td><td className="n">− {money(d.ttc)}</td></tr>)}
           {depositsTTC > 0 && <tr className="grand"><td>Reste à payer</td><td className="n">{money(s.totalTTC - depositsTTC)}</td></tr>}
         </tbody>
@@ -89,9 +93,11 @@ export function buildDocHtml(doc: Doc): string {
     ) : '',
     'bloc.signature': doc.type === 'devis' && st.showSignature ? r(<div className="sign"><div>Bon pour accord (date, signature, cachet)</div></div>)
       : isPacking ? r(<div className="sign"><div>Préparé par</div><div>Vérifié / retour par</div></div>) : '',
-    'bloc.paiement': isInvoice && doc.type !== 'avoir' && s.company.iban
-      ? r(<p>Règlement par virement — IBAN : {s.company.iban}{s.company.bic && ` — BIC : ${s.company.bic}`} — communication : {doc.number}</p>) : '',
+    'bloc.paiement': paymentBlock(doc),
+    'bloc.mention_tva': s.vatMention ? `<p class="mention">${esc(s.vatMention)}</p>` : '',
   };
+  // la mention de TVA suit les totaux, sauf si le gabarit la place lui-même
+  if (!h.layout.includes('bloc.mention_tva')) blocks['bloc.totaux'] += blocks['bloc.mention_tva'];
   blocks['bloc.entete'] = fillTemplate(h.header, doc, blocks);
   blocks['bloc.pied'] = isRoadmap || !s.footer && h.footer === DEFAULT_HTML.footer ? '' : fillTemplate(h.footer, doc, blocks);
   const css = h.css.trim() ? `<style>${h.css.replace(/<\/style/gi, '')}</style>` : '';
@@ -208,4 +214,33 @@ function Rooms({ doc, st }: { doc: Doc; st: DocStyle }) {
       })}
     </>
   );
+}
+
+const VAT_REGIME_SHORT = { normal: '', autoliquidation: 'autoliquidation', exonere: 'exonéré', hors_ue: 'hors UE' } as const;
+
+const esc = (v: unknown) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+export const DEFAULT_REMINDER_TEXT: Record<1 | 2 | 3, string> = {
+  1: 'Sauf erreur de notre part, la facture {{document.reference}} reste impayée à ce jour. Nous vous remercions de bien vouloir régler {{total.ttc}} avant le {{document.echeance}}.\nSi le paiement a été effectué entre-temps, merci de ne pas tenir compte de ce rappel.',
+  2: 'Malgré notre précédent rappel, la facture {{document.reference}} n\'est toujours pas réglée. Nous vous prions de verser {{total.ttc}} au plus tard le {{document.echeance}}.',
+  3: 'Mise en demeure : la facture {{document.reference}} demeure impayée malgré nos rappels. À défaut de paiement de {{total.ttc}} avant le {{document.echeance}}, nous serons contraints d\'entamer une procédure de recouvrement.',
+};
+
+/** Bloc de paiement : IBAN, communication (structurée) et QR code de virement. */
+export function paymentBlock(doc: Doc): string {
+  const s = doc.snapshot;
+  const payable = doc.type === 'facture' || doc.type === 'acompte' || doc.type === 'rappel';
+  if (!payable || !s.company.iban) return '';
+  const deposits = (s.deposits || []).reduce((a, d) => a + d.ttc, 0);
+  const amount = Math.round((s.totalTTC - deposits) * 100) / 100;
+  const comm = s.payment?.communication || doc.number;
+  let qr = '';
+  try {
+    if (amount > 0) qr = qrSvg(epcPayload({ name: s.company.name, iban: s.company.iban, bic: s.company.bic, amount, communication: comm }), 110);
+  } catch { /* QR impossible : on garde le texte */ }
+  return `<div class="pay">${qr}<div>
+    <div>Merci de verser <strong>${esc(money(amount))}</strong> sur le compte <strong>${esc(s.company.iban)}</strong>${s.company.bic ? ` (BIC ${esc(s.company.bic)})` : ''}</div>
+    <div>avec la communication${s.payment?.structured ? ' structurée' : ''} :</div><div class="comm">${esc(comm)}</div>
+    ${qr ? '<div class="muted" style="font-size:11px">Scannez le QR code avec votre application bancaire.</div>' : ''}
+  </div></div>`;
 }

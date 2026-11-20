@@ -68,11 +68,12 @@ async function seedAll() {
     await db.contacts.put(c as never);
     return c.id;
   };
-  const cNamur = await contact('client', 'Ville de Namur (démo)', { city: 'Namur', postalCode: '5000', address: 'Hôtel de Ville', email: 'evenements@exemple.be', vatNumber: 'BE0000000196', peppolId: '0208:0000000196', persons: [{ name: 'Julie Martin', role: 'Service événements', phone: '+32 81 00 00 01' }, { name: 'Marc Lambert', role: 'Régie technique' }] });
+  const cNamur = await contact('client', 'Ville de Namur (démo)', { city: 'Namur', postalCode: '5000', address: 'Hôtel de Ville', email: 'evenements@exemple.be', vatNumber: 'BE0000000196', peppolId: '0208:0000000196', persons: [{ name: 'Julie Martin', role: 'Service événements', phone: '+32 81 00 00 01' }, { name: 'Marc Lambert', role: 'Régie technique' }], discounts: { equipment: 10, total: 5 } });
   const cFestival = await contact('client', 'Festival des Lumières ASBL (démo)', { city: 'Liège', postalCode: '4020', email: 'prod@exemple.be', peppolId: '0208:0000000295', persons: [{ name: 'Sophie Renard', role: 'Directrice de production' }] });
   const cHotel = await contact('client', 'Hôtel Le Château (démo)', { city: 'Spa', postalCode: '4900', email: 'seminaires@exemple.be', persons: [{ name: 'Thomas Leclercq', role: 'Responsable séminaires' }] });
   const cAgence = await contact('client', 'Agence EventPro (démo)', { city: 'Bruxelles', postalCode: '1000', email: 'projets@exemple.be', vatNumber: 'BE0000000394', peppolId: '0208:0000000394', persons: [{ name: 'Nadia Benali', role: 'Chef de projet' }] });
   const cEcole = await contact('client', 'Lycée Saint-Jean (démo)', { city: 'Huy', postalCode: '4500' });
+  const cNL = await contact('client', 'Evenementen Limburg BV (démo)', { city: 'Maastricht', postalCode: '6211', country: 'NL', address: 'Markt 1', vatNumber: 'NL000000000B01', peppolId: '0106:00000000', vatRegime: 'autoliquidation', persons: [{ name: 'Joost de Vries', role: 'Productie' }] });
   const cDupont = await contact('client', 'Mariage Dupont-Lemaire (démo)', { firstName: 'Claire', lastName: 'Dupont', phone: '+32 470 00 00 00' });
   const cSono = await contact('fournisseur', 'SonoRent — confrère (démo)', { city: 'Verviers', email: 'location@exemple.be' });
   await contact('fournisseur', 'LightPro Location (démo)', { city: 'Namur', email: 'info@exemple.be' });
@@ -192,7 +193,7 @@ async function seedAll() {
     crew?: [string, string | undefined, number, number?, string?][];
     vehicles?: [string, string | undefined][];
   };
-  type Extra = { depotId?: string; distanceKm?: number; discount?: number; contactPerson?: string; notes?: string; typeName?: string; externalRef?: string; venueId?: string; tasks?: [string, boolean, number?][] };
+  type Extra = { vatRegime?: 'autoliquidation'; depotId?: string; distanceKm?: number; discount?: number; contactPerson?: string; notes?: string; typeName?: string; externalRef?: string; venueId?: string; tasks?: [string, boolean, number?][] };
   const project = async (name: string, clientId: string, status: ProjectStatus, venue: string, defs: SubDef[], extra: Extra = {}) => {
     // les horaires détaillés donnent les dates de la salle
     const subs = defs.map((d) => {
@@ -206,7 +207,7 @@ async function seedAll() {
       ...base(), number: `P-${year}-${String(++counter).padStart(3, '0')}`, name, clientId, status, venue,
       start: starts[0], end: ends[ends.length - 1], discount: extra.discount || 0, contactPerson: extra.contactPerson, notes: extra.notes,
       typeName: extra.typeName || 'Prestation', color: DEFAULT_PROJECT_TYPES.find((t) => t.name === (extra.typeName || 'Prestation'))?.color,
-      externalRef: extra.externalRef, venueId: extra.venueId, depotId: extra.depotId || DEPOT_LIEGE,
+      externalRef: extra.externalRef, venueId: extra.venueId, depotId: extra.depotId || DEPOT_LIEGE, vatRegime: extra.vatRegime,
       distanceKm: extra.distanceKm, travelMinutes: extra.distanceKm ? Math.round(extra.distanceKm / 75 * 60) + 10 : undefined,
       tasks: extra.tasks?.map(([text, done, dueIn]) => ({ id: uid(), text, done, due: dueIn !== undefined ? dayOnly(dueIn) : undefined })),
     };
@@ -328,6 +329,11 @@ async function seedAll() {
     { name: 'Journée', start: at(9, 8), end: at(9, 18), lines: [['kitconf', 2], ['vp', 2]] },
   ]);
 
+  // 9. Client néerlandais assujetti : autoliquidation de la TVA
+  await project('Beurs Maastricht', cNL, 'confirme', 'MECC Maastricht', [
+    { name: 'Stand', start: at(10, 8), end: at(11, 18), lines: [['tv', 2], ['kitconf', 1], ['par', 8]], crew: [['Technicien', pLea, 340, 230]], vehicles: [[vFourgon, pHugo]] },
+  ], { contactPerson: 'Joost de Vries', distanceKm: 32, vatRegime: 'autoliquidation' });
+
   // 8. Prestation en cours aujourd'hui
   await project('Salon de l\'emploi', cNamur, 'en_cours', 'Namur Expo', [
     { name: 'Salon', start: at(-1, 8), end: at(1, 19), lines: [['tv', 4], ['kitconf', 1], ['par', 8], ['gaffer', 2]], crew: [['Technicien', pLea, 340, 230]] },
@@ -338,7 +344,8 @@ async function seedAll() {
   const dep = await createDocument(pGala, 'acompte', { percent: 30 });
   await db.docs.update(dep.id, { status: 'paye' });
   const inv = await createDocument(pGala, 'facture');
-  await db.docs.update(inv.id, { status: 'envoye' });
+  // facture du gala envoyée il y a 45 jours, échue depuis 15 jours : à relancer
+  await db.docs.update(inv.id, { status: 'envoye', createdAt: at(-45), 'snapshot.issuedAt': new Date(at(-45)).toISOString(), 'snapshot.dueDate': new Date(at(-15)).toISOString() } as never);
   for (const p of await db.projects.toArray()) {
     if (p.status === 'confirme' || p.status === 'option') await createDocument(p.id, 'devis');
   }

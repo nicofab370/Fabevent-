@@ -6,6 +6,15 @@ export interface Base {
   updatedAt: string;
 }
 
+/** Régime de TVA d'un client ou d'un projet. */
+export type VatRegime = 'normal' | 'autoliquidation' | 'exonere' | 'hors_ue';
+export const VAT_REGIME_LABELS: Record<VatRegime, string> = {
+  normal: 'TVA normale',
+  autoliquidation: 'Autoliquidation (client assujetti UE)',
+  exonere: 'Exonéré de TVA',
+  hors_ue: 'Hors UE (export de services)',
+};
+
 export type ContactType = 'client' | 'fournisseur' | 'soustraitant' | 'lieu' | 'autre';
 export const CONTACT_TYPES: Record<ContactType, string> = {
   client: 'Client',
@@ -30,6 +39,10 @@ export interface Contact extends Base {
   siret?: string;
   peppolId?: string;
   persons?: ContactPerson[];
+  /** régime de TVA appliqué par défaut à ses projets */
+  vatRegime?: VatRegime;
+  /** remises par défaut (%) : sur le matériel (par ligne) et sur le total du projet */
+  discounts?: { equipment?: number; total?: number };
   notes?: string;
 }
 
@@ -139,6 +152,9 @@ export interface Project extends Base {
   externalRef?: string;
   /** lieu de prestation (contact de type « lieu ») */
   venueId?: ID;
+  vatRegime?: VatRegime;
+  /** modèle de projet (n'apparaît pas dans les listes) */
+  isTemplate?: boolean;
   /** dépôt d'où part le matériel */
   depotId?: ID;
   /** distance aller dépôt → lieu (km) et temps de trajet (min) */
@@ -374,13 +390,14 @@ export interface VehicleAssignment extends Base {
   notes?: string;
 }
 
-export type DocType = 'devis' | 'facture' | 'acompte' | 'avoir' | 'bon_sortie' | 'feuille_route';
+export type DocType = 'devis' | 'facture' | 'acompte' | 'avoir' | 'rappel' | 'bon_sortie' | 'feuille_route';
 export const INVOICE_TYPES: DocType[] = ['facture', 'acompte', 'avoir'];
 export const DOC_LABELS: Record<DocType, string> = {
   devis: 'Devis',
   facture: 'Facture',
   acompte: "Facture d'acompte",
   avoir: 'Avoir',
+  rappel: 'Rappel de paiement',
   bon_sortie: 'Bon de sortie',
   feuille_route: 'Feuille de route',
 };
@@ -482,6 +499,13 @@ export interface DocSnapshot {
   refNumber?: string;
   dueDate?: string;
   optionalTotal?: number;
+  vatRegime?: VatRegime;
+  /** mention légale liée au régime de TVA */
+  vatMention?: string;
+  /** virement : communication (structurée belge ou numéro) */
+  payment?: { communication: string; structured: boolean };
+  /** rappel de paiement */
+  reminder?: { level: number; invoiceNumber: string; invoiceDate: string; invoiceDue?: string; amount: number };
   /** modèle figé au moment de la génération */
   template?: DocTypeTemplate & { style: DocStyle; html?: DocHtml };
 }
@@ -525,6 +549,12 @@ export interface Settings {
   factorExtraPerDay: number;
   quoteValidityDays: number;
   paymentDays: number;
+  /** mentions légales par régime de TVA */
+  vatMentions?: Partial<Record<VatRegime, string>>;
+  /** communication structurée belge (+++…+++) sur les factures */
+  structuredComm?: boolean;
+  /** nouveau délai accordé par un rappel (jours) */
+  reminderDays?: number;
   /** prix au km par défaut pour le transport */
   pricePerKm?: number;
   /** allers-retours par défaut (livraison + reprise = 2) */

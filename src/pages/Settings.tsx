@@ -3,6 +3,8 @@ import { Field, PageHead, useSettings } from '../components/ui';
 import { currentWorkspace, db, DEFAULT_PROJECT_TYPES, listWorkspaces, switchWorkspace, TABLES } from '../db';
 import { DEMO_WORKSPACE, seedDemo } from '../demo';
 import type { Settings } from '../types';
+import { VAT_REGIME_LABELS } from '../types';
+import { DEFAULT_VAT_MENTIONS } from '../payment';
 import { download, uid } from '../utils';
 
 export default function SettingsPage() {
@@ -127,6 +129,13 @@ export default function SettingsPage() {
           <Field label="Taux de TVA (%)"><input type="number" step="any" value={s.vatRate} onChange={(e) => setS({ ...s, vatRate: parseFloat(e.target.value) || 0 })} /></Field>
           <Field label="Transport : prix au km par défaut (€ HT)"><input type="number" step="any" value={s.pricePerKm ?? 1} onChange={(e) => setS({ ...s, pricePerKm: parseFloat(e.target.value) || 0 })} /></Field>
           <Field label="Transport : allers-retours par défaut"><input type="number" step="1" min={1} value={s.defaultTrips ?? 2} onChange={(e) => setS({ ...s, defaultTrips: parseInt(e.target.value) || 1 })} /></Field>
+          <Field label=" "><label className="check-row"><input type="checkbox" checked={s.structuredComm !== false} onChange={(e) => setS({ ...s, structuredComm: e.target.checked })} /> Communication structurée belge (+++…+++) sur les factures</label></Field>
+          <Field label="Rappels : nouveau délai accordé (jours)"><input type="number" value={s.reminderDays ?? 10} onChange={(e) => setS({ ...s, reminderDays: parseInt(e.target.value) || 0 })} /></Field>
+          {(['autoliquidation', 'exonere', 'hors_ue'] as const).map((r) => (
+            <Field key={r} label={`Mention légale — ${VAT_REGIME_LABELS[r]}`} full>
+              <input value={s.vatMentions?.[r] ?? DEFAULT_VAT_MENTIONS[r]} onChange={(e) => setS({ ...s, vatMentions: { ...s.vatMentions, [r]: e.target.value } })} />
+            </Field>
+          ))}
           <Field label="Délai de paiement des factures (jours)"><input type="number" value={s.paymentDays} onChange={(e) => setS({ ...s, paymentDays: parseInt(e.target.value) || 0 })} /></Field>
           <Field label="Validité des devis (jours)"><input type="number" value={s.quoteValidityDays} onChange={(e) => setS({ ...s, quoteValidityDays: parseInt(e.target.value) || 0 })} /></Field>
           <Field label="Coefficients par durée (1 j, 2 j, 3 j…) séparés par des « ; »" full>
