@@ -1,7 +1,7 @@
 import Dexie, { type Table } from 'dexie';
 import type {
-  Category, Contact, CrewAssignment, Doc, Equipment, EquipmentLine, Person, Project, Settings, Subproject, Vehicle,
-  VehicleAssignment,
+  Category, Contact, CrewAssignment, Doc, Equipment, EquipmentLine, Inspection, Person, Project, ProjectCost, Repair,
+  SerialUnit, Settings, Subproject, Subrental, Unavailability, Vehicle, VehicleAssignment,
 } from './types';
 
 const WS_KEY = 'fabevent.workspace';
@@ -47,6 +47,12 @@ export class FabDB extends Dexie {
   vehicleAssignments!: Table<VehicleAssignment, string>;
   docs!: Table<Doc, string>;
   settings!: Table<Settings, string>;
+  units!: Table<SerialUnit, string>;
+  repairs!: Table<Repair, string>;
+  inspections!: Table<Inspection, string>;
+  subrentals!: Table<Subrental, string>;
+  costs!: Table<ProjectCost, string>;
+  unavailability!: Table<Unavailability, string>;
 
   constructor(name: string) {
     super(name);
@@ -64,6 +70,14 @@ export class FabDB extends Dexie {
       docs: 'id, projectId, type, number, createdAt',
       settings: 'id',
     });
+    this.version(2).stores({
+      units: 'id, equipmentId, serial, barcode',
+      repairs: 'id, equipmentId, status',
+      inspections: 'id, equipmentId, unitId, date',
+      subrentals: 'id, projectId, subprojectId, supplierId, status',
+      costs: 'id, projectId',
+      unavailability: 'id, personId',
+    });
   }
 }
 
@@ -71,7 +85,7 @@ export const db = new FabDB('fabevent_' + currentWorkspace());
 
 export const TABLES = [
   'contacts', 'categories', 'equipment', 'projects', 'subprojects', 'lines', 'people', 'crew', 'vehicles',
-  'vehicleAssignments', 'docs', 'settings',
+  'vehicleAssignments', 'docs', 'settings', 'units', 'repairs', 'inspections', 'subrentals', 'costs', 'unavailability',
 ] as const;
 
 export const defaultSettings: Settings = {
@@ -81,6 +95,7 @@ export const defaultSettings: Settings = {
   factors: [1, 1.5, 2, 2.5, 3, 3.5, 4],
   factorExtraPerDay: 0.5,
   quoteValidityDays: 30,
+  paymentDays: 30,
   footer: 'Conditions générales de location disponibles sur demande.',
   appUrl: '',
   counters: {},
@@ -92,7 +107,7 @@ export async function getSettings(): Promise<Settings> {
 }
 
 /** Numérotation : P-2026-001, D-2026-001, F-2026-001… */
-export async function nextNumber(kind: 'P' | 'D' | 'F' | 'BS' | 'FR'): Promise<string> {
+export async function nextNumber(kind: 'P' | 'D' | 'F' | 'AV' | 'BS' | 'FR' | 'SL'): Promise<string> {
   return db.transaction('rw', db.settings, async () => {
     const s = await getSettings();
     const year = new Date().getFullYear();

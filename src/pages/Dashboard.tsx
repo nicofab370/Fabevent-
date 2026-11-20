@@ -3,14 +3,18 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Empty, PageHead, StatusBadge } from '../components/ui';
 import { db } from '../db';
 import { DOC_LABELS, DOC_STATUS_LABELS } from '../types';
-import { findConflicts, fmtDate, fmtRange, money, toLocalInput } from '../utils';
+import { useAvailability } from '../data';
+import { fmtDate, fmtRange, inspectionsDue, money, toLocalInput } from '../utils';
 
 export default function Dashboard() {
   const nav = useNavigate();
   const projects = useLiveQuery(() => db.projects.toArray(), []) || [];
   const subs = useLiveQuery(() => db.subprojects.toArray(), []) || [];
-  const lines = useLiveQuery(() => db.lines.toArray(), []) || [];
-  const equipment = useLiveQuery(() => db.equipment.toArray(), []) || [];
+  const av = useAvailability();
+  const equipment = av.equipment;
+  const units = av.units;
+  const inspections = useLiveQuery(() => db.inspections.toArray(), []) || [];
+  const subrentals = av.subrentals;
   const crew = useLiveQuery(() => db.crew.toArray(), []) || [];
   const docs = useLiveQuery(() => db.docs.orderBy('createdAt').reverse().limit(8).toArray(), []) || [];
   const pMap = new Map(projects.map((p) => [p.id, p]));
@@ -21,7 +25,10 @@ export default function Dashboard() {
   const upcoming = subs
     .filter((s) => s.end >= now && s.start <= in30 && s.status !== 'annule')
     .sort((a, b) => a.start.localeCompare(b.start));
-  const conflicts = findConflicts(lines, subs, equipment).filter((c) => (sMap.get(c.subprojectId)?.end || '') >= now);
+  const conflicts = av.conflicts().filter((c) => (sMap.get(c.subprojectId)?.end || '') >= now);
+  const dueInspections = inspectionsDue(equipment, units, inspections).filter((d) => d.due <= in30.slice(0, 10)).length;
+  const openRepairs = av.repairs.filter((r) => r.status === 'ouvert').length;
+  const pendingSubrentals = subrentals.filter((s) => s.status === 'demande').length;
   const unstaffed = crew.filter((c) => !c.personId && c.end >= now && sMap.get(c.subprojectId)?.status !== 'annule');
   const pendingQuotes = projects.filter((p) => p.status === 'option' || p.status === 'demande').length;
 
@@ -35,7 +42,9 @@ export default function Dashboard() {
         <div className="stat"><b>{pendingQuotes}</b><span>demandes / options en cours</span></div>
         <div className="stat"><b style={{ color: conflicts.length ? 'var(--danger)' : undefined }}>{conflicts.length}</b><span>manques de matériel</span></div>
         <div className="stat"><b style={{ color: unstaffed.length ? 'var(--danger)' : undefined }}>{unstaffed.length}</b><span>postes à pourvoir</span></div>
-        <div className="stat"><b>{equipment.length}</b><span>articles au catalogue</span></div>
+        <div className="stat" onClick={() => nav('/maintenance')} style={{ cursor: 'pointer' }}><b style={{ color: dueInspections ? 'var(--danger)' : undefined }}>{dueInspections}</b><span>contrôles à faire (30 j)</span></div>
+        <div className="stat" onClick={() => nav('/maintenance')} style={{ cursor: 'pointer' }}><b>{openRepairs}</b><span>réparations en cours</span></div>
+        <div className="stat" onClick={() => nav('/souslocations')} style={{ cursor: 'pointer' }}><b>{pendingSubrentals}</b><span>sous-locations à confirmer</span></div>
       </div>
 
       {conflicts.length > 0 && (

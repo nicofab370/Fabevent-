@@ -2,7 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
 import { Empty, Field, Modal, PageHead } from '../components/ui';
 import { db } from '../db';
-import type { Contact, ContactType } from '../types';
+import type { Contact, ContactPerson, ContactType } from '../types';
 import { CONTACT_TYPES } from '../types';
 import { save } from '../utils';
 
@@ -31,7 +31,25 @@ export function ContactForm({ initial, onDone }: { initial?: Draft; onDone: (c?:
       <Field label="Code postal"><input value={c.postalCode || ''} onChange={(e) => set('postalCode', e.target.value)} /></Field>
       <Field label="Ville"><input value={c.city || ''} onChange={(e) => set('city', e.target.value)} /></Field>
       <Field label="N° TVA"><input value={c.vatNumber || ''} onChange={(e) => set('vatNumber', e.target.value)} /></Field>
-      <Field label="SIRET"><input value={c.siret || ''} onChange={(e) => set('siret', e.target.value)} /></Field>
+      <Field label="N° d'entreprise / SIRET"><input value={c.siret || ''} onChange={(e) => set('siret', e.target.value)} /></Field>
+      <Field label="Pays"><input value={c.country || ''} onChange={(e) => set('country', e.target.value)} placeholder="BE, FR…" /></Field>
+      <Field label="Identifiant Peppol"><input value={c.peppolId || ''} onChange={(e) => set('peppolId', e.target.value)} placeholder="0208:0123456789" /></Field>
+      <div className="field full">
+        <span>Interlocuteurs</span>
+        {(c.persons || []).map((x, i) => {
+          const upd = (k: keyof ContactPerson, v: string) => setC({ ...c, persons: (c.persons || []).map((y, j) => (j === i ? { ...y, [k]: v } : y)) });
+          return (
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr auto', gap: 6, marginBottom: 6 }}>
+              <input placeholder="Nom" value={x.name} onChange={(e) => upd('name', e.target.value)} />
+              <input placeholder="Fonction" value={x.role || ''} onChange={(e) => upd('role', e.target.value)} />
+              <input placeholder="Email" value={x.email || ''} onChange={(e) => upd('email', e.target.value)} />
+              <input placeholder="Téléphone" value={x.phone || ''} onChange={(e) => upd('phone', e.target.value)} />
+              <button type="button" className="ghost" onClick={() => setC({ ...c, persons: (c.persons || []).filter((_, j) => j !== i) })} aria-label="Retirer">✕</button>
+            </div>
+          );
+        })}
+        <div><button type="button" className="secondary small" onClick={() => setC({ ...c, persons: [...(c.persons || []), { name: '' }] })}>+ Interlocuteur</button></div>
+      </div>
       <Field label="Notes" full><textarea value={c.notes || ''} onChange={(e) => set('notes', e.target.value)} /></Field>
       <div className="form-actions">
         <button type="button" className="secondary" onClick={() => onDone()}>Annuler</button>
@@ -72,7 +90,7 @@ export default function Contacts() {
                   <tr key={c.id} className="click" onClick={() => setEdit(c)}>
                     <td><strong>{c.company}</strong></td>
                     <td><span className="badge">{CONTACT_TYPES[c.type]}</span></td>
-                    <td>{[c.firstName, c.lastName].filter(Boolean).join(' ')}</td>
+                    <td>{[c.firstName, c.lastName].filter(Boolean).join(' ')}{c.persons?.length ? <span className="muted"> +{c.persons.length} interlocuteur(s)</span> : null}</td>
                     <td>{c.email}</td>
                     <td>{c.phone}</td>
                     <td>{c.city}</td>

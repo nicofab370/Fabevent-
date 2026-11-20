@@ -28,7 +28,16 @@ export interface Contact extends Base {
   country?: string;
   vatNumber?: string;
   siret?: string;
+  peppolId?: string;
+  persons?: ContactPerson[];
   notes?: string;
+}
+
+export interface ContactPerson {
+  name: string;
+  role?: string;
+  email?: string;
+  phone?: string;
 }
 
 export interface Category extends Base {
@@ -40,8 +49,22 @@ export interface KitItem {
   qty: number;
 }
 
+export interface Accessory extends KitItem {
+  /** true = ajouté gratuitement, false = facturé à son prix */
+  free: boolean;
+}
+
+/** location = facturé par jour et revient ; vente = consommable vendu à l'unité */
+export type EquipmentKind = 'location' | 'vente';
+
 export interface Equipment extends Base {
   name: string;
+  kind?: EquipmentKind;
+  trackSerials?: boolean;
+  accessories?: Accessory[];
+  /** coût d'achat unitaire (consommables) */
+  costPrice?: number;
+  inspectionMonths?: number;
   code?: string;
   categoryId?: ID;
   quantity: number;
@@ -76,6 +99,8 @@ export interface Project extends Base {
   start: string;
   end: string;
   discount: number;
+  /** interlocuteur chez le client */
+  contactPerson?: string;
   notes?: string;
 }
 
@@ -86,6 +111,10 @@ export interface Subproject extends Base {
   status: ProjectStatus;
   start: string;
   end: string;
+  /** début de préparation (le matériel est bloqué dès cette date) */
+  prepStart?: string;
+  /** fin du retour / contrôle au dépôt */
+  returnEnd?: string;
   order: number;
   notes?: string;
 }
@@ -101,6 +130,17 @@ export interface EquipmentLine extends Base {
   factor?: number;
   group?: string;
   order: number;
+  /** ligne facultative : affichée sur le devis mais hors total */
+  optional?: boolean;
+  /** accessoire ajouté automatiquement avec une autre ligne */
+  parentLineId?: ID;
+  /** consommable déjà déduit du stock */
+  consumed?: boolean;
+  /** entrepôt */
+  outQty?: number;
+  inQty?: number;
+  outSerials?: string[];
+  inSerials?: string[];
 }
 
 export interface Person extends Base {
@@ -109,6 +149,8 @@ export interface Person extends Base {
   email?: string;
   phone?: string;
   dailyRate: number;
+  /** ce que la personne te coûte par jour */
+  costRate?: number;
   external: boolean;
   contactId?: ID;
   notes?: string;
@@ -122,8 +164,73 @@ export interface CrewAssignment extends Base {
   start: string;
   end: string;
   rate: number;
+  /** coût / jour pour toi */
+  cost?: number;
   billable: boolean;
   notes?: string;
+}
+
+export interface Unavailability extends Base {
+  personId: ID;
+  start: string;
+  end: string;
+  reason?: string;
+}
+
+export interface SerialUnit extends Base {
+  equipmentId: ID;
+  serial: string;
+  barcode?: string;
+  /** hs / perdu = sorti définitivement du stock */
+  status: 'ok' | 'hs' | 'perdu';
+  lastInspection?: string;
+  notes?: string;
+}
+
+export interface Repair extends Base {
+  equipmentId: ID;
+  unitId?: ID;
+  qty: number;
+  start: string;
+  /** vide = toujours en réparation */
+  end?: string;
+  status: 'ouvert' | 'termine';
+  description: string;
+  cost: number;
+  supplierId?: ID;
+  projectId?: ID;
+}
+
+export interface Inspection extends Base {
+  equipmentId: ID;
+  unitId?: ID;
+  date: string;
+  result: 'ok' | 'ko';
+  by?: string;
+  notes?: string;
+}
+
+export type SubrentStatus = 'demande' | 'confirme' | 'recu' | 'retourne' | 'annule';
+export const SUBRENT_LABELS: Record<SubrentStatus, string> = {
+  demande: 'Demandée', confirme: 'Confirmée', recu: 'Reçue', retourne: 'Retournée', annule: 'Annulée',
+};
+
+export interface Subrental extends Base {
+  number: string;
+  projectId: ID;
+  subprojectId?: ID;
+  supplierId?: ID;
+  status: SubrentStatus;
+  start: string;
+  end: string;
+  lines: { equipmentId?: ID; name: string; qty: number; cost: number }[];
+  notes?: string;
+}
+
+export interface ProjectCost extends Base {
+  projectId: ID;
+  label: string;
+  amount: number;
 }
 
 export interface Vehicle extends Base {
@@ -147,10 +254,13 @@ export interface VehicleAssignment extends Base {
   notes?: string;
 }
 
-export type DocType = 'devis' | 'facture' | 'bon_sortie' | 'feuille_route';
+export type DocType = 'devis' | 'facture' | 'acompte' | 'avoir' | 'bon_sortie' | 'feuille_route';
+export const INVOICE_TYPES: DocType[] = ['facture', 'acompte', 'avoir'];
 export const DOC_LABELS: Record<DocType, string> = {
   devis: 'Devis',
   facture: 'Facture',
+  acompte: "Facture d'acompte",
+  avoir: 'Avoir',
   bon_sortie: 'Bon de sortie',
   feuille_route: 'Feuille de route',
 };
@@ -173,6 +283,8 @@ export interface SnapshotLine {
   discount: number;
   total: number;
   group?: string;
+  optional?: boolean;
+  unit?: 'jour' | 'pièce';
 }
 
 export interface SnapshotSub {
@@ -200,6 +312,14 @@ export interface DocSnapshot {
   validUntil?: string;
   footer?: string;
   hidePrices: boolean;
+  /** lignes simples (acompte, avoir) à la place du détail */
+  simpleLines?: { label: string; ht: number }[];
+  /** acomptes déjà facturés, déduits du reste à payer */
+  deposits?: { number: string; ttc: number }[];
+  /** référence (devis pour un acompte, facture pour un avoir) */
+  refNumber?: string;
+  dueDate?: string;
+  optionalTotal?: number;
 }
 
 /** Document figé : une génération = un nouvel enregistrement, jamais d'écrasement. */
@@ -210,6 +330,7 @@ export interface Doc extends Base {
   version: number;
   status: DocStatus;
   note?: string;
+  contactPerson?: string;
   snapshot: DocSnapshot;
 }
 
@@ -221,7 +342,14 @@ export interface CompanyInfo {
   siret?: string;
   vatNumber?: string;
   iban?: string;
+  bic?: string;
   logo?: string;
+  country?: string;
+  postalCode?: string;
+  city?: string;
+  street?: string;
+  /** identifiant Peppol, ex. 0208:0123456789 (BE) ou 0009:SIRET (FR) */
+  peppolId?: string;
 }
 
 export interface Settings {
@@ -232,6 +360,7 @@ export interface Settings {
   factors: number[];
   factorExtraPerDay: number;
   quoteValidityDays: number;
+  paymentDays: number;
   footer: string;
   appUrl: string;
   counters: Record<string, number>;

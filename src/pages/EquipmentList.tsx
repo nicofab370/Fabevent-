@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { Empty, Field, Modal, NumInput, PageHead } from '../components/ui';
 import { db } from '../db';
 import type { Equipment } from '../types';
-import { availableQty, buildReservations, money, save, toLocalInput } from '../utils';
+import { useAvailability } from '../data';
+import { availableQty, money, save, toLocalInput } from '../utils';
 
 type Draft = Omit<Equipment, 'id' | 'createdAt' | 'updatedAt'> & Partial<Equipment>;
 const blank = (): Draft => ({ name: '', quantity: 1, dailyPrice: 0, isKit: false, kitItems: [] });
@@ -36,8 +37,21 @@ export function EquipmentForm({ initial, onDone }: { initial?: Draft; onDone: ()
         </select>
       </Field>
       <Field label="…ou nouvelle catégorie"><input value={newCat} onChange={(x) => setNewCat(x.target.value)} placeholder="ex. Son, Lumière, Vidéo" /></Field>
-      <Field label="Quantité en stock"><NumInput value={e.quantity} onChange={(n) => set('quantity', n)} step="1" min={0} /></Field>
-      <Field label="Prix location / jour HT (€)"><NumInput value={e.dailyPrice} onChange={(n) => set('dailyPrice', n)} /></Field>
+      <Field label="Type">
+        <select value={e.kind || 'location'} onChange={(x) => set('kind', x.target.value as Draft['kind'])}>
+          <option value="location">Location (facturé par jour, revient au dépôt)</option>
+          <option value="vente">Consommable / vente (facturé à la pièce)</option>
+        </select>
+      </Field>
+      <Field label=" ">
+        <label className="check-row"><input type="checkbox" checked={!!e.trackSerials} onChange={(x) => set('trackSerials', x.target.checked)} /> Suivi par numéro de série</label>
+      </Field>
+      {e.trackSerials
+        ? <Field label="Quantité en stock"><span className="muted">= nombre d'unités en service (gérées sur la fiche article)</span></Field>
+        : <Field label="Quantité en stock"><NumInput value={e.quantity} onChange={(n) => set('quantity', n)} step="1" min={0} /></Field>}
+      <Field label={e.kind === 'vente' ? 'Prix de vente unitaire HT (€)' : 'Prix location / jour HT (€)'}><NumInput value={e.dailyPrice} onChange={(n) => set('dailyPrice', n)} /></Field>
+      {e.kind === 'vente' && <Field label="Prix d'achat unitaire HT (€)"><NumInput value={e.costPrice || 0} onChange={(n) => set('costPrice', n)} /></Field>}
+      <Field label="Contrôle périodique tous les (mois, 0 = aucun)"><NumInput value={e.inspectionMonths || 0} step="1" min={0} onChange={(n) => set('inspectionMonths', n)} /></Field>
       <Field label="Valeur de remplacement (€)"><NumInput value={e.replacementValue || 0} onChange={(n) => set('replacementValue', n)} /></Field>
       <Field label="Poids unitaire (kg)"><NumInput value={e.weight || 0} onChange={(n) => set('weight', n)} /></Field>
       <Field label="Emplacement dépôt"><input value={e.location || ''} onChange={(x) => set('location', x.target.value)} placeholder="ex. Rack A3" /></Field>
@@ -62,6 +76,26 @@ export function EquipmentForm({ initial, onDone }: { initial?: Draft; onDone: ()
           </div>
         </div>
       )}
+      <div className="field full">
+        <span>Accessoires ajoutés automatiquement (par unité de cet article)</span>
+        {(e.accessories || []).map((a, i) => {
+          const upd = (patch: Partial<typeof a>) => set('accessories', (e.accessories || []).map((y, j) => (j === i ? { ...y, ...patch } : y)));
+          return (
+            <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6, alignItems: 'center' }}>
+              <NumInput className="w-qty" value={a.qty} step="1" min={1} onChange={(n) => upd({ qty: n })} />
+              <select value={a.equipmentId} onChange={(x) => upd({ equipmentId: x.target.value })}>
+                {all.filter((o) => o.id !== e.id).map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+              </select>
+              <label className="check-row" style={{ whiteSpace: 'nowrap' }}><input type="checkbox" checked={a.free} onChange={(x) => upd({ free: x.target.checked })} /> gratuit</label>
+              <button type="button" className="ghost" onClick={() => set('accessories', (e.accessories || []).filter((_, j) => j !== i))}>✕</button>
+            </div>
+          );
+        })}
+        <div>
+          <button type="button" className="secondary small" disabled={all.length < 2 && !all.some((o) => o.id !== e.id)}
+            onClick={() => set('accessories', [...(e.accessories || []), { equipmentId: all.find((o) => o.id !== e.id)?.id || '', qty: 1, free: true }])}>+ Accessoire</button>
+        </div>
+      </div>
       <Field label="Notes" full><textarea value={e.notes || ''} onChange={(x) => set('notes', x.target.value)} /></Field>
       <div className="form-actions">
         <button type="button" className="secondary" onClick={onDone}>Annuler</button>
@@ -73,10 +107,8 @@ export function EquipmentForm({ initial, onDone }: { initial?: Draft; onDone: ()
 
 export default function EquipmentList() {
   const nav = useNavigate();
-  const equipment = useLiveQuery(() => db.equipment.orderBy('name').toArray(), []) || [];
+  const { equipment, res } = useAvailability();
   const cats = useLiveQuery(() => db.categories.toArray(), []) || [];
-  const lines = useLiveQuery(() => db.lines.toArray(), []) || [];
-  const subs = useLiveQuery(() => db.subprojects.toArray(), []) || [];
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('');
   const [creating, setCreating] = useState(false);
@@ -85,7 +117,6 @@ export default function EquipmentList() {
   const [to, setTo] = useState(toLocalInput(new Date(now.getTime() + 86400000)));
 
   const catName = new Map(cats.map((c) => [c.id, c.name]));
-  const res = buildReservations(lines, subs, equipment);
   const filtered = equipment.filter((e) =>
     (!cat || e.categoryId === cat) &&
     [e.name, e.code, e.barcode].join(' ').toLowerCase().includes(q.toLowerCase()));
@@ -116,12 +147,12 @@ export default function EquipmentList() {
                   const av = availableQty(e, equipment, res, from, to);
                   return (
                     <tr key={e.id} className="click" onClick={() => nav('/materiel/' + e.id)}>
-                      <td><strong>{e.name}</strong> {e.isKit && <span className="badge">Kit</span>}</td>
+                      <td><strong>{e.name}</strong> {e.isKit && <span className="badge">Kit</span>} {e.kind === 'vente' && <span className="badge">vente</span>} {e.trackSerials && <span className="badge">n° série</span>}</td>
                       <td>{e.code}</td>
                       <td>{e.categoryId ? catName.get(e.categoryId) : ''}</td>
                       <td className="n">{e.isKit ? '—' : e.quantity}</td>
                       <td className="n"><span className={'avail ' + (av > 0 ? 'ok' : 'ko')}>{av}</span></td>
-                      <td className="n">{money(e.dailyPrice)}</td>
+                      <td className="n">{money(e.dailyPrice)}{e.kind === 'vente' ? ' /pce' : ''}</td>
                     </tr>
                   );
                 })}

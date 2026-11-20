@@ -49,6 +49,17 @@ export function ProjectForm({ initial, onDone }: { initial?: Draft; onDone: (p?:
           <button type="button" className="secondary small" onClick={() => setNewClient(true)}>+</button>
         </div>
       </Field>
+      {(() => {
+        const persons = clients.find((c) => c.id === p.clientId)?.persons || [];
+        return persons.length > 0 ? (
+          <Field label="Interlocuteur">
+            <select value={p.contactPerson || ''} onChange={(e) => set('contactPerson', e.target.value || undefined)}>
+              <option value="">—</option>
+              {persons.map((x, i) => <option key={i} value={x.name}>{x.name}{x.role ? ` (${x.role})` : ''}</option>)}
+            </select>
+          </Field>
+        ) : null;
+      })()}
       <Field label="Statut">
         <select value={p.status} onChange={(e) => set('status', e.target.value as ProjectStatus)}>
           {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}

@@ -1,6 +1,6 @@
 import type { Table } from 'dexie';
 import { db } from './db';
-import type { Base, Equipment, EquipmentLine, Settings, Subproject } from './types';
+import type { Base, Equipment, EquipmentLine, Inspection, Repair, SerialUnit, Settings, Subproject, Subrental } from './types';
 import { RESERVING } from './types';
 
 export function uid(): string {
@@ -55,8 +55,8 @@ export function factorFor(days: number, s: Settings): number {
   return f[f.length - 1] + (days - f.length) * s.factorExtraPerDay;
 }
 
-export function lineTotal(l: Pick<EquipmentLine, 'qty' | 'unitPrice' | 'discount' | 'factor'>, days: number, s: Settings) {
-  const factor = l.factor ?? factorFor(days, s);
+export function lineTotal(l: Pick<EquipmentLine, 'qty' | 'unitPrice' | 'discount' | 'factor'>, days: number, s: Settings, perPiece = false) {
+  const factor = perPiece ? 1 : l.factor ?? factorFor(days, s);
   return round2(l.qty * l.unitPrice * factor * (1 - (l.discount || 0) / 100));
 }
 
@@ -66,18 +66,40 @@ export function overlaps(aStart: string, aEnd: string, bStart: string, bEnd: str
 
 /* ---------- Disponibilité du matériel ---------- */
 
+export const FOREVER = '9999-12-31T23:59';
+
+/** Période pendant laquelle le matériel est bloqué (préparation → retour). */
+export function blockPeriod(sp: Pick<Subproject, 'start' | 'end' | 'prepStart' | 'returnEnd'>): [string, string] {
+  return [sp.prepStart && sp.prepStart < sp.start ? sp.prepStart : sp.start, sp.returnEnd && sp.returnEnd > sp.end ? sp.returnEnd : sp.end];
+}
+
 export interface Reservation {
   equipmentId: string;
+  /** négatif = stock ajouté (sous-location) */
   qty: number;
   start: string;
   end: string;
   lineId: string;
   subprojectId: string;
   projectId: string;
+  source: 'projet' | 'reparation' | 'souslocation';
 }
 
-/** Développe les lignes (kits → composants) en réservations datées. */
-export function buildReservations(lines: EquipmentLine[], subs: Subproject[], equipment: Equipment[]): Reservation[] {
+export interface AvailabilityExtras {
+  repairs?: Repair[];
+  subrentals?: Subrental[];
+}
+
+/** Stock réel : pour le matériel suivi par n° de série = unités en service. */
+export function effectiveEquipment(equipment: Equipment[], units: SerialUnit[]): Equipment[] {
+  if (!units.length) return equipment;
+  const count = new Map<string, number>();
+  for (const u of units) if (u.status === 'ok') count.set(u.equipmentId, (count.get(u.equipmentId) || 0) + 1);
+  return equipment.map((e) => (e.trackSerials ? { ...e, quantity: count.get(e.id) || 0 } : e));
+}
+
+/** Développe lignes (kits → composants), réparations et sous-locations en réservations datées. */
+export function buildReservations(lines: EquipmentLine[], subs: Subproject[], equipment: Equipment[], extras: AvailabilityExtras = {}): Reservation[] {
   const subMap = new Map(subs.map((s) => [s.id, s]));
   const eqMap = new Map(equipment.map((e) => [e.id, e]));
   const out: Reservation[] = [];
@@ -87,13 +109,27 @@ export function buildReservations(lines: EquipmentLine[], subs: Subproject[], eq
     if (eq.isKit && eq.kitItems.length) {
       for (const k of eq.kitItems) push(k.equipmentId, k.qty * qty, l, sp, depth + 1);
     } else {
-      out.push({ equipmentId: eqId, qty, start: sp.start, end: sp.end, lineId: l.id, subprojectId: sp.id, projectId: sp.projectId });
+      const [start, end] = blockPeriod(sp);
+      // un consommable vendu ne revient pas
+      const sold = eq.kind === 'vente';
+      if (sold && l.consumed) return;
+      out.push({ equipmentId: eqId, qty, start, end: sold ? FOREVER : end, lineId: l.id, subprojectId: sp.id, projectId: sp.projectId, source: 'projet' });
     }
   };
   for (const l of lines) {
     const sp = subMap.get(l.subprojectId);
-    if (!sp || !l.equipmentId || !RESERVING.includes(sp.status)) continue;
+    if (!sp || !l.equipmentId || l.optional || !RESERVING.includes(sp.status)) continue;
     push(l.equipmentId, l.qty, l, sp, 0);
+  }
+  for (const r of extras.repairs || []) {
+    if (r.status !== 'ouvert') continue;
+    out.push({ equipmentId: r.equipmentId, qty: r.qty, start: r.start, end: r.end || FOREVER, lineId: r.id, subprojectId: '', projectId: '', source: 'reparation' });
+  }
+  for (const sr of extras.subrentals || []) {
+    if (sr.status !== 'confirme' && sr.status !== 'recu') continue;
+    for (const l of sr.lines) {
+      if (l.equipmentId) out.push({ equipmentId: l.equipmentId, qty: -l.qty, start: sr.start, end: sr.end, lineId: sr.id, subprojectId: sr.subprojectId || '', projectId: sr.projectId, source: 'souslocation' });
+    }
   }
   return out;
 }
@@ -140,18 +176,18 @@ export interface Conflict {
   shortage: number;
 }
 
-export function findConflicts(lines: EquipmentLine[], subs: Subproject[], equipment: Equipment[]): Conflict[] {
-  const res = buildReservations(lines, subs, equipment);
+export function findConflicts(res: Reservation[], equipment: Equipment[]): Conflict[] {
   const eqMap = new Map(equipment.map((e) => [e.id, e]));
   const seen = new Set<string>();
   const out: Conflict[] = [];
   for (const r of res) {
+    if (r.source !== 'projet') continue;
     const key = r.equipmentId + '|' + r.subprojectId;
     if (seen.has(key)) continue;
     seen.add(key);
     const eq = eqMap.get(r.equipmentId);
     if (!eq) continue;
-    const peak = peakReserved(res, eq.id, r.start, r.end);
+    const peak = peakReserved(res, eq.id, r.start, r.end === FOREVER ? r.start : r.end);
     if (peak > eq.quantity) out.push({ equipment: eq, subprojectId: r.subprojectId, projectId: r.projectId, shortage: peak - eq.quantity });
   }
   return out;
@@ -231,7 +267,9 @@ export function buildIcs(name: string, events: IcsEvent[]): string {
 /* ---------- Suppression en cascade ---------- */
 
 export async function deleteProject(projectId: string) {
-  await db.transaction('rw', [db.projects, db.subprojects, db.lines, db.crew, db.vehicleAssignments, db.docs], async () => {
+  await db.transaction('rw', [db.projects, db.subprojects, db.lines, db.crew, db.vehicleAssignments, db.docs, db.subrentals, db.costs], async () => {
+    await db.subrentals.where({ projectId }).delete();
+    await db.costs.where({ projectId }).delete();
     await db.subprojects.where({ projectId }).delete();
     await db.lines.where({ projectId }).delete();
     await db.crew.where({ projectId }).delete();
@@ -248,4 +286,41 @@ export async function deleteSubproject(subprojectId: string) {
     await db.vehicleAssignments.where({ subprojectId }).delete();
     await db.subprojects.delete(subprojectId);
   });
+}
+
+/* ---------- Contrôles périodiques ---------- */
+
+export interface InspectionDue {
+  equipment: Equipment;
+  unit?: SerialUnit;
+  last?: string;
+  due: string;
+}
+
+function addMonths(isoDate: string, months: number): string {
+  const d = new Date(isoDate.slice(0, 10) + 'T12:00');
+  d.setMonth(d.getMonth() + months);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Prochains contrôles : par unité pour le matériel suivi par n° de série, sinon par article. */
+export function inspectionsDue(equipment: Equipment[], units: SerialUnit[], inspections: Inspection[]): InspectionDue[] {
+  const out: InspectionDue[] = [];
+  const lastOf = (eqId: string, unitId?: string) => inspections
+    .filter((i) => i.equipmentId === eqId && (unitId ? i.unitId === unitId : !i.unitId) && i.result === 'ok')
+    .reduce<string | undefined>((a, i) => (!a || i.date > a ? i.date : a), undefined);
+  const today = new Date().toISOString().slice(0, 10);
+  for (const e of equipment) {
+    if (!e.inspectionMonths) continue;
+    if (e.trackSerials) {
+      for (const u of units.filter((x) => x.equipmentId === e.id && x.status === 'ok')) {
+        const last = lastOf(e.id, u.id) || u.lastInspection;
+        out.push({ equipment: e, unit: u, last, due: last ? addMonths(last, e.inspectionMonths) : today });
+      }
+    } else {
+      const last = lastOf(e.id);
+      out.push({ equipment: e, last, due: last ? addMonths(last, e.inspectionMonths) : today });
+    }
+  }
+  return out.sort((a, b) => a.due.localeCompare(b.due));
 }

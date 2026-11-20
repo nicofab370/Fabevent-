@@ -6,8 +6,9 @@ import { PageHead } from '../components/ui';
 import { db } from '../db';
 import { createDocument } from '../documents';
 import type { DocStatus } from '../types';
-import { DOC_LABELS, DOC_STATUS_LABELS } from '../types';
-import { download, fmtDate, save } from '../utils';
+import { DOC_LABELS, DOC_STATUS_LABELS, INVOICE_TYPES } from '../types';
+import { buildUbl, peppolProblems } from '../ubl';
+import { download, fmtDate, parseNumber, save } from '../utils';
 
 export default function DocumentView() {
   const { id } = useParams();
@@ -20,7 +21,20 @@ export default function DocumentView() {
   ) || [];
   if (!doc) return <p>Chargement…</p>;
 
-  const title = `${DOC_LABELS[doc.type]} ${doc.number}${doc.type !== 'facture' ? ' v' + doc.version : ''}`;
+  const isInvoice = INVOICE_TYPES.includes(doc.type);
+  const title = `${DOC_LABELS[doc.type]} ${doc.number}${!isInvoice ? ' v' + doc.version : ''}`;
+  const exportPeppol = () => {
+    const problems = peppolProblems(doc);
+    if (problems.length && !confirm('Informations manquantes pour Peppol :\n- ' + problems.join('\n- ') + '\n\nLe document a été figé sans elles. Corrige-les puis génère une nouvelle facture, ou télécharge quand même ?')) return;
+    download(`${doc.number}.xml`, buildUbl(doc), 'application/xml');
+  };
+  const makeCreditNote = async () => {
+    const answer = prompt(`Montant HT à créditer (laisser vide = avoir total de ${doc.snapshot.totalHT.toFixed(2)} €)`, '');
+    if (answer === null) return;
+    const amountHT = answer.trim() ? parseNumber(answer) : undefined;
+    const credit = await createDocument(doc.projectId, 'avoir', { invoiceId: doc.id, amountHT });
+    nav('/documents/' + credit.id);
+  };
   const exportHtml = () => {
     const body = ref.current?.innerHTML || '';
     download(`${doc.number}-v${doc.version}.html`,
@@ -46,10 +60,13 @@ export default function DocumentView() {
           <button onClick={() => window.print()}>Imprimer / PDF</button>
           <button className="secondary" onClick={exportHtml}>Télécharger (HTML)</button>
           <button className="secondary" onClick={mail}>Email</button>
-          <button className="secondary" onClick={async () => nav('/documents/' + (await createDocument(doc.projectId, doc.type)).id)}>Régénérer (nouvelle version)</button>
+          {isInvoice && <button className="secondary" onClick={exportPeppol}>Peppol (XML)</button>}
+          {(doc.type === 'facture' || doc.type === 'acompte') && <button className="secondary" onClick={makeCreditNote}>Créer un avoir</button>}
+          {!isInvoice && <button className="secondary" onClick={async () => nav('/documents/' + (await createDocument(doc.projectId, doc.type)).id)}>Régénérer (nouvelle version)</button>}
         </PageHead>
         <div className="info">
           Document figé le {fmtDate(doc.createdAt)} : il ne change plus même si le projet évolue.
+          {isInvoice && ' Une facture ne se modifie pas : pour la corriger, crée un avoir puis une nouvelle facture.'}
           {siblings.length > 1 && <> Autres versions : {siblings.filter((d) => d.id !== doc.id).map((d) => (
             <Link key={d.id} to={'/documents/' + d.id} style={{ marginRight: 8 }}>{d.number} v{d.version} ({fmtDate(d.createdAt, false)})</Link>
           ))}</>}
@@ -57,9 +74,9 @@ export default function DocumentView() {
       </div>
       <div className="doc-wrap" ref={ref}><DocRender doc={doc} /></div>
       <div className="no-print" style={{ marginTop: 12 }}>
-        <button className="danger small" onClick={async () => {
+        {(!isInvoice || doc.status === 'brouillon') && <button className="danger small" onClick={async () => {
           if (confirm('Supprimer définitivement ce document ?')) { await db.docs.delete(doc.id); nav('/projets/' + doc.projectId); }
-        }}>Supprimer ce document</button>
+        }}>Supprimer ce document</button>}
       </div>
     </>
   );
