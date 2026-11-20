@@ -1,8 +1,21 @@
 import { db, getSettings, nextNumber } from './db';
 import type { Doc, DocSnapshot, DocType, SnapshotSub } from './types';
+import { INVOICE_TYPES } from './types';
 import { daysBetween, factorFor, lineTotal, round2, save } from './utils';
 
-const PREFIX: Record<DocType, 'D' | 'F' | 'BS' | 'FR'> = { devis: 'D', facture: 'F', bon_sortie: 'BS', feuille_route: 'FR' };
+const PREFIX: Record<DocType, 'D' | 'F' | 'AV' | 'BS' | 'FR'> = {
+  devis: 'D', facture: 'F', acompte: 'F', avoir: 'AV', bon_sortie: 'BS', feuille_route: 'FR',
+};
+
+export interface DocOptions {
+  /** acompte : pourcentage du total TTC du projet */
+  percent?: number;
+  /** acompte / avoir : montant HT fixe (prioritaire sur percent) */
+  amountHT?: number;
+  /** avoir : facture d'origine */
+  invoiceId?: string;
+  note?: string;
+}
 
 /** Construit une photo figée du projet à l'instant T. */
 export async function buildSnapshot(projectId: string, type: DocType): Promise<DocSnapshot> {
@@ -22,25 +35,33 @@ export async function buildSnapshot(projectId: string, type: DocType): Promise<D
   const pMap = new Map(people.map((p) => [p.id, p]));
   const vMap = new Map(vehicles.map((v) => [v.id, v]));
   const eMap = new Map(equipment.map((e) => [e.id, e]));
+  const isQuote = type === 'devis';
+  const isPacking = type === 'bon_sortie' || type === 'feuille_route';
 
   const snapSubs: SnapshotSub[] = subs
     .filter((sp) => sp.status !== 'annule')
     .map((sp) => {
       const days = daysBetween(sp.start, sp.end);
       const eq = lines
-        .filter((l) => l.subprojectId === sp.id)
+        .filter((l) => l.subprojectId === sp.id && (isQuote || isPacking || !l.optional))
         .sort((a, b) => a.order - b.order)
-        .map((l) => ({
-          name: l.name,
-          code: l.equipmentId ? eMap.get(l.equipmentId)?.code : undefined,
-          qty: l.qty,
-          unitPrice: l.unitPrice,
-          days,
-          factor: l.factor ?? factorFor(days, s),
-          discount: l.discount,
-          total: lineTotal(l, days, s),
-          group: l.group,
-        }));
+        .map((l) => {
+          const e = l.equipmentId ? eMap.get(l.equipmentId) : undefined;
+          const perPiece = e?.kind === 'vente';
+          return {
+            name: l.name,
+            code: e?.code,
+            qty: l.qty,
+            unitPrice: l.unitPrice,
+            days: perPiece ? 1 : days,
+            factor: perPiece ? 1 : l.factor ?? factorFor(days, s),
+            discount: l.discount,
+            total: lineTotal(l, days, s, perPiece),
+            group: l.group,
+            optional: !!l.optional,
+            unit: perPiece ? 'pièce' as const : 'jour' as const,
+          };
+        });
       const cr = crew
         .filter((c) => c.subprojectId === sp.id)
         .sort((a, b) => a.start.localeCompare(b.start))
@@ -58,7 +79,7 @@ export async function buildSnapshot(projectId: string, type: DocType): Promise<D
           start: v.start, end: v.end, price: v.price, billable: v.billable,
         }));
       const subtotal = round2(
-        eq.reduce((a, l) => a + l.total, 0) +
+        eq.filter((l) => !l.optional).reduce((a, l) => a + l.total, 0) +
         cr.filter((c) => c.billable).reduce((a, c) => a + c.total, 0) +
         vh.filter((v) => v.billable).reduce((a, v) => a + v.price, 0),
       );
@@ -70,7 +91,7 @@ export async function buildSnapshot(projectId: string, type: DocType): Promise<D
   const totalHT = round2(gross - discountAmount);
   const vat = round2(totalHT * s.vatRate / 100);
   const issued = new Date();
-  const valid = new Date(issued.getTime() + s.quoteValidityDays * 86400000);
+  const optionalTotal = round2(snapSubs.reduce((a, sp) => a + sp.equipment.filter((l) => l.optional).reduce((b, l) => b + l.total, 0), 0));
   return {
     company: s.company,
     client,
@@ -78,28 +99,62 @@ export async function buildSnapshot(projectId: string, type: DocType): Promise<D
     subprojects: snapSubs,
     totalHT, discountAmount, vatRate: s.vatRate, vat, totalTTC: round2(totalHT + vat),
     issuedAt: issued.toISOString(),
-    validUntil: type === 'devis' ? valid.toISOString() : undefined,
+    validUntil: isQuote ? new Date(issued.getTime() + s.quoteValidityDays * 86400000).toISOString() : undefined,
+    dueDate: INVOICE_TYPES.includes(type) ? new Date(issued.getTime() + s.paymentDays * 86400000).toISOString() : undefined,
     footer: s.footer,
-    hidePrices: type === 'bon_sortie' || type === 'feuille_route',
+    hidePrices: isPacking,
+    optionalTotal: isQuote && optionalTotal ? optionalTotal : undefined,
   };
+}
+
+function simple(base: DocSnapshot, label: string, ht: number): DocSnapshot {
+  const totalHT = round2(ht);
+  const vat = round2(totalHT * base.vatRate / 100);
+  return { ...base, subprojects: [], simpleLines: [{ label, ht: totalHT }], discountAmount: 0, totalHT, vat, totalTTC: round2(totalHT + vat), optionalTotal: undefined };
 }
 
 /**
  * Génère un NOUVEAU document. Les versions précédentes restent intactes.
  * - devis / bon de sortie / feuille de route : même numéro, version +1
- * - facture : nouveau numéro à chaque fois (numérotation continue)
+ * - facture, acompte : numérotation continue F-…, avoir : AV-…
  */
-export async function createDocument(projectId: string, type: DocType, note?: string): Promise<Doc> {
-  const snapshot = await buildSnapshot(projectId, type);
-  const previous = (await db.docs.where({ projectId }).toArray()).filter((d) => d.type === type);
+export async function createDocument(projectId: string, type: DocType, opts: DocOptions = {}): Promise<Doc> {
+  const projectDocs = await db.docs.where({ projectId }).toArray();
+  let snapshot = await buildSnapshot(projectId, type);
+
+  if (type === 'facture') {
+    // On déduit les acomptes déjà facturés (hors acomptes annulés par un avoir)
+    const cancelled = new Set(projectDocs.filter((d) => d.type === 'avoir').map((d) => d.snapshot.refNumber));
+    const deposits = projectDocs.filter((d) => d.type === 'acompte' && !cancelled.has(d.number)).map((d) => ({ number: d.number, ttc: d.snapshot.totalTTC }));
+    if (deposits.length) snapshot = { ...snapshot, deposits };
+  }
+  if (type === 'acompte') {
+    const quote = projectDocs.filter((d) => d.type === 'devis').sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+    const baseHT = quote ? quote.snapshot.totalHT : snapshot.totalHT;
+    const pct = opts.percent ?? 30;
+    const ht = opts.amountHT ?? baseHT * pct / 100;
+    const label = opts.amountHT != null
+      ? `Acompte — projet ${snapshot.project.number} ${snapshot.project.name}`
+      : `Acompte de ${pct} % — projet ${snapshot.project.number} ${snapshot.project.name}`;
+    snapshot = { ...simple(snapshot, label, ht), refNumber: quote?.number };
+  }
+  if (type === 'avoir') {
+    const inv = opts.invoiceId ? await db.docs.get(opts.invoiceId) : undefined;
+    if (!inv) throw new Error('Facture d\'origine introuvable');
+    const ht = -(opts.amountHT ?? inv.snapshot.totalHT);
+    snapshot = { ...simple({ ...snapshot, vatRate: inv.snapshot.vatRate }, `Avoir sur ${inv.type === 'acompte' ? "facture d'acompte" : 'facture'} ${inv.number}`, ht), refNumber: inv.number };
+  }
+
+  const previous = projectDocs.filter((d) => d.type === type);
   let number: string;
   let version = 1;
-  if (type !== 'facture' && previous.length) {
+  if (!INVOICE_TYPES.includes(type) && previous.length) {
     const last = previous.reduce((a, b) => (a.version > b.version ? a : b));
     number = last.number;
     version = last.version + 1;
   } else {
     number = await nextNumber(PREFIX[type]);
   }
-  return save(db.docs, { projectId, type, number, version, status: 'brouillon', note, snapshot });
+  const project = await db.projects.get(projectId);
+  return save(db.docs, { projectId, type, number, version, status: 'brouillon', note: opts.note, contactPerson: project?.contactPerson, snapshot });
 }

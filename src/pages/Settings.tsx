@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Field, PageHead, useSettings } from '../components/ui';
 import { currentWorkspace, db, listWorkspaces, switchWorkspace, TABLES } from '../db';
+import { DEMO_WORKSPACE, seedDemo } from '../demo';
 import type { Settings } from '../types';
 import { download } from '../utils';
 
@@ -63,11 +64,17 @@ export default function SettingsPage() {
         <div className="form">
           <Field label="Nom"><input value={s.company.name} onChange={(e) => setCo('name', e.target.value)} /></Field>
           <Field label="Email"><input value={s.company.email || ''} onChange={(e) => setCo('email', e.target.value)} /></Field>
-          <Field label="Adresse" full><textarea value={s.company.address || ''} onChange={(e) => setCo('address', e.target.value)} /></Field>
+          <Field label="Adresse (affichée sur les documents)" full><textarea value={s.company.address || ''} onChange={(e) => setCo('address', e.target.value)} /></Field>
+          <Field label="Rue et numéro (Peppol)"><input value={s.company.street || ''} onChange={(e) => setCo('street', e.target.value)} /></Field>
+          <Field label="Code postal"><input value={s.company.postalCode || ''} onChange={(e) => setCo('postalCode', e.target.value)} /></Field>
+          <Field label="Ville"><input value={s.company.city || ''} onChange={(e) => setCo('city', e.target.value)} /></Field>
+          <Field label="Pays (code)"><input value={s.company.country || ''} onChange={(e) => setCo('country', e.target.value)} placeholder="BE" /></Field>
+          <Field label="Identifiant Peppol"><input value={s.company.peppolId || ''} onChange={(e) => setCo('peppolId', e.target.value)} placeholder="0208:0123456789 (BE) ou 0009:SIRET (FR)" /></Field>
           <Field label="Téléphone"><input value={s.company.phone || ''} onChange={(e) => setCo('phone', e.target.value)} /></Field>
-          <Field label="SIRET"><input value={s.company.siret || ''} onChange={(e) => setCo('siret', e.target.value)} /></Field>
+          <Field label="N° d'entreprise / SIRET"><input value={s.company.siret || ''} onChange={(e) => setCo('siret', e.target.value)} /></Field>
           <Field label="N° TVA intracom."><input value={s.company.vatNumber || ''} onChange={(e) => setCo('vatNumber', e.target.value)} /></Field>
           <Field label="IBAN (factures)"><input value={s.company.iban || ''} onChange={(e) => setCo('iban', e.target.value)} /></Field>
+          <Field label="BIC"><input value={s.company.bic || ''} onChange={(e) => setCo('bic', e.target.value)} /></Field>
           <Field label="Logo">
             <input type="file" accept="image/*" onChange={(e) => {
               const f = e.target.files?.[0];
@@ -83,6 +90,7 @@ export default function SettingsPage() {
         <h2 style={{ marginTop: 20 }}>Tarification</h2>
         <div className="form">
           <Field label="Taux de TVA (%)"><input type="number" step="any" value={s.vatRate} onChange={(e) => setS({ ...s, vatRate: parseFloat(e.target.value) || 0 })} /></Field>
+          <Field label="Délai de paiement des factures (jours)"><input type="number" value={s.paymentDays} onChange={(e) => setS({ ...s, paymentDays: parseInt(e.target.value) || 0 })} /></Field>
           <Field label="Validité des devis (jours)"><input type="number" value={s.quoteValidityDays} onChange={(e) => setS({ ...s, quoteValidityDays: parseInt(e.target.value) || 0 })} /></Field>
           <Field label="Coefficients par durée (1 j, 2 j, 3 j…) séparés par des « ; »" full>
             <input value={s.factors.join(' ; ')} onChange={(e) => setS({ ...s, factors: e.target.value.split(';').map((x) => parseFloat(x.replace(',', '.'))).filter((x) => !isNaN(x)) })} />
@@ -115,6 +123,27 @@ export default function SettingsPage() {
             Restaurer une sauvegarde
             <input type="file" accept="application/json,.json" hidden onChange={(e) => e.target.files?.[0] && restore(e.target.files[0])} />
           </label>
+        </div>
+      </div>
+
+      <div className="card">
+        <h2>Base de démonstration</h2>
+        <p className="muted">
+          Une base séparée remplie de clients, de matériel, d'une équipe et de projets fictifs (dates calculées à partir d'aujourd'hui)
+          pour tester toutes les fonctions sans toucher à tes vraies données.
+        </p>
+        <div className="toolbar">
+          {currentWorkspace() === DEMO_WORKSPACE ? (
+            <>
+              <button onClick={async () => {
+                if (!confirm('Effacer la base de démo et recréer les données fictives ?')) return;
+                await seedDemo(); location.hash = '#/'; location.reload();
+              }}>Réinitialiser les données de démo</button>
+              <button className="secondary" onClick={() => switchWorkspace('principal')}>Revenir à ma base principale</button>
+            </>
+          ) : (
+            <button onClick={() => switchWorkspace(DEMO_WORKSPACE)}>Ouvrir la base de démo</button>
+          )}
         </div>
       </div>
 

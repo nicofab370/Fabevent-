@@ -1,5 +1,5 @@
 import type { Doc } from '../types';
-import { DOC_LABELS } from '../types';
+import { DOC_LABELS, INVOICE_TYPES } from '../types';
 import { fmtDate, money } from '../utils';
 
 export const DOC_CSS = `
@@ -18,6 +18,7 @@ export const DOC_CSS = `
 .doc .totals{margin-left:auto;width:300px;margin-top:12px}
 .doc .totals td{border:none;padding:3px 6px}.doc .totals tr.grand td{font-weight:700;font-size:15px;border-top:2px solid #111}
 .doc .foot{margin-top:28px;font-size:11px;color:#666;border-top:1px solid #ddd;padding-top:8px;white-space:pre-wrap}
+.doc tr.opt td{color:#666;font-style:italic}
 .doc .sign{display:flex;gap:24px;margin-top:24px}.doc .sign div{flex:1;border:1px solid #ccc;height:80px;padding:6px;border-radius:6px}
 @media print{.doc{padding:0;max-width:none}}
 `;
@@ -28,6 +29,8 @@ export function DocRender({ doc }: { doc: Doc }) {
   const isPacking = doc.type === 'bon_sortie';
   const isRoadmap = doc.type === 'feuille_route';
   const c = s.client;
+  const isInvoice = INVOICE_TYPES.includes(doc.type);
+  const depositsTTC = (s.deposits || []).reduce((a, d) => a + d.ttc, 0);
   return (
     <div className="doc">
       <div className="head">
@@ -42,9 +45,11 @@ export function DocRender({ doc }: { doc: Doc }) {
         </div>
         <div className="box">
           <h1>{DOC_LABELS[doc.type]}</h1>
-          <div>N° <strong>{doc.number}</strong>{doc.type !== 'facture' && ` — v${doc.version}`}</div>
+          <div>N° <strong>{doc.number}</strong>{!isInvoice && ` — v${doc.version}`}</div>
           <div>Date : {fmtDate(s.issuedAt, false)}</div>
           {s.validUntil && <div>Valable jusqu'au : {fmtDate(s.validUntil, false)}</div>}
+          {s.dueDate && doc.type !== 'avoir' && <div>Échéance : {fmtDate(s.dueDate, false)}</div>}
+          {s.refNumber && <div>Réf. : {doc.type === 'avoir' ? 'facture' : 'devis'} {s.refNumber}</div>}
           {c && !isRoadmap && (
             <div style={{ marginTop: 8 }}>
               <strong>{c.company}</strong>
@@ -52,6 +57,7 @@ export function DocRender({ doc }: { doc: Doc }) {
               {c.address && <div>{c.address}</div>}
               {(c.postalCode || c.city) && <div>{[c.postalCode, c.city].filter(Boolean).join(' ')}</div>}
               {c.vatNumber && <div className="muted">TVA {c.vatNumber}</div>}
+              {doc.contactPerson && <div>À l'attention de {doc.contactPerson}</div>}
             </div>
           )}
         </div>
@@ -68,8 +74,7 @@ export function DocRender({ doc }: { doc: Doc }) {
           <h2>{sp.name}</h2>
           <div className="muted">{fmtDate(sp.start)} → {fmtDate(sp.end)}{sp.venue && ` · ${sp.venue}`}</div>
 
-          {!isRoadmap || sp.equipment.length ? (
-            sp.equipment.length > 0 && (
+          {sp.equipment.length > 0 && (
               <>
                 <h3>Matériel</h3>
                 <table>
@@ -84,14 +89,14 @@ export function DocRender({ doc }: { doc: Doc }) {
                   </thead>
                   <tbody>
                     {sp.equipment.map((l, j) => (
-                      <tr key={j}>
+                      <tr key={j} className={l.optional ? 'opt' : ''}>
                         {isPacking && <td><span className="check" /></td>}
                         {isPacking && <td><span className="check" /></td>}
                         <td className="n">{l.qty}</td>
-                        <td>{l.name}{l.code && <span className="muted"> ({l.code})</span>}</td>
+                        <td>{l.name}{l.code && <span className="muted"> ({l.code})</span>}{l.optional && ' — en option'}</td>
                         {showPrices && <>
                           <td className="n">{money(l.unitPrice)}</td>
-                          <td className="n">{l.factor} ({l.days} j)</td>
+                          <td className="n">{l.unit === 'pièce' ? 'vente' : `${l.factor} (${l.days} j)`}</td>
                           <td className="n">{l.discount ? `${l.discount} %` : ''}</td>
                           <td className="n">{money(l.total)}</td>
                         </>}
@@ -100,8 +105,7 @@ export function DocRender({ doc }: { doc: Doc }) {
                   </tbody>
                 </table>
               </>
-            )
-          ) : null}
+          )}
 
           {(sp.crew.length > 0 && (isRoadmap || sp.crew.some((x) => x.billable))) && (
             <>
@@ -145,6 +149,15 @@ export function DocRender({ doc }: { doc: Doc }) {
         </section>
       ))}
 
+      {s.simpleLines && s.simpleLines.length > 0 && (
+        <table style={{ marginTop: 16 }}>
+          <thead><tr><th>Désignation</th><th className="n">Montant HT</th></tr></thead>
+          <tbody>{s.simpleLines.map((l, i) => <tr key={i}><td>{l.label}</td><td className="n">{money(l.ht)}</td></tr>)}</tbody>
+        </table>
+      )}
+
+      {showPrices && s.optionalTotal ? <p className="muted">Options proposées (non incluses dans le total) : {money(s.optionalTotal)} HT</p> : null}
+
       {showPrices && (
         <table className="totals">
           <tbody>
@@ -152,13 +165,15 @@ export function DocRender({ doc }: { doc: Doc }) {
             <tr><td>Total HT</td><td className="n">{money(s.totalHT)}</td></tr>
             <tr><td>TVA {s.vatRate} %</td><td className="n">{money(s.vat)}</td></tr>
             <tr className="grand"><td>Total TTC</td><td className="n">{money(s.totalTTC)}</td></tr>
+            {(s.deposits || []).map((d) => <tr key={d.number}><td>Acompte {d.number}</td><td className="n">− {money(d.ttc)}</td></tr>)}
+            {depositsTTC > 0 && <tr className="grand"><td>Reste à payer</td><td className="n">{money(s.totalTTC - depositsTTC)}</td></tr>}
           </tbody>
         </table>
       )}
 
       {doc.type === 'devis' && <div className="sign"><div>Bon pour accord (date, signature, cachet)</div></div>}
       {isPacking && <div className="sign"><div>Préparé par</div><div>Vérifié / retour par</div></div>}
-      {doc.type === 'facture' && s.company.iban && <p>Règlement par virement — IBAN : {s.company.iban}</p>}
+      {isInvoice && doc.type !== 'avoir' && s.company.iban && <p>Règlement par virement — IBAN : {s.company.iban}{s.company.bic && ` — BIC : ${s.company.bic}`} — communication : {doc.number}</p>}
       {s.footer && !isRoadmap && <div className="foot">{s.footer}</div>}
     </div>
   );
