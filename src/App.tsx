@@ -14,6 +14,7 @@ import ImportPage from './pages/Import';
 import Maintenance from './pages/Maintenance';
 import Reports from './pages/Reports';
 import Subrentals, { SubrentalDetail } from './pages/Subrentals';
+import Templates from './pages/Templates';
 import Transfers from './pages/Transfers';
 import Warehouse, { WarehouseScan } from './pages/Warehouse';
 import ProjectDetail from './pages/ProjectDetail';
@@ -36,6 +37,7 @@ const NAV = [
   ['/comptabilite', 'Export comptable', '€'],
   ['/rapports', 'Rapports', '↗'],
   ['/import', 'Import', '⇪'],
+  ['/modeles', 'Modèles de documents', '✎'],
   ['/parametres', 'Paramètres', '⚙'],
 ] as const;
 
@@ -90,6 +92,7 @@ export default function App() {
           <Route path="/souslocations/:id" element={<SubrentalDetail />} />
           <Route path="/maintenance" element={<Maintenance />} />
           <Route path="/transferts" element={<Transfers />} />
+          <Route path="/modeles" element={<Templates />} />
           <Route path="/import" element={<ImportPage />} />
           <Route path="/parametres" element={<SettingsPage />} />
           <Route path="*" element={<p>Page introuvable.</p>} />

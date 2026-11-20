@@ -19,7 +19,7 @@ Légende : ✅ fait · 🟡 partiel · ❌ absent · ⛔ écarté volontairement
 | [Étiquettes (tags)](https://support.rentman.io/hc/fr/articles/360013931999-Utiliser-les-%C3%A9tiquettes) | ❌ | Tags libres pour filtrer projets, contacts et matériel |
 | Tâches, notes, fichiers | ✅ | |
 | Registre des modifications | ✅ | |
-| [Projets de transfert](https://support.rentman.io/hc/fr/articles/11003249381266-Projets-de-transfert) | ⛔ | Un seul dépôt |
+| [Projets de transfert](https://support.rentman.io/hc/fr/articles/11003249381266-Projets-de-transfert) | ✅ | Version simplifiée : plusieurs dépôts, stock par dépôt, transferts définitifs ou temporaires, transfert proposé en cas de manque |
 | Projets sans horaires (vente) | 🟡 | Les consommables existent ; un type « Vente » sans créneaux reste à faire |
 | [Demandes de projet (formulaire web)](https://support.rentman.io/hc/fr/articles/4403455031186-Recevoir-des-demandes-de-projets) | 🌐 | Pas de boutique, mais un formulaire de demande serait possible avec le serveur |
 
@@ -38,7 +38,8 @@ Légende : ✅ fait · 🟡 partiel · ❌ absent · ⛔ écarté volontairement
 | [Inventaire (comptage)](https://support.rentman.io/hc/fr/articles/360015960120-Le-compte-de-l-inventaire) et [valeur du parc](https://support.rentman.io/hc/fr/articles/360013877120-Calculer-la-valeur-des-%C3%A9quipements) | ❌ | Comptage au scan, écarts, valeur totale du parc |
 | Réparations, matériel perdu, inspections périodiques | ✅ | |
 | Scan sortie / retour, manquants | ✅ | Douchette ou caméra |
-| [Statuts d'entrepôt personnalisés](https://support.rentman.io/hc/fr/articles/15239120279442-Statuts-d-entrep%C3%B4t-personnalis%C3%A9s), RFID, multi-dépôts | ⛔ | Trop complexe pour l'usage visé |
+| Plusieurs emplacements de stock | ✅ | Dépôts dans Paramètres ; chaque projet part d'un dépôt |
+| [Statuts d'entrepôt personnalisés](https://support.rentman.io/hc/fr/articles/15239120279442-Statuts-d-entrep%C3%B4t-personnalis%C3%A9s), RFID | ⛔ | Trop complexe pour l'usage visé |
 
 ## Équipe et transport
 
@@ -68,7 +69,7 @@ Légende : ✅ fait · 🟡 partiel · ❌ absent · ⛔ écarté volontairement
 | [Code de paiement / communication structurée](https://support.rentman.io/hc/fr/articles/40383206373778-Ajouter-un-code-de-paiement-aux-factures-%C3%A9lectroniques) | 🟡 | Ajouter la communication structurée belge (+++…+++) et un QR code de virement (EPC) sur la facture |
 | [Rappels de facture](https://support.rentman.io/hc/fr/articles/17195865170706-Rappels-de-facture) | ❌ | Liste des factures échues, 1er et 2e rappel en PDF ou email |
 | [Langue des documents](https://support.rentman.io/hc/fr/articles/360014194100-Changer-la-langue-des-mod%C3%A8les-de-document) | ❌ | Documents en français, néerlandais ou anglais selon le client |
-| Éditeur de modèles de documents | 🟡 | Logo, en-tête et pied de page ; un éditeur complet n'est pas prévu |
+| Éditeur de modèles de documents | ✅ | Version simplifiée : titre et textes par type de document avec variables, couleur, police, logo, colonnes, masquage des lignes à 0 €, total par salle, aperçu en direct |
 | [Devis en ligne](https://support.rentman.io/hc/fr/articles/29481848461458-Devis-en-ligne) et [signature numérique](https://support.rentman.io/hc/fr/articles/360014193840-Ajouter-l-option-de-signature-num%C3%A9rique) | 🌐 | |
 | Paiement en ligne (Mollie, Stripe) | 🌐 | |
 | Connexion comptable | ⛔ | Billy.tech n'a pas d'API : PDF groupés et journal CSV |

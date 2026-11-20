@@ -419,6 +419,36 @@ export interface SnapshotSub {
   subtotal: number;
 }
 
+/** Style commun des documents (éditeur de modèles simplifié). */
+export interface DocStyle {
+  color: string;
+  font: 'sans' | 'serif' | 'arrondie';
+  logoPosition: 'gauche' | 'droite' | 'centre';
+  showCode: boolean;
+  showFactor: boolean;
+  showDiscount: boolean;
+  showGroups: boolean;
+  showSubtotals: boolean;
+  showPeriods: boolean;
+  /** masque les lignes à 0 € (accessoires gratuits…) sur les documents chiffrés */
+  hideZero: boolean;
+  /** devis / factures : un total par salle au lieu du détail du matériel */
+  hideEquipmentDetail: boolean;
+  showSignature: boolean;
+}
+
+/** Textes propres à un type de document ; variables : {client} {contact} {projet} {numero} {date} {lieu} {debut} {fin} {total} {echeance} {societe} */
+export interface DocTypeTemplate {
+  title?: string;
+  intro?: string;
+  outro?: string;
+}
+
+export interface DocTemplates {
+  style: DocStyle;
+  types: Partial<Record<DocType, DocTypeTemplate>>;
+}
+
 export interface DocSnapshot {
   company: CompanyInfo;
   client?: Contact;
@@ -443,6 +473,8 @@ export interface DocSnapshot {
   refNumber?: string;
   dueDate?: string;
   optionalTotal?: number;
+  /** modèle figé au moment de la génération */
+  template?: DocTypeTemplate & { style: DocStyle };
 }
 
 /** Document figé : une génération = un nouvel enregistrement, jamais d'écrasement. */
@@ -493,4 +525,5 @@ export interface Settings {
   counters: Record<string, number>;
   projectTypes?: { name: string; color: string }[];
   depots?: Depot[];
+  templates?: DocTemplates;
 }

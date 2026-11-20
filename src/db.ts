@@ -1,6 +1,6 @@
 import Dexie, { type Table } from 'dexie';
 import type {
-  Category, Contact, CrewAssignment, Doc, Transfer, Equipment, EquipmentLine, Inspection, LogEntry, Person, Project, ProjectCost, ProjectFile, Repair,
+  Category, Contact, CrewAssignment, Doc, DocStyle, Transfer, Equipment, EquipmentLine, Inspection, LogEntry, Person, Project, ProjectCost, ProjectFile, Repair,
   SerialUnit, Settings, Subproject, Subrental, Unavailability, Vehicle, VehicleAssignment,
 } from './types';
 
@@ -106,6 +106,11 @@ export function mainDepotId(s: Pick<Settings, 'depots'>): string {
 export function multiDepot(s: Pick<Settings, 'depots'>): boolean {
   return (s.depots?.length || 0) > 1;
 }
+
+export const DEFAULT_DOC_STYLE: DocStyle = {
+  color: '#111111', font: 'sans', logoPosition: 'gauche', showCode: true, showFactor: true, showDiscount: true, showGroups: true,
+  showSubtotals: true, showPeriods: true, hideZero: false, hideEquipmentDetail: false, showSignature: true,
+};
 
 export const DEFAULT_PROJECT_TYPES = [
   { name: 'Prestation', color: '#2563eb' },

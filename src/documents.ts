@@ -1,4 +1,4 @@
-import { db, getSettings, nextNumber } from './db';
+import { db, DEFAULT_DOC_STYLE, getSettings, nextNumber } from './db';
 import type { Doc, DocSnapshot, DocType, SnapshotSub } from './types';
 import { INVOICE_TYPES } from './types';
 import { daysBetween, factorFor, lineDays, lineTotal, round2, save, sortPeriods } from './utils';
@@ -108,6 +108,7 @@ export async function buildSnapshot(projectId: string, type: DocType): Promise<D
     dueDate: INVOICE_TYPES.includes(type) ? new Date(issued.getTime() + s.paymentDays * 86400000).toISOString() : undefined,
     footer: s.footer,
     hidePrices: isPacking,
+    template: { style: { ...DEFAULT_DOC_STYLE, ...s.templates?.style }, ...s.templates?.types?.[type] },
     optionalTotal: isQuote && optionalTotal ? optionalTotal : undefined,
   };
 }
