@@ -17,6 +17,9 @@ if (currentWorkspace() === DEMO_WORKSPACE && (await db.projects.count()) === 0) 
   await seedDemo().catch((e) => console.error('Échec de la création des données de démo', e));
 }
 
+// iPhone : Safari ignore « user-scalable=no » ; on bloque le pincement (le double tap est coupé en CSS)
+document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
+
 // synchronisation automatique entre appareils (si un serveur est configuré)
 setNumberProvider(serverNumber);
 startSync();
