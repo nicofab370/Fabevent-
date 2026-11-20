@@ -1,14 +1,19 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Empty } from '../../components/ui';
 import { db, nextNumber } from '../../db';
 import { SUBRENT_LABELS } from '../../types';
 import { availableQty, blockPeriod, fmtRange, money, save } from '../../utils';
 import type { ProjectData } from './shared';
-import { hrOrders, mailHrOrder, printHrOrder } from './hrOrders';
+import { hrOrderHtml, hrOrderMail, hrOrders, printHrOrder, type HrOrder } from './hrOrders';
+import { EmailModal } from '../../components/EmailModal';
+import { htmlToPdf, safeFileName } from '../../pdf';
+import { DOC_CSS } from '../../components/DocRender';
 
 /** Onglet Sous-locations & bons de commande. */
 export default function SubrentTab({ d }: { d: ProjectData }) {
   const nav = useNavigate();
+  const [mailOrder, setMailOrder] = useState<HrOrder | null>(null);
   const { project, conflicts, subrentals, subs, costs, contacts } = d;
   const cName = new Map(contacts.map((c) => [c.id, c.company]));
 
@@ -105,7 +110,7 @@ export default function SubrentTab({ d }: { d: ProjectData }) {
                   <td className="n">{money(o.total)}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <button className="secondary small" onClick={() => printHrOrder(d, o)}>Bon de commande</button>{' '}
-                    <button className="secondary small" onClick={() => mailHrOrder(d, o)}>Email</button>
+                    <button className="secondary small" onClick={() => setMailOrder(o)}>Envoyer par email</button>
                   </td>
                 </tr>
               ))}
@@ -129,6 +134,10 @@ export default function SubrentTab({ d }: { d: ProjectData }) {
           </table>
         )}
       </div>
+      {mailOrder && (
+        <EmailModal initial={hrOrderMail(d, mailOrder)} onClose={() => setMailOrder(null)}
+          prepare={async () => [{ name: `${safeFileName(`Bon-de-commande-${project.number}-${mailOrder.supplier}`)}.pdf`, type: 'application/pdf', blob: await htmlToPdf(hrOrderHtml(d, mailOrder), DOC_CSS) }]} />
+      )}
     </>
   );
 }

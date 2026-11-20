@@ -126,6 +126,13 @@ puis on attribue les techniciens à part — dans l'onglet du projet ou, pour to
 
 **Champs numériques** : un champ vidé reste vide (plus de « 0 » qui traîne), et son contenu est sélectionné au clic.
 
+**Emails avec pièces jointes** : un lien « mailto: » ne peut pas joindre de fichier ; FabEvent génère donc un vrai PDF
+(hors ligne aussi) et propose, selon l'appareil : le **partage** natif (téléphone, tablette, Mac, Windows) vers Mail, Outlook, Gmail… ;
+un **brouillon .eml** prêt à envoyer (Outlook, Apple Mail, Thunderbird) avec destinataire, texte et pièces jointes ; ou le
+téléchargement des fichiers puis l'ouverture de la messagerie (Gmail web). Devis et factures en PDF (+ XML Peppol pour les
+factures), bons de commande de sous-location et RH en PDF, planning du technicien en `.ics`. Un devis ou une facture envoyé
+passe au statut « Envoyé ».
+
 **Démo** : Paramètres → « Ouvrir la base de démo » crée une base séparée avec des clients, du matériel, une équipe et 8 projets fictifs (réinitialisable).
 
 **Données** : import CSV (exports Rentman), plusieurs bases, sauvegarde et restauration.

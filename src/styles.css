@@ -234,3 +234,9 @@ textarea.code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; fon
 .crew-posts input[type="datetime-local"] { min-width: 190px; }
 .crew-assign select[aria-label="Technicien"] { min-width: 260px; }
 .crew-modes { margin-bottom: 10px; }
+
+/* Envoi par email avec pièces jointes */
+.send-options { display: grid; gap: 10px; margin-top: 12px; }
+.send-option { display: grid; grid-template-columns: minmax(240px, auto) 1fr; gap: 10px; align-items: center; }
+.send-option button { width: 100%; }
+@media (max-width: 700px) { .send-option { grid-template-columns: 1fr; } }

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Empty, NumInput, StatusBadge } from '../../components/ui';
 import { CostCell, PersonSelect, type CrewContext } from '../crewAssign';
+import { EmailModal } from '../../components/EmailModal';
 import { appBaseUrl, db } from '../../db';
 import type { CrewAssignment, Person, Subproject, VehicleAssignment } from '../../types';
 import { RESERVING } from '../../types';
@@ -12,6 +13,7 @@ import { perKmFor, tripKm, vehiclePrice } from '../../geo';
 /** Onglet Équipe & transport : postes et véhicules par salle et par créneau, puis affectation. */
 export default function CrewTab({ d }: { d: ProjectData }) {
   const { project, projectCrew, people, settings } = d;
+  const [mailPerson, setMailPerson] = useState<Person | null>(null);
   const [mode, setModeState] = useState<CrewMode>(() => { try { return (localStorage.getItem('fab.crewMode') as CrewMode) || 'postes'; } catch { return 'postes'; } });
   const setMode = (m: CrewMode) => { setModeState(m); try { localStorage.setItem('fab.crewMode', m); } catch { /* sans stockage */ } };
   const ctx: CrewContext = { people, allCrew: d.crew, subs: d.av.subs, unav: d.unav, catalogue: settings.crewFunctions || [] };
@@ -32,18 +34,23 @@ export default function CrewTab({ d }: { d: ProjectData }) {
       return { c, sp, a, b, label: `${fmtRange(a, b)} — ${c.function} · ${sp?.name}${pe ? ` (${pe.name})` : ''}${a !== c.start ? ' (trajet inclus)' : ''}` };
     });
 
-  const sendPlanning = (p: Person) => {
+  const planningMail = (p: Person) => {
     const items = schedule(p, true);
-    if (!items.length) return alert(`Aucun poste final pour ${p.name} : passe ses postes en « final » avant d'envoyer le planning.`);
-    const body = `Bonjour ${p.name.split(' ')[0]},\n\nVoici ton planning pour « ${project.name} »${project.venue ? ` (${project.venue})` : ''} :\n\n${items.map((i) => '- ' + i.label).join('\n')}\n\n${project.notes ? project.notes + '\n\n' : ''}Merci de me confirmer ta disponibilité.\n${settings.company.name}`;
-    location.href = `mailto:${p.email || ''}?subject=${encodeURIComponent(`Planning — ${project.name}`)}&body=${encodeURIComponent(body)}`;
+    const body = `Bonjour ${p.name.split(' ')[0]},\n\nVoici ton planning pour « ${project.name} »${project.venue ? ` (${project.venue})` : ''} :\n\n${items.map((i) => '- ' + i.label).join('\n')}\n\nLe fichier agenda joint (.ics) ajoute ces horaires à ton calendrier.\n\n${project.notes ? project.notes + '\n\n' : ''}Merci de me confirmer ta disponibilité.\n${settings.company.name}`;
+    return { to: p.email || '', subject: `Planning — ${project.name}`, body };
   };
-  const icsFor = (p: Person) => {
+  const sendPlanning = (p: Person) => {
+    if (!schedule(p, true).length) return alert(`Aucun poste final pour ${p.name} : passe ses postes en « final » avant d'envoyer le planning.`);
+    setMailPerson(p);
+  };
+  const icsText = (p: Person) => {
     const base = appBaseUrl(settings);
-    download(`${project.number}-${p.name.replace(/\s+/g, '-')}.ics`, buildIcs(`${project.name} — ${p.name}`, schedule(p, true).map(({ c, sp, a, b }) => ({
+    return buildIcs(`${project.name} — ${p.name}`, schedule(p, true).map(({ c, sp, a, b }) => ({
       uid: c.id, title: `${c.function} — ${project.name}`, start: a, end: b, location: sp?.venue || project.venue, description: sp?.name, url: `${base}#/projets/${project.id}`,
-    }))), 'text/calendar;charset=utf-8');
+    })));
   };
+  const icsName = (p: Person) => `${project.number}-${p.name.replace(/\s+/g, '-')}.ics`;
+  const icsFor = (p: Person) => download(icsName(p), icsText(p), 'text/calendar;charset=utf-8');
 
   return (
     <>
@@ -85,6 +92,10 @@ export default function CrewTab({ d }: { d: ProjectData }) {
       </div>
       )}
       {d.subs.map((sp) => <RoomCrew key={sp.id} d={d} sp={sp} pMap={pMap} mode={mode} ctx={ctx} />)}
+      {mailPerson && (
+        <EmailModal initial={planningMail(mailPerson)} onClose={() => setMailPerson(null)}
+          prepare={async () => [{ name: icsName(mailPerson), type: 'text/calendar', blob: new Blob([icsText(mailPerson)], { type: 'text/calendar;charset=utf-8' }) }]} />
+      )}
     </>
   );
 }

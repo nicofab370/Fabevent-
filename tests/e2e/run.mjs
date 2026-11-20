@@ -1052,6 +1052,67 @@ await step('Attribution : page de tous les projets, candidats disponibles d’ab
   expect((await page.locator('select[aria-label="Technicien"]').count()) === before - 1, 'poste pourvu retiré de la liste « à pourvoir »');
 });
 
+console.log('\n  — emails avec pièces jointes —');
+const pdfPages = (buf) => (buf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length;
+
+await step('Document : PDF téléchargeable (vrai fichier PDF)', async () => {
+  await resetDemo();
+  await openProject('Conférence annuelle');
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Devis")');
+  await page.waitForSelector('.doc');
+  const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 30000 }), page.click('button:has-text("Télécharger le PDF")')]);
+  const buf = readFileSync(await dl.path());
+  expect(dl.suggestedFilename().endsWith('.pdf'), 'nom en .pdf');
+  expect(buf.subarray(0, 5).toString() === '%PDF-', 'fichier PDF');
+  expect(pdfPages(buf) >= 1 && buf.length > 20000, `PDF avec du contenu (${pdfPages(buf)} page(s), ${buf.length} octets)`);
+});
+
+await step('Email : brouillon .eml avec le PDF joint, statut « Envoyé »', async () => {
+  await page.click('button:has-text("Envoyer par email")');
+  await page.waitForSelector('.modal .attachments li', { timeout: 30000 });
+  const att = await page.locator('.modal .attachments').innerText();
+  expect(att.includes('.pdf'), 'PDF prêt en pièce jointe');
+  expect((await page.locator('.modal .field', { hasText: 'À' }).first().locator('input').inputValue()).includes('@'), 'destinataire prérempli');
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('.modal button:has-text("Brouillon prêt à envoyer")')]);
+  const eml = readFileSync(await dl.path(), 'utf8');
+  expect(dl.suggestedFilename().endsWith('.eml'), 'fichier .eml');
+  expect(eml.includes('X-Unsent: 1') && eml.includes('Content-Type: application/pdf'), 'brouillon avec PDF joint');
+  const b64 = eml.split('Content-Type: application/pdf')[1].split('\r\n\r\n')[1].split('--')[0].replace(/\s+/g, '');
+  expect(Buffer.from(b64, 'base64').subarray(0, 5).toString() === '%PDF-', 'pièce jointe = PDF valide');
+  await page.click('.modal button:text-is("Fermer")');
+  await page.waitForTimeout(300);
+  expect(await page.locator('select', { has: page.locator('option[value=accepte]') }).inputValue() === 'envoye', 'devis passé « Envoyé »');
+});
+
+await step('Email : facture avec PDF et XML Peppol joints', async () => {
+  await openProject('Marché de Noël');
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Facture")');
+  await page.waitForSelector('.doc');
+  await page.click('button:has-text("Envoyer par email")');
+  await page.waitForSelector('.modal .attachments li', { timeout: 30000 });
+  const att = await page.locator('.modal .attachments').innerText();
+  expect(att.includes('.pdf') && att.includes('.xml'), `PDF et XML joints (${att})`);
+  await page.click('.modal button:text-is("Fermer")');
+});
+
+await step('Email : bon de commande RH et planning du technicien (.ics) joints', async () => {
+  await openProject('Festival des Lumières');
+  await tab('Sous-locations & commandes');
+  await page.locator('button:has-text("Envoyer par email")').first().click();
+  await page.waitForSelector('.modal .attachments li', { timeout: 30000 });
+  expect((await page.locator('.modal .attachments').innerText()).includes('Bon-de-commande'), 'bon de commande en PDF');
+  await page.click('.modal button:text-is("Fermer")');
+  await openProject('Conférence annuelle');
+  await tab('Équipe & transport');
+  await crewMode(2);
+  await page.locator('button:has-text("Envoyer le planning")').first().click();
+  await page.waitForSelector('.modal .attachments li', { timeout: 10000 });
+  expect((await page.locator('.modal .attachments').innerText()).includes('.ics'), 'agenda .ics joint');
+  await page.click('.modal button:text-is("Fermer")');
+});
+
 await ctx.close();
 
 await step('Aucune erreur dans la console du navigateur', async () => {
