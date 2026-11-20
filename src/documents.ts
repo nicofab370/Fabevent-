@@ -1,7 +1,7 @@
 import { db, getSettings, nextNumber } from './db';
 import type { Doc, DocSnapshot, DocType, SnapshotSub } from './types';
 import { INVOICE_TYPES } from './types';
-import { daysBetween, factorFor, lineTotal, round2, save } from './utils';
+import { daysBetween, factorFor, lineTotal, round2, save, sortPeriods, usageDays } from './utils';
 
 const PREFIX: Record<DocType, 'D' | 'F' | 'AV' | 'BS' | 'FR'> = {
   devis: 'D', facture: 'F', acompte: 'F', avoir: 'AV', bon_sortie: 'BS', feuille_route: 'FR',
@@ -41,7 +41,7 @@ export async function buildSnapshot(projectId: string, type: DocType): Promise<D
   const snapSubs: SnapshotSub[] = subs
     .filter((sp) => sp.status !== 'annule')
     .map((sp) => {
-      const days = daysBetween(sp.start, sp.end);
+      const days = usageDays(sp);
       const eq = lines
         .filter((l) => l.subprojectId === sp.id && (isQuote || isPacking || !l.optional))
         .sort((a, b) => a.order - b.order)
@@ -83,7 +83,8 @@ export async function buildSnapshot(projectId: string, type: DocType): Promise<D
         cr.filter((c) => c.billable).reduce((a, c) => a + c.total, 0) +
         vh.filter((v) => v.billable).reduce((a, v) => a + v.price, 0),
       );
-      return { name: sp.name, venue: sp.venue || project.venue, start: sp.start, end: sp.end, equipment: eq, crew: cr, vehicles: vh, subtotal };
+      const periods = sp.periods?.length ? sortPeriods(sp.periods).map(({ name, kind, start, end }) => ({ name, kind, start, end })) : undefined;
+      return { name: sp.name, venue: sp.venue || project.venue, start: sp.prepStart || sp.start, end: sp.returnEnd || sp.end, periods, equipment: eq, crew: cr, vehicles: vh, subtotal };
     });
 
   const gross = round2(snapSubs.reduce((a, sp) => a + sp.subtotal, 0));

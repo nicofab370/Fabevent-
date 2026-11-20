@@ -6,13 +6,13 @@ import { useAvailability } from '../data';
 import { appBaseUrl, db, nextNumber } from '../db';
 import { createDocument } from '../documents';
 import type {
-  CrewAssignment, DocType, Equipment, EquipmentLine, Person, Project, ProjectStatus, Settings, Subproject, Unavailability, Vehicle,
-  VehicleAssignment,
+  CrewAssignment, DocType, Equipment, EquipmentLine, Period, PeriodKind, Person, Project, ProjectStatus, Settings, Subproject, Unavailability,
+  Vehicle, VehicleAssignment,
 } from '../types';
-import { DOC_LABELS, DOC_STATUS_LABELS, INVOICE_TYPES, RESERVING, STATUS_LABELS, SUBRENT_LABELS } from '../types';
+import { DOC_LABELS, DOC_STATUS_LABELS, INVOICE_TYPES, PERIOD_LABELS, RESERVING, STATUS_LABELS, SUBRENT_LABELS } from '../types';
 import {
   availableQty, blockPeriod, buildIcs, daysBetween, deleteProject, deleteSubproject, download, factorFor, fmtDate, fmtRange,
-  lineTotal, money, nowIso, overlaps, round2, save, uid, type Reservation,
+  lineTotal, money, nowIso, overlaps, round2, save, sortPeriods, syncPeriods, toLocalInput, uid, usageDays, type Reservation,
 } from '../utils';
 import { ProjectForm } from './Projects';
 
@@ -81,10 +81,10 @@ export default function ProjectDetail() {
 
   const exportIcs = () => {
     const base = appBaseUrl(settings);
-    const events = subs.map((sp) => ({
-      uid: sp.id, title: `${project.number} ${project.name} — ${sp.name}`, start: sp.start, end: sp.end,
-      location: sp.venue || project.venue, description: `Statut : ${STATUS_LABELS[sp.status]}`, url: `${base}#/projets/${project.id}`,
-    }));
+    const events = subs.flatMap((sp) => (sp.periods?.length ? sp.periods : [{ id: sp.id, name: '', start: sp.start, end: sp.end }]).map((pe) => ({
+      uid: pe.id, title: `${project.name} — ${sp.name}${pe.name ? ` · ${pe.name}` : ''}`, start: pe.start, end: pe.end,
+      location: sp.venue || project.venue, description: `${project.number} · Statut : ${STATUS_LABELS[sp.status]}`, url: `${base}#/projets/${project.id}`,
+    })));
     download(`${project.number}.ics`, buildIcs(project.name, events), 'text/calendar;charset=utf-8');
   };
 
@@ -104,6 +104,25 @@ export default function ProjectDetail() {
       for (const c of crew.filter((x) => x.subprojectId === sp.id)) await save(db.crew, { ...c, id: undefined, createdAt: undefined, projectId: np.id, subprojectId: ns.id, personId: undefined });
     }
     nav('/projets/' + np.id);
+  };
+
+  /** Copie une salle avec ses horaires, son matériel, ses postes et ses véhicules. */
+  const duplicateSub = async (sp: Subproject) => {
+    const idMap = new Map<string, string>();
+    const periods = sp.periods?.map((p) => { const id = uid(); idMap.set(p.id, id); return { ...p, id }; });
+    const ns = await save(db.subprojects, { ...sp, id: undefined, createdAt: undefined, name: `${sp.name} (copie)`, order: subs.length, periods });
+    const lineMap = new Map<string, string>();
+    const own = projectLines.filter((x) => x.subprojectId === sp.id);
+    for (const l of own) lineMap.set(l.id, uid());
+    for (const l of own) {
+      await db.lines.put({
+        ...l, id: lineMap.get(l.id)!, createdAt: nowIso(), updatedAt: nowIso(), subprojectId: ns.id,
+        parentLineId: l.parentLineId ? lineMap.get(l.parentLineId) : undefined, outQty: undefined, inQty: undefined, outSerials: undefined, inSerials: undefined, consumed: undefined,
+      });
+    }
+    for (const c of crew.filter((x) => x.subprojectId === sp.id)) await save(db.crew, { ...c, id: undefined, createdAt: undefined, subprojectId: ns.id, personId: undefined, periodId: c.periodId ? idMap.get(c.periodId) : undefined });
+    for (const v of vas.filter((x) => x.subprojectId === sp.id)) await save(db.vehicleAssignments, { ...v, id: undefined, createdAt: undefined, subprojectId: ns.id });
+    setEditSub(await db.subprojects.get(ns.id) || null);
   };
 
   /** Crée une demande de sous-location pour couvrir les manques d'un sous-projet. */
@@ -164,7 +183,7 @@ export default function ProjectDetail() {
       )}
 
       <div className="tabs">
-        <button className={tab === 'subs' ? 'on' : ''} onClick={() => setTab('subs')}>Sous-projets ({subs.length})</button>
+        <button className={tab === 'subs' ? 'on' : ''} onClick={() => setTab('subs')}>Salles / sous-projets ({subs.length})</button>
         <button className={tab === 'docs' ? 'on' : ''} onClick={() => setTab('docs')}>Documents ({docs.length})</button>
         <button className={tab === 'finance' ? 'on' : ''} onClick={() => setTab('finance')}>Finances</button>
       </div>
@@ -176,10 +195,14 @@ export default function ProjectDetail() {
               lines={projectLines.filter((l) => l.subprojectId === sp.id).sort((a, b) => a.order - b.order)}
               crew={crew.filter((c) => c.subprojectId === sp.id)} allCrew={crew} allSubs={allSubs} people={people} unav={unav}
               vehicles={vehicles} vas={vas.filter((v) => v.subprojectId === sp.id)} allVas={vas}
-              onEdit={() => setEditSub(sp)} />
+              onEdit={() => setEditSub(sp)} onDuplicate={() => duplicateSub(sp)} />
           ))}
-          <button className="secondary" onClick={() => setEditSub({ projectId: project.id, name: `Sous-projet ${subs.length + 1}`, status: project.status, start: project.start, end: project.end, venue: project.venue, order: subs.length })}>
-            + Ajouter un sous-projet
+          <button className="secondary" onClick={() => setEditSub({
+            projectId: project.id, name: `Salle ${subs.length + 1}`, status: project.status, start: project.start, end: project.end, venue: project.venue, order: subs.length,
+            // mêmes horaires que la première salle, modifiables
+            periods: subs[0]?.periods?.map((p) => ({ ...p, id: uid() })),
+          })}>
+            + Ajouter une salle / un sous-projet
           </button>
         </>
       )}
@@ -231,7 +254,7 @@ function isPerPiece(l: EquipmentLine, eqMap: Map<string, Equipment>) {
 
 function subTotal(sp: Subproject, lines: EquipmentLine[], crew: CrewAssignment[], vas: VehicleAssignment[], s: Settings, eqMap: Map<string, Equipment>) {
   if (sp.status === 'annule') return 0;
-  const days = daysBetween(sp.start, sp.end);
+  const days = usageDays(sp);
   return round2(
     lines.filter((l) => l.subprojectId === sp.id && !l.optional).reduce((a, l) => a + lineTotal(l, days, s, isPerPiece(l, eqMap)), 0) +
     crew.filter((c) => c.subprojectId === sp.id && c.billable).reduce((a, c) => a + daysBetween(c.start, c.end) * c.rate, 0) +
@@ -287,33 +310,121 @@ function Finance({ project, totalHT, subs, lines, eqMap, crew, people, costs, su
   );
 }
 
+const PERIOD_DEFAULTS: Record<PeriodKind, [number, number]> = { montage: [8, 18], prestation: [10, 23], demontage: [8, 14], autre: [9, 18] };
+
 function SubprojectModal({ sp, project, onClose }: { sp: Partial<Subproject>; project: Project; onClose: () => void }) {
   const [d, setD] = useState(sp);
   const set = <K extends keyof Subproject>(k: K, v: Subproject[K]) => setD({ ...d, [k]: v });
+  const periods = d.periods || [];
+  const setPeriods = (ps: Period[]) => setD({ ...d, periods: ps });
+  const others = useLiveQuery(() => db.subprojects.where({ projectId: project.id }).toArray(), [project.id]) || [];
+  const sources = others.filter((o) => o.id !== d.id && o.periods?.length);
+
+  /**
+   * Ajoute un créneau le lendemain du dernier montage / jour de prestation (ou le jour du début du projet).
+   * Un démontage commence à la fin du dernier créneau ; s'il existe déjà, il est décalé après le nouveau jour.
+   */
+  const addPeriod = (kind: PeriodKind) => {
+    const sorted = sortPeriods(periods);
+    const ref = kind === 'demontage' ? sorted.at(-1) : sorted.filter((x) => x.kind !== 'demontage').at(-1);
+    let s: Date, e: Date;
+    if (ref && kind === 'demontage') {
+      s = new Date(ref.end);
+      e = new Date(s.getTime() + 6 * 3600000);
+    } else {
+      const day = new Date((ref ? ref.start : project.start).slice(0, 10) + 'T12:00');
+      if (ref) day.setDate(day.getDate() + 1);
+      const [h1, h2] = PERIOD_DEFAULTS[kind];
+      s = new Date(day); s.setHours(h1, 0, 0, 0);
+      e = new Date(day); e.setHours(h2, 0, 0, 0);
+    }
+    const n = periods.filter((x) => x.kind === 'prestation').length + 1;
+    const name = kind === 'prestation' ? `Prestation J${n}` : PERIOD_LABELS[kind];
+    const added: Period = { id: uid(), name, kind, start: toLocalInput(s), end: toLocalInput(e) };
+    const moved = periods.map((x) => {
+      if (kind === 'demontage' || x.kind !== 'demontage' || x.start >= added.start && x.start >= added.end || (ref && x.start < ref.end)) return x;
+      const shift = new Date(added.end).getTime() - new Date(x.start).getTime();
+      return { ...x, start: added.end, end: toLocalInput(new Date(new Date(x.end).getTime() + shift)) };
+    });
+    setPeriods([...moved, added]);
+  };
+
   return (
-    <Modal title={d.id ? 'Modifier le sous-projet' : 'Nouveau sous-projet'} onClose={onClose}>
+    <Modal title={d.id ? `Salle / sous-projet : ${d.name}` : 'Nouvelle salle / sous-projet'} onClose={onClose} wide>
       <form className="form" onSubmit={async (e) => {
         e.preventDefault();
-        if ((d.end || '') < (d.start || '')) return alert('La fin doit être après le début.');
-        await save(db.subprojects, { ...d, prepStart: d.prepStart || undefined, returnEnd: d.returnEnd || undefined } as Subproject);
+        if (periods.some((p) => p.end < p.start)) return alert('Chaque créneau doit finir après son début.');
+        if (!periods.length && (d.end || '') < (d.start || '')) return alert('La fin doit être après le début.');
+        const synced = syncPeriods({ ...d, prepStart: d.prepStart || undefined, returnEnd: d.returnEnd || undefined } as Subproject);
+        const saved = await save(db.subprojects, synced);
+        // les postes rattachés à un créneau suivent ses horaires
+        for (const c of await db.crew.where({ subprojectId: saved.id }).toArray()) {
+          const pe = c.periodId ? synced.periods?.find((x) => x.id === c.periodId) : undefined;
+          if (c.periodId && !pe) await save(db.crew, { ...c, periodId: undefined });
+          else if (pe && (pe.start !== c.start || pe.end !== c.end)) await save(db.crew, { ...c, start: pe.start, end: pe.end });
+        }
         onClose();
       }}>
-        <Field label="Nom *" full><input required autoFocus value={d.name || ''} onChange={(e) => set('name', e.target.value)} placeholder="ex. Montage, Concert, Démontage, Salle B" /></Field>
-        <Field label="Préparation dès (facultatif)"><input type="datetime-local" value={d.prepStart || ''} onChange={(e) => set('prepStart', e.target.value)} /></Field>
-        <Field label="Retour au dépôt jusqu'à (facultatif)"><input type="datetime-local" value={d.returnEnd || ''} onChange={(e) => set('returnEnd', e.target.value)} /></Field>
-        <Field label="Début d'utilisation (facturé)"><input type="datetime-local" required value={d.start || ''} onChange={(e) => set('start', e.target.value)} /></Field>
-        <Field label="Fin d'utilisation (facturé)"><input type="datetime-local" required value={d.end || ''} onChange={(e) => set('end', e.target.value)} /></Field>
+        <Field label="Nom (salle, zone…) *"><input required autoFocus value={d.name || ''} onChange={(e) => set('name', e.target.value)} placeholder="ex. Salle 1, Plénière, Scène extérieure" /></Field>
         <Field label="Lieu"><input value={d.venue || ''} onChange={(e) => set('venue', e.target.value)} placeholder={project.venue} /></Field>
         <Field label="Statut">
           <select value={d.status} onChange={(e) => set('status', e.target.value as ProjectStatus)}>
             {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
         </Field>
-        <p className="muted field full" style={{ margin: 0 }}>Le matériel est bloqué de la préparation au retour ; seule la période d'utilisation est facturée.</p>
+
+        <div className="field full">
+          <span>Horaires</span>
+          {periods.length === 0 && <p className="muted" style={{ margin: '2px 0 6px' }}>Pas d'horaires détaillés : utilise les dates ci-dessous, ou ajoute des créneaux (montage, jours de prestation, démontage).</p>}
+          {sortPeriods(periods).map((pe) => {
+            const upd = (patch: Partial<Period>) => setPeriods(periods.map((x) => (x.id === pe.id ? { ...x, ...patch } : x)));
+            return (
+              <div key={pe.id} className="period-row">
+                <select value={pe.kind} onChange={(e) => upd({ kind: e.target.value as PeriodKind })}>
+                  {Object.entries(PERIOD_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+                <input value={pe.name} onChange={(e) => upd({ name: e.target.value })} />
+                <input type="datetime-local" value={pe.start} onChange={(e) => upd({ start: e.target.value, end: pe.end < e.target.value ? e.target.value : pe.end })} />
+                <input type="datetime-local" value={pe.end} onChange={(e) => upd({ end: e.target.value })} />
+                <button type="button" className="ghost" onClick={() => setPeriods(periods.filter((x) => x.id !== pe.id))} aria-label="Retirer">✕</button>
+              </div>
+            );
+          })}
+          <div className="toolbar" style={{ marginBottom: 0 }}>
+            <button type="button" className="secondary small" onClick={() => addPeriod('montage')}>+ Montage</button>
+            <button type="button" className="secondary small" onClick={() => addPeriod('prestation')}>+ Jour de prestation</button>
+            <button type="button" className="secondary small" onClick={() => addPeriod('demontage')}>+ Démontage</button>
+            <button type="button" className="secondary small" onClick={() => addPeriod('autre')}>+ Autre</button>
+            {sources.length > 0 && (
+              <select style={{ width: 'auto' }} value="" onChange={(e) => {
+                const src = sources.find((o) => o.id === e.target.value);
+                if (src) setPeriods((src.periods || []).map((p) => ({ ...p, id: uid() })));
+              }}>
+                <option value="">Copier les horaires de…</option>
+                {sources.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+              </select>
+            )}
+          </div>
+          {periods.length > 0 && (() => {
+            const preview = syncPeriods({ start: '', end: '', periods } as Pick<Subproject, 'start' | 'end' | 'prepStart' | 'returnEnd' | 'periods'>);
+            return <p className="muted" style={{ marginBottom: 0 }}>
+              Matériel bloqué : {fmtRange(preview.prepStart || preview.start, preview.returnEnd || preview.end)} · facturé : {usageDays({ ...preview, periods })} jour(s) de prestation
+            </p>;
+          })()}
+        </div>
+
+        {periods.length === 0 && (
+          <>
+            <Field label="Début d'utilisation (facturé)"><input type="datetime-local" required value={d.start || ''} onChange={(e) => set('start', e.target.value)} /></Field>
+            <Field label="Fin d'utilisation (facturé)"><input type="datetime-local" required value={d.end || ''} onChange={(e) => set('end', e.target.value)} /></Field>
+            <Field label="Préparation dès (facultatif)"><input type="datetime-local" value={d.prepStart || ''} onChange={(e) => set('prepStart', e.target.value)} /></Field>
+            <Field label="Retour au dépôt jusqu'à (facultatif)"><input type="datetime-local" value={d.returnEnd || ''} onChange={(e) => set('returnEnd', e.target.value)} /></Field>
+          </>
+        )}
         <Field label="Notes" full><textarea value={d.notes || ''} onChange={(e) => set('notes', e.target.value)} /></Field>
         <div className="form-actions">
           {d.id && <button type="button" className="danger" style={{ marginRight: 'auto' }} onClick={async () => {
-            if (confirm('Supprimer ce sous-projet et son contenu ?')) { await deleteSubproject(d.id!); onClose(); }
+            if (confirm('Supprimer cette salle / ce sous-projet et son contenu ?')) { await deleteSubproject(d.id!); onClose(); }
           }}>Supprimer</button>}
           <button type="button" className="secondary" onClick={onClose}>Annuler</button>
           <button type="submit">Enregistrer</button>
@@ -326,7 +437,7 @@ function SubprojectModal({ sp, project, onClose }: { sp: Partial<Subproject>; pr
 interface CardProps {
   sp: Subproject; total: number; settings: Settings; equipment: Equipment[]; res: Reservation[]; lines: EquipmentLine[];
   crew: CrewAssignment[]; allCrew: CrewAssignment[]; allSubs: Subproject[]; people: Person[]; unav: Unavailability[]; vehicles: Vehicle[];
-  vas: VehicleAssignment[]; allVas: VehicleAssignment[]; onEdit: () => void;
+  vas: VehicleAssignment[]; allVas: VehicleAssignment[]; onEdit: () => void; onDuplicate: () => void;
 }
 
 function SubprojectCard(p: CardProps) {
@@ -334,7 +445,8 @@ function SubprojectCard(p: CardProps) {
   const nav = useNavigate();
   const [tab, setTab] = useState<'eq' | 'crew' | 'veh'>('eq');
   const [picking, setPicking] = useState(false);
-  const days = daysBetween(sp.start, sp.end);
+  const days = usageDays(sp);
+  const periods = sortPeriods(sp.periods || []);
   const [bStart, bEnd] = blockPeriod(sp);
   const eqMap = new Map(equipment.map((e) => [e.id, e]));
   const subMap = new Map(p.allSubs.map((s) => [s.id, s]));
@@ -378,14 +490,22 @@ function SubprojectCard(p: CardProps) {
         <div>
           <h3>{sp.name} <StatusBadge status={sp.status} /></h3>
           <div className="muted">
-            {fmtRange(sp.start, sp.end)} · {days} j (coef. {factorFor(days, settings)}){sp.venue && ` · ${sp.venue}`}
+            {periods.length ? `${days} j facturé${days > 1 ? 's' : ''}` : fmtRange(sp.start, sp.end) + ` · ${days} j`} (coef. {factorFor(days, settings)}){sp.venue && ` · ${sp.venue}`}
             {(bStart !== sp.start || bEnd !== sp.end) && <div>Matériel bloqué : {fmtRange(bStart, bEnd)}</div>}
           </div>
+          {periods.length > 0 && (
+            <div className="periods">
+              {periods.map((pe) => (
+                <span key={pe.id} className={'period k-' + pe.kind}><strong>{pe.name}</strong> {fmtRange(pe.start, pe.end)}</span>
+              ))}
+            </div>
+          )}
         </div>
         <div className="actions">
           <strong>{money(p.total)} HT</strong>
           <button className="secondary small" onClick={() => nav('/entrepot/' + sp.id)}>Préparer / scanner</button>
-          <button className="secondary small" onClick={p.onEdit}>Modifier</button>
+          <button className="secondary small" onClick={p.onDuplicate}>Dupliquer</button>
+          <button className="secondary small" onClick={p.onEdit}>Horaires / modifier</button>
         </div>
       </div>
       <div className="sub-body">
@@ -441,7 +561,7 @@ function SubprojectCard(p: CardProps) {
             {p.crew.length > 0 && (
               <div className="table-wrap">
                 <table className="list">
-                  <thead><tr><th>Fonction</th><th>Personne</th><th>Début</th><th>Fin</th><th>Facturé/j</th><th>Coût/j</th><th>Facturé</th><th className="n">Total</th><th /></tr></thead>
+                  <thead><tr><th>Fonction</th><th>Personne</th>{periods.length > 0 && <th>Créneau</th>}<th>Début</th><th>Fin</th><th>Facturé/j</th><th>Coût/j</th><th>Facturé</th><th className="n">Total</th><th /></tr></thead>
                   <tbody>
                     {p.crew.map((c) => {
                       const issue = personIssue(c);
@@ -458,6 +578,17 @@ function SubprojectCard(p: CardProps) {
                             </select>
                             {issue && <div className="avail ko">{issue}</div>}
                           </td>
+                          {periods.length > 0 && (
+                            <td>
+                              <select value={c.periodId || ''} onChange={(e) => {
+                                const pe = periods.find((x) => x.id === e.target.value);
+                                updCrew(c, pe ? { periodId: pe.id, start: pe.start, end: pe.end } : { periodId: undefined, start: bStart, end: bEnd });
+                              }}>
+                                <option value="">Tout</option>
+                                {periods.map((pe) => <option key={pe.id} value={pe.id}>{pe.name}</option>)}
+                              </select>
+                            </td>
+                          )}
                           <td><input type="datetime-local" value={c.start} onChange={(e) => updCrew(c, { start: e.target.value })} /></td>
                           <td><input type="datetime-local" value={c.end} onChange={(e) => updCrew(c, { end: e.target.value })} /></td>
                           <td><NumInput className="w-price" value={c.rate} onChange={(n) => updCrew(c, { rate: n })} /></td>

@@ -73,6 +73,18 @@ export function DocRender({ doc }: { doc: Doc }) {
         <section key={i}>
           <h2>{sp.name}</h2>
           <div className="muted">{fmtDate(sp.start)} → {fmtDate(sp.end)}{sp.venue && ` · ${sp.venue}`}</div>
+          {sp.periods && sp.periods.length > 0 && (
+            <>
+              <h3>Horaires</h3>
+              <table>
+                <tbody>
+                  {sp.periods.map((p, k) => (
+                    <tr key={k}><td style={{ width: '40%' }}><strong>{p.name}</strong></td><td>{fmtDate(p.start)} → {fmtDate(p.end)}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
 
           {sp.equipment.length > 0 && (
               <>

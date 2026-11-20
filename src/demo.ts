@@ -4,8 +4,8 @@
  */
 import { db, defaultSettings, TABLES } from './db';
 import { createDocument } from './documents';
-import type { ContactType, Equipment, ProjectStatus } from './types';
-import { nowIso, toLocalInput, uid } from './utils';
+import type { ContactType, Equipment, PeriodKind, ProjectStatus } from './types';
+import { nowIso, syncPeriods, toLocalInput, uid } from './utils';
 
 export const DEMO_WORKSPACE = 'demo';
 
@@ -156,14 +156,23 @@ export async function seedDemo() {
   let counter = 0;
   const year = new Date().getFullYear();
   type SubDef = {
-    name: string; start: string; end: string; prepStart?: string; returnEnd?: string;
+    name: string; start?: string; end?: string; prepStart?: string; returnEnd?: string;
+    /** horaires : [type, nom, début, fin] */
+    periods?: [PeriodKind, string, string, string][];
     lines?: [string, number, { optional?: boolean; discount?: number }?][];
-    crew?: [string, string | undefined, number, number?][];
+    /** [fonction, personne, tarif, coût, nom du créneau] */
+    crew?: [string, string | undefined, number, number?, string?][];
     vehicles?: [string, string | undefined][];
   };
-  const project = async (name: string, clientId: string, status: ProjectStatus, venue: string, subs: SubDef[], extra: { discount?: number; contactPerson?: string; notes?: string } = {}) => {
-    const starts = subs.map((s) => s.start).sort();
-    const ends = subs.map((s) => s.end).sort();
+  const project = async (name: string, clientId: string, status: ProjectStatus, venue: string, defs: SubDef[], extra: { discount?: number; contactPerson?: string; notes?: string } = {}) => {
+    // les horaires détaillés donnent les dates de la salle
+    const subs = defs.map((d) => {
+      if (!d.periods) return d as SubDef & { start: string; end: string };
+      const periods = d.periods.map(([kind, pname, start, end]) => ({ id: uid(), kind, name: pname, start, end }));
+      return { ...d, ...syncPeriods({ start: '', end: '', periods }), periodsFull: periods };
+    }) as (SubDef & { start: string; end: string; periodsFull?: { id: string; kind: PeriodKind; name: string; start: string; end: string }[] })[];
+    const starts = subs.map((s) => s.prepStart || s.start).sort();
+    const ends = subs.map((s) => s.returnEnd || s.end).sort();
     const p = {
       ...base(), number: `P-${year}-${String(++counter).padStart(3, '0')}`, name, clientId, status, venue,
       start: starts[0], end: ends[ends.length - 1], discount: extra.discount || 0, contactPerson: extra.contactPerson, notes: extra.notes,
@@ -171,7 +180,7 @@ export async function seedDemo() {
     await db.projects.put(p);
     let order = 0;
     for (const s of subs) {
-      const sp = { ...base(), projectId: p.id, name: s.name, venue, status, start: s.start, end: s.end, prepStart: s.prepStart, returnEnd: s.returnEnd, order: order++ };
+      const sp = { ...base(), projectId: p.id, name: s.name, venue, status, start: s.start, end: s.end, prepStart: s.prepStart, returnEnd: s.returnEnd, periods: s.periodsFull, order: order++ };
       await db.subprojects.put(sp);
       let lo = 0;
       for (const [key, qty, opt] of s.lines || []) {
@@ -183,8 +192,9 @@ export async function seedDemo() {
           await db.lines.put({ ...base(), projectId: p.id, subprojectId: sp.id, equipmentId: acc.id, name: acc.name, qty: a.qty * qty, unitPrice: a.free ? 0 : acc.dailyPrice, discount: 0, order: lo++, parentLineId: lineId, optional: opt?.optional });
         }
       }
-      for (const [fn, personId, rate, cost] of s.crew || []) {
-        await db.crew.put({ ...base(), projectId: p.id, subprojectId: sp.id, function: fn, personId, start: s.start, end: s.end, rate, cost, billable: true });
+      for (const [fn, personId, rate, cost, periodName] of s.crew || []) {
+        const pe = s.periodsFull?.find((x) => x.name === periodName);
+        await db.crew.put({ ...base(), projectId: p.id, subprojectId: sp.id, function: fn, personId, periodId: pe?.id, start: pe?.start || s.prepStart || s.start, end: pe?.end || s.returnEnd || s.end, rate, cost, billable: true });
       }
       for (const [vehicleId, driverId] of s.vehicles || []) {
         const v = (await db.vehicles.get(vehicleId))!;
@@ -203,19 +213,47 @@ export async function seedDemo() {
   ], { contactPerson: 'Nadia Benali', discount: 5 });
 
   // 2. Conférence confirmée la semaine prochaine
+  const confPeriods: [PeriodKind, string, string, string][] = [
+    ['montage', 'Montage', at(5, 14), at(5, 20)],
+    ['prestation', 'Prestation J1', at(6, 8), at(6, 19)],
+    ['prestation', 'Prestation J2', at(7, 8), at(7, 17)],
+    ['demontage', 'Démontage', at(7, 17), at(7, 21)],
+  ];
   await project('Conférence annuelle', cHotel, 'confirme', 'Hôtel Le Château, Spa', [
-    { name: 'Journée', start: at(6, 7), end: at(7, 19), prepStart: at(5, 14), returnEnd: at(8, 12),
-      lines: [['kitconf', 1], ['hf', 2], ['vp', 1], ['ecran', 1], ['tv', 2], ['kitpar', 1], ['pratic', 6], ['gaffer', 1, { optional: true }]],
-      crew: [['Technicien son', pHugo, 280], ['Technicienne vidéo', pLea, 340, 230]], vehicles: [[vFourgon, pHugo]] },
+    { name: 'Salle plénière', periods: confPeriods,
+      lines: [['kitconf', 1], ['hf', 2], ['vp', 1], ['ecran', 1], ['kitpar', 1], ['pratic', 6], ['gaffer', 1, { optional: true }]],
+      crew: [['Technicien son', pHugo, 280, undefined, 'Prestation J1'], ['Technicien son', pHugo, 280, undefined, 'Prestation J2'], ['Technicienne vidéo', pLea, 340, 230, 'Prestation J1'], ['Montage', pTom, 220, 160, 'Montage']],
+      vehicles: [[vFourgon, pHugo]] },
+    { name: 'Salle atelier 1', periods: confPeriods.slice(0, 2).concat([['demontage', 'Démontage', at(6, 19), at(6, 21)]]),
+      lines: [['tv', 2], ['sm58', 2], ['qu16', 1], ['x12', 2]],
+      crew: [['Technicien atelier', pLea, 340, 230, 'Prestation J1']] },
+    { name: 'Salle atelier 2', periods: confPeriods,
+      lines: [['tv', 2], ['sm58', 2]] },
   ], { contactPerson: 'Thomas Leclercq' });
 
   // 3. Festival en option, gros volume → manque d'enceintes et de lyres
   const pFest = await project('Festival des Lumières', cFestival, 'option', 'Parc de la Boverie, Liège', [
-    { name: 'Montage', start: at(14, 8), end: at(14, 20), lines: [['truss', 20], ['tour', 4], ['distro', 2], ['p17', 6]], crew: [['Rigger', pKarim, 420, 300], ['Technicien', pHugo, 280], ['Technicien', undefined, 280]] },
-    { name: 'Concerts', start: at(15, 12), end: at(17, 23, 59), prepStart: at(13, 9), returnEnd: at(18, 18),
+    { name: 'Grande scène', periods: [
+        ['montage', 'Montage structure', at(13, 8), at(13, 20)],
+        ['montage', 'Montage son & lumière', at(14, 8), at(14, 22)],
+        ['prestation', 'Concerts J1', at(15, 14), at(16, 1)],
+        ['prestation', 'Concerts J2', at(16, 14), at(17, 1)],
+        ['prestation', 'Concerts J3', at(17, 14), at(18, 0)],
+        ['demontage', 'Démontage', at(18, 0), at(18, 10)],
+      ],
       lines: [['x12', 12], ['sub', 4], ['ampli', 3], ['cl5', 1], ['qu16', 1], ['sm58', 12], ['di', 8], ['pied', 10], ['hf', 4], ['lyre', 8], ['spot', 4], ['par', 24], ['grandma', 1], ['fumee', 2], ['gaffer', 6], ['gel', 10]],
-      crew: [['Régisseur son', pLucas, 380], ['Éclairagiste', pEmma, 360], ['Roadie', pTom, 220, 160]], vehicles: [[vCamion, pTom], [vFourgon, pHugo]] },
-    { name: 'Démontage', start: at(18, 0, 30), end: at(18, 8), crew: [['Roadie', pTom, 220, 160], ['Rigger', pKarim, 420, 300]] },
+      crew: [['Rigger', pKarim, 420, 300, 'Montage structure'], ['Technicien', pHugo, 280, undefined, 'Montage son & lumière'], ['Technicien', undefined, 280, undefined, 'Montage son & lumière'],
+        ['Régisseur son', pLucas, 380, undefined, 'Concerts J1'], ['Régisseur son', pLucas, 380, undefined, 'Concerts J2'], ['Régisseur son', pLucas, 380, undefined, 'Concerts J3'],
+        ['Éclairagiste', pEmma, 360, undefined, 'Concerts J1'], ['Roadie', pTom, 220, 160, 'Démontage'], ['Rigger', pKarim, 420, 300, 'Démontage']],
+      vehicles: [[vCamion, pTom], [vFourgon, pHugo]] },
+    { name: 'Scène acoustique', periods: [
+        ['montage', 'Montage', at(14, 10), at(14, 18)],
+        ['prestation', 'Concerts J1', at(15, 16), at(15, 23)],
+        ['prestation', 'Concerts J2', at(16, 16), at(16, 23)],
+        ['demontage', 'Démontage', at(16, 23), at(17, 2)],
+      ],
+      lines: [['qu16', 1], ['sm58', 4], ['di', 2], ['kitpar', 1]],
+      crew: [['Technicien son', undefined, 300, undefined, 'Concerts J1'], ['Technicien son', undefined, 300, undefined, 'Concerts J2']] },
   ], { contactPerson: 'Sophie Renard', notes: 'Accès technique par l\'entrée nord. Parking camion réservé.' });
 
   // 4. Mariage confirmé dans 3 semaines
@@ -256,7 +294,7 @@ export async function seedDemo() {
   }
 
   // Sous-location déjà demandée pour une partie du manque du festival
-  const fSub = (await db.subprojects.where({ projectId: pFest }).toArray()).find((s) => s.name === 'Concerts')!;
+  const fSub = (await db.subprojects.where({ projectId: pFest }).toArray()).find((s) => s.name === 'Grande scène')!;
   await db.subrentals.put({
     ...base(), number: `SL-${year}-001`, projectId: pFest, subprojectId: fSub.id, supplierId: cSono, status: 'demande',
     start: fSub.prepStart!, end: fSub.returnEnd!, lines: [{ equipmentId: eq.x12, name: 'Enceinte L-Acoustics X12', qty: 2, cost: 160 }],

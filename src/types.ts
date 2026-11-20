@@ -104,6 +104,21 @@ export interface Project extends Base {
   notes?: string;
 }
 
+export type PeriodKind = 'montage' | 'prestation' | 'demontage' | 'autre';
+export const PERIOD_LABELS: Record<PeriodKind, string> = {
+  montage: 'Montage', prestation: 'Prestation', demontage: 'Démontage', autre: 'Autre',
+};
+
+/** Créneau horaire d'un sous-projet (montage, jour de prestation, démontage…). */
+export interface Period {
+  id: ID;
+  name: string;
+  kind: PeriodKind;
+  start: string;
+  end: string;
+}
+
+/** Sous-projet = une salle / zone du projet, avec son matériel et ses horaires. */
 export interface Subproject extends Base {
   projectId: ID;
   name: string;
@@ -115,6 +130,8 @@ export interface Subproject extends Base {
   prepStart?: string;
   /** fin du retour / contrôle au dépôt */
   returnEnd?: string;
+  /** horaires détaillés ; s'ils existent, start/end/prepStart/returnEnd en sont déduits */
+  periods?: Period[];
   order: number;
   notes?: string;
 }
@@ -160,6 +177,8 @@ export interface CrewAssignment extends Base {
   projectId: ID;
   subprojectId: ID;
   personId?: ID;
+  /** créneau du sous-projet auquel le poste est rattaché */
+  periodId?: ID;
   function: string;
   start: string;
   end: string;
@@ -289,6 +308,7 @@ export interface SnapshotLine {
 
 export interface SnapshotSub {
   name: string;
+  periods?: { name: string; kind: PeriodKind; start: string; end: string }[];
   venue?: string;
   start: string;
   end: string;

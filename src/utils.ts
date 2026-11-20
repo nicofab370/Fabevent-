@@ -1,6 +1,6 @@
 import type { Table } from 'dexie';
 import { db } from './db';
-import type { Base, Equipment, EquipmentLine, Inspection, Repair, SerialUnit, Settings, Subproject, Subrental } from './types';
+import type { Base, Equipment, EquipmentLine, Inspection, Period, Repair, SerialUnit, Settings, Subproject, Subrental } from './types';
 import { RESERVING } from './types';
 
 export function uid(): string {
@@ -323,4 +323,43 @@ export function inspectionsDue(equipment: Equipment[], units: SerialUnit[], insp
     }
   }
   return out.sort((a, b) => a.due.localeCompare(b.due));
+}
+
+/* ---------- Horaires des sous-projets ---------- */
+
+export function sortPeriods(periods: Period[]): Period[] {
+  return [...periods].sort((a, b) => a.start.localeCompare(b.start));
+}
+
+/** Déduit les dates du sous-projet de ses horaires (bloqué : tout ; facturé : les prestations). */
+export function syncPeriods<T extends Pick<Subproject, 'start' | 'end' | 'prepStart' | 'returnEnd' | 'periods'>>(sp: T): T {
+  const ps = sortPeriods((sp.periods || []).filter((p) => p.start && p.end));
+  if (!ps.length) return { ...sp, periods: undefined };
+  const usage = ps.filter((p) => p.kind === 'prestation');
+  const used = usage.length ? usage : ps;
+  const allStart = ps[0].start;
+  const allEnd = ps.reduce((a, p) => (p.end > a ? p.end : a), ps[0].end);
+  const start = used[0].start;
+  const end = used.reduce((a, p) => (p.end > a ? p.end : a), used[0].end);
+  return { ...sp, periods: ps, start, end, prepStart: allStart < start ? allStart : undefined, returnEnd: allEnd > end ? allEnd : undefined };
+}
+
+/** Jours facturés : jours distincts couverts par les prestations (une fin avant 6 h compte pour la veille). */
+export function usageDays(sp: Pick<Subproject, 'start' | 'end' | 'periods'>): number {
+  const usage = (sp.periods || []).filter((p) => p.kind === 'prestation');
+  if (!usage.length) return daysBetween(sp.start, sp.end);
+  const days = new Set<string>();
+  for (const p of usage) {
+    const d = new Date(p.start.slice(0, 10) + 'T12:00');
+    const endD = new Date(p.end);
+    if (endD.getHours() < 6 && p.end.slice(0, 10) > p.start.slice(0, 10)) endD.setDate(endD.getDate() - 1);
+    const last = toLocalInput(endD).slice(0, 10);
+    for (let i = 0; i < 366; i++) {
+      const k = toLocalInput(d).slice(0, 10);
+      days.add(k);
+      if (k >= last) break;
+      d.setDate(d.getDate() + 1);
+    }
+  }
+  return Math.max(1, days.size);
 }

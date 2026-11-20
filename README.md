@@ -14,8 +14,10 @@ npm run build     # version de production dans dist/ (hébergeable sur n'importe
 ## Fonctionnalités
 
 **Projets**
-- Projets et sous-projets (montage, show, démontage…), statuts, duplication, interlocuteur client.
-- Période de préparation et de retour : le matériel est bloqué plus longtemps que la période facturée.
+- Projets découpés en **salles / sous-projets** (Salle 1, Salle 2, scène…), chacun avec son matériel, son équipe et ses véhicules. Duplication d'une salle.
+- **Horaires par salle** : montage, Prestation J1, J2…, démontage. Le matériel est bloqué du premier au dernier créneau ;
+  seuls les jours de prestation sont facturés (une fin de soirée après minuit compte pour la veille). Les postes de l'équipe se rattachent à un créneau.
+- Statuts, duplication de projet, interlocuteur client.
 - Onglet Finances : chiffre d'affaires, coûts (personnel, sous-locations, consommables, frais divers), marge.
 
 **Matériel et stock**

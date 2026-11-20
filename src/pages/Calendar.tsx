@@ -27,17 +27,21 @@ export default function Calendar() {
   const days = Array.from({ length: 42 }, (_, i) => { const d = new Date(start); d.setDate(start.getDate() + i); return d; });
   const today = ymd(new Date());
   const visible = subs.filter((s) => !(hideCancelled && s.status === 'annule'));
+  // un événement par créneau (montage, J1, J2, démontage…) ou par salle sans horaires
+  const events = visible.flatMap((s) => (s.periods?.length ? s.periods : [{ id: s.id, name: '', kind: undefined, start: s.start, end: s.end }]).map((pe) => ({
+    id: pe.id, sub: s, label: pe.name, kind: pe.kind, start: pe.start, end: pe.end,
+  })));
 
   const exportAll = () => {
     const base = appBaseUrl(settings);
-    const events = visible.map((s) => {
-      const p = pMap.get(s.projectId);
+    const ics = events.map((ev) => {
+      const p = pMap.get(ev.sub.projectId);
       return {
-        uid: s.id, title: `${p?.number || ''} ${p?.name || ''} — ${s.name} [${STATUS_LABELS[s.status]}]`, start: s.start, end: s.end,
-        location: s.venue || p?.venue, url: `${base}#/projets/${s.projectId}`,
+        uid: ev.id, title: `${p?.name || ''} — ${ev.sub.name}${ev.label ? ` · ${ev.label}` : ''} [${STATUS_LABELS[ev.sub.status]}]`, start: ev.start, end: ev.end,
+        location: ev.sub.venue || p?.venue, description: p?.number, url: `${base}#/projets/${ev.sub.projectId}`,
       };
     });
-    download('fabevent-planning.ics', buildIcs('FabEvent — Planning', events), 'text/calendar;charset=utf-8');
+    download('fabevent-planning.ics', buildIcs('FabEvent — Planning', ics), 'text/calendar;charset=utf-8');
   };
 
   return (
@@ -54,15 +58,17 @@ export default function Calendar() {
         {DOW.map((d) => <div key={d} className="dow">{d}</div>)}
         {days.map((d) => {
           const key = ymd(d);
-          const evs = visible.filter((s) => s.start.slice(0, 10) <= key && s.end.slice(0, 10) >= key);
+          const evs = events.filter((ev) => ev.start.slice(0, 10) <= key && ev.end.slice(0, 10) >= key);
           return (
             <div key={key} className={'day' + (d.getMonth() !== cursor.getMonth() ? ' out' : '') + (key === today ? ' today' : '')}>
               <span className="num">{d.getDate()}</span>
-              {evs.map((s) => {
-                const p = pMap.get(s.projectId);
+              {evs.map((ev) => {
+                const p = pMap.get(ev.sub.projectId);
+                const time = ev.start.slice(0, 10) === key ? ev.start.slice(11, 16) + ' ' : '';
                 return (
-                  <Link key={s.id} to={'/projets/' + s.projectId} className="ev" style={{ background: COLORS[s.status] }} title={`${p?.name} — ${s.name}`}>
-                    {p?.name} · {s.name}
+                  <Link key={ev.id} to={'/projets/' + ev.sub.projectId} className={'ev' + (ev.kind ? ' k-' + ev.kind : '')} style={{ background: COLORS[ev.sub.status] }}
+                    title={`${p?.name} — ${ev.sub.name}${ev.label ? ' · ' + ev.label : ''} (${ev.start.slice(11, 16)}–${ev.end.slice(11, 16)})`}>
+                    {time}{p?.name} · {ev.sub.name}{ev.label ? ` · ${ev.label}` : ''}
                   </Link>
                 );
               })}

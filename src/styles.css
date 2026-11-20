@@ -163,3 +163,10 @@ tr.missing td { background: color-mix(in srgb, var(--danger) 10%, transparent); 
 .bar-cell span { position: relative; z-index: 1; }
 .bar-cell i { position: absolute; left: 0; top: 20%; bottom: 20%; background: color-mix(in srgb, var(--accent) 25%, transparent); border-radius: 3px; }
 .demo-badge { display: block; margin: -6px 8px 12px; padding: 4px 8px; border-radius: 6px; background: #7c3aed; color: #fff !important; font-size: 11px; font-weight: 700; text-align: center; }
+.periods { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.period { font-size: 12px; padding: 2px 8px; border-radius: 6px; background: var(--soft); border-left: 3px solid var(--muted); }
+.period.k-montage { border-left-color: #6366f1; } .period.k-prestation { border-left-color: #16a34a; } .period.k-demontage { border-left-color: #dc2626; }
+.period-row { display: grid; grid-template-columns: 130px 1fr 190px 190px auto; gap: 6px; margin-bottom: 6px; }
+@media (max-width: 800px) { .period-row { grid-template-columns: 1fr 1fr; } }
+.cal .ev.k-montage, .cal .ev.k-prestation, .cal .ev.k-demontage { border-left: 3px solid; }
+.cal .ev.k-montage { border-left-color: #6366f1; } .cal .ev.k-prestation { border-left-color: #16a34a; } .cal .ev.k-demontage { border-left-color: #dc2626; }
