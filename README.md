@@ -133,6 +133,15 @@ téléchargement des fichiers puis l'ouverture de la messagerie (Gmail web). Dev
 factures), bons de commande de sous-location et RH en PDF, planning du technicien en `.ics`. Un devis ou une facture envoyé
 passe au statut « Envoyé ».
 
+**Entrepôt (repris de FABRI.live)** : checklist de sortie puis de retour par sous-projet, scan à la douchette ou à la caméra
+(ZXing intégré, fonctionne sur iPhone et hors ligne), unités sérialisées, « ajouter en plus », codes fabricant associés,
+unités à réparer / en réparation, bilan du retour et déclaration des pertes avec historique daté. **Checklists libres**
+importées d'un bon PDF, Word, HTML (export Rentman) ou de texte collé. **Inventaire** au scan avec kits, unités non vues,
+mouvements de stock datés, fiche article (« où est cet article ? »).
+
+**Synchronisation automatique** entre appareils via `server/sync.php` sur l'hébergement (connexion des pages internes
+FABRI.live), hors ligne d'abord, numéros de facture sans doublon : voir [docs/deploiement-fabri.md](docs/deploiement-fabri.md).
+
 **Démo** : Paramètres → « Ouvrir la base de démo » crée une base séparée avec des clients, du matériel, une équipe et 8 projets fictifs (réinitialisable).
 
 **Données** : import CSV (exports Rentman), plusieurs bases, sauvegarde et restauration.

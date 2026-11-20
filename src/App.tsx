@@ -18,12 +18,14 @@ import Inventory from './pages/Inventory';
 import Labels from './pages/Labels';
 import Templates from './pages/Templates';
 import Transfers from './pages/Transfers';
-import Warehouse, { WarehouseScan } from './pages/Warehouse';
+import Warehouse from './pages/Warehouse';
+import FreeChecklists, { FreeChecklistPage, ProjectChecklist } from './pages/Checklist';
 import ProjectDetail from './pages/ProjectDetail';
 import Projects from './pages/Projects';
 import SettingsPage from './pages/Settings';
 import Vehicles from './pages/Vehicles';
 import Shortages from './pages/Shortages';
+import { SyncBadge } from './components/SyncPanel';
 import Venues, { VenueDetail } from './pages/Venues';
 import CrewAssignmentPage from './pages/crewAssign';
 
@@ -74,7 +76,7 @@ export default function App() {
             </NavLink>
           ))}
         </nav>
-        <div className={'net ' + (online ? 'on' : 'off')}>{online ? '● En ligne' : '● Hors ligne'} · données locales</div>
+        <SyncBadge online={online} />
       </aside>
       <div className="topbar">
         <button className="ghost" onClick={() => setMenu(!menu)} aria-label="Menu">☰</button>
@@ -98,7 +100,9 @@ export default function App() {
           <Route path="/comptabilite" element={<Accounting />} />
           <Route path="/rapports" element={<Reports />} />
           <Route path="/entrepot" element={<Warehouse />} />
-          <Route path="/entrepot/:id" element={<WarehouseScan />} />
+          <Route path="/entrepot/:id" element={<ProjectChecklist />} />
+          <Route path="/checklists" element={<FreeChecklists />} />
+          <Route path="/checklists/:id" element={<FreeChecklistPage />} />
           <Route path="/penuries" element={<Shortages />} />
           <Route path="/souslocations" element={<Subrentals />} />
           <Route path="/souslocations/:id" element={<SubrentalDetail />} />

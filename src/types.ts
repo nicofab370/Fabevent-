@@ -215,6 +215,10 @@ export interface Equipment extends Base {
   isKit: boolean;
   kitItems: KitItem[];
   barcode?: string;
+  /** codes en plus (code-barres du fabricant, ancienne étiquette…) qui désignent aussi l'article */
+  extraCodes?: string[];
+  /** mouvements de stock (ajout, inventaire, perte…), le plus récent en dernier */
+  stockLog?: { at: string; delta: number; text: string; projectId?: ID }[];
   location?: string;
   notes?: string;
 }
@@ -400,6 +404,8 @@ export interface Subproject extends Base {
   readyToPack?: boolean;
   /** réserve le matériel même si le projet est encore en attente */
   reserve?: boolean;
+  /** manquants du retour déjà déclarés perdus */
+  missingSent?: boolean;
 }
 
 export interface EquipmentLine extends Base {
@@ -493,6 +499,12 @@ export interface SerialUnit extends Base {
   barcode?: string;
   /** hs / perdu = sorti définitivement du stock */
   status: 'ok' | 'hs' | 'perdu';
+  /** à réparer mais encore utilisable (défaut signalé au scan) */
+  defect?: string;
+  /** historique daté de l'unité (perdue, réparée, retrouvée…), le plus récent en dernier */
+  history?: { at: string; text: string; projectId?: ID }[];
+  /** codes en plus (n° gravé, ancienne étiquette…) */
+  extraCodes?: string[];
   depotId?: ID;
   lastInspection?: string;
   notes?: string;
@@ -800,4 +812,31 @@ export interface Settings {
   /** nouveaux postes en planification finale par défaut */
   crewFinalByDefault?: boolean;
   templates?: DocTemplates;
+}
+
+/** Ligne d'une checklist libre (bon importé ou liste saisie à la main). */
+export interface FreeLine {
+  id: ID;
+  cat: string;
+  /** contenu d'un kit : ligne parente */
+  parent: ID | null;
+  qty: number;
+  name: string;
+  code?: string;
+  /** article FabEvent reconnu par son code (permet le scan) */
+  equipmentId?: ID;
+  out: number;
+  back: number;
+  outSerials?: string[];
+  inSerials?: string[];
+}
+
+/** Checklist libre : job hors FabEvent, créée depuis un bon (PDF, Word, HTML, texte) ou à la main. */
+export interface FreeChecklist extends Base {
+  title: string;
+  meta: Record<string, string>;
+  plan: { label: string; from: string; to: string }[];
+  lines: FreeLine[];
+  phase: 'sortie' | 'retour';
+  missingSent?: boolean;
 }

@@ -2,8 +2,10 @@
  * Parcours complet de FabEvent dans un vrai navigateur (Playwright).
  * Lancement : npm run test:e2e  (construit l'application, la sert, puis déroule les scénarios).
  */
-import { spawn } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
@@ -321,6 +323,7 @@ await step('Inventaire : scan inconnu refusé, écart appliqué au stock', async
   const row = page.locator('table.list tr', { hasText: 'Pied de micro perche' });
   await row.locator('input').fill('18');
   await page.click('button:has-text("Appliquer 1 écart")');
+  await page.click('.modal button:text-is("Appliquer")');
   await page.waitForSelector('text=Inventaire appliqué');
   await go('materiel');
   expect((await page.locator('table.list tr', { hasText: 'Pied de micro perche' }).innerText()).includes('18'), 'stock mis à 18');
@@ -826,7 +829,7 @@ await step('Entrepôt : 1re sortie → En cours, tout rentré → Exécution ter
   await go('entrepot');
   await page.locator('table.list tr.click', { hasText: 'Beurs Maastricht' }).click();
   await page.waitForSelector('.scan-input');
-  await page.click('.tabs button:text-is("Retour")');
+  await page.click('.tabs button:has-text("Retour")');
   for (let i = 0; i < 10 && await page.locator('button:text-is("Tout")').count(); i++) { await page.locator('button:text-is("Tout")').first().click(); await page.waitForTimeout(250); }
   expect(await statusOf('Beurs Maastricht') === 'execute', 'exécution terminée au retour complet');
 });
@@ -1113,7 +1116,206 @@ await step('Email : bon de commande RH et planning du technicien (.ics) joints',
   await page.click('.modal button:text-is("Fermer")');
 });
 
+console.log('\n  — checklist et inventaire (FABRI.live intégré) —');
+const scan = async (c) => { await page.fill('.checklist-scan .scan-input', c); await page.press('.checklist-scan .scan-input', 'Enter'); await page.waitForTimeout(350); return page.locator('.checklist-scan .flash').innerText(); };
+const openChecklist = async (name) => { await go('entrepot'); await page.locator('table.list tr.click', { hasText: name }).click(); await page.waitForSelector('.checklist-scan'); };
+
+await step('Checklist : unité scannée, doublon refusé, « ajouter en plus », code inconnu associé', async () => {
+  await resetDemo();
+  await openChecklist('Mariage Dupont-Lemaire');
+  expect((await scan('SN-LA4X-1001')).includes('Sortie : Amplificateur LA4X n° LA4X-1001'), 'unité sortie');
+  expect((await scan('SN-LA4X-1001')).includes('déjà sorti'), 'doublon refusé');
+  expect((await scan('DEMO-SM58')).includes('pas prévu'), 'article hors liste signalé');
+  await page.locator('.checklist-scan .flash button:has-text("Ajouter en plus")').click();
+  await page.waitForTimeout(400);
+  expect((await scan('DEMO-SM58')).includes('Sortie : Micro Shure SM58'), 'ajouté en plus puis sorti');
+  expect((await scan('FAB-77777')).includes('Code inconnu'), 'code inconnu');
+  await page.locator('.checklist-scan .flash button:has-text("Associer")').click();
+  await page.fill('.modal input', 'Caisson');
+  await page.locator('.modal button', { hasText: 'Caisson SB18' }).click();
+  await page.click('.modal button:text-is("Associer")');
+  await page.waitForTimeout(300);
+  expect((await scan('FAB-77777')).includes('Sortie : Caisson SB18'), 'code fabricant associé puis reconnu');
+});
+
+await step('Checklist : retour, unité abîmée, bilan, déclarer perdu puis retrouver', async () => {
+  for (const sn of ['SN-ULXD-1001', 'SN-ULXD-1002', 'SN-QU16-1001']) await scan(sn);
+  for (let i = 0; i < 12 && await page.locator('.cl-line button:text-is("Tout")').count(); i++) { await page.locator('.cl-line button:text-is("Tout")').first().click(); await page.waitForTimeout(150); }
+  await page.click('.tabs button:has-text("Retour")');
+  await page.waitForTimeout(300);
+  for (const sn of ['SN-LA4X-1001', 'SN-ULXD-1001']) await scan(sn);
+  // tout le vrac rentre, sauf les enceintes X12
+  for (let i = 0; i < 12; i++) {
+    const b = page.locator('.cl-line', { hasNotText: 'L-Acoustics X12' }).locator('button:text-is("Tout")');
+    if (!(await b.count())) break;
+    await b.first().click(); await page.waitForTimeout(150);
+  }
+  await page.locator('.cl-line', { hasText: 'Micro HF' }).locator('button:text-is("Cassé")').click();
+  await page.fill('.modal .field input', 'Antenne tordue');
+  await page.click('.modal button[type=submit]');
+  await page.waitForTimeout(300);
+  await page.click('button:text-is("Bilan du retour")');
+  const bilan = await page.locator('.modal').innerText();
+  expect(bilan.includes('L-Acoustics X12') && bilan.includes('ULXD-1002') && bilan.includes('QU16-1001'), `manquants listés : ${bilan.slice(0, 200)}`);
+  await page.click('.modal button:text-is("Déclarer perdu")');
+  await page.waitForTimeout(600);
+  expect((await page.locator('.modal').innerText()).includes('déclaré(s) perdu(s)'), 'pertes déclarées');
+  await page.click('.modal button:text-is("Fermer")');
+  // l'unité perdue, rescannée, est proposée à la remise en stock
+  await page.click('.tabs button:has-text("Sortie")');
+  expect((await scan('SN-QU16-1001')).includes('déclarée perdue'), 'unité perdue reconnue');
+  await page.locator('.checklist-scan .flash button:has-text("Retrouvée")').click();
+  await page.waitForTimeout(400);
+  expect((await page.locator('.checklist-scan .flash').innerText()).includes('Remise en stock'), 'unité remise en stock');
+});
+
+await step('Checklist libre : bon collé, articles reconnus et scannés', async () => {
+  await go('checklists');
+  await page.click('button:text-is("Coller du texte")');
+  await page.fill('.modal textarea', 'Son\n2   Enceinte L-Acoustics X12   SON-12   2\n4   Micro Shure SM58   MIC-58   4\nDivers\n1   Rouleau de scotch   AB-99   1');
+  await page.click('.modal button:text-is("Créer la checklist")');
+  await page.waitForSelector('.checklist-scan');
+  expect((await page.locator('.checklist-cat').count()) === 2, 'deux catégories');
+  expect((await scan('DEMO-X12')).includes('Sortie : Enceinte L-Acoustics X12 — 1/2'), 'article du catalogue scanné');
+  await page.locator('.cl-line', { hasText: 'Rouleau de scotch' }).locator('.cl-check').click();
+  await page.waitForTimeout(300);
+  expect((await page.locator('.cl-line', { hasText: 'Rouleau de scotch' }).getAttribute('class')).includes('done'), 'ligne libre cochée');
+});
+
+await step('Checklist libre : import d’un bon PDF', async () => {
+  const { jsPDF } = require('jspdf');
+  const pdf = new jsPDF();
+  pdf.setFontSize(10);
+  pdf.text('Document et bon : Bon de préparation test', 10, 15);
+  pdf.text('Client : Société test', 10, 22);
+  pdf.text('Lumière', 10, 32);
+  const row = (y, q, n, c, t, x = 10) => { pdf.text(q, x, y); pdf.text(n, x + 15, y); pdf.text(c, 140, y); pdf.text(t, 180, y); };
+  row(40, '8', 'Projecteur PAR LED 18x10 W', 'LUM-18', '8');
+  row(47, '2', 'Pack ambiance 8 PAR LED', 'KIT-02', '2');
+  writeFileSync('tests/e2e/bon-test.pdf', Buffer.from(pdf.output('arraybuffer')));
+  await go('checklists');
+  await page.setInputFiles('.drop input[type=file]', 'tests/e2e/bon-test.pdf');
+  await page.waitForSelector('.checklist-scan', { timeout: 20000 });
+  const txt = await page.locator('body').innerText();
+  expect(txt.includes('Bon de préparation test') && txt.includes('Pack ambiance 8 PAR LED') && txt.includes('Client : Société test'), 'bon PDF lu (titre, client, lignes)');
+});
+
+const invScan = async (c) => { await page.fill('.scan-input', c); await page.press('.scan-input', 'Enter'); await page.waitForTimeout(300); return page.locator('.flash').first().innerText(); };
+
+await step('Inventaire : kit compté d’un coup, annulation, comptage gardé au rechargement', async () => {
+  await resetDemo();
+  await go('inventaire');
+  expect((await invScan('DEMO-KITPAR')).includes('Kit Pack ambiance 8 PAR LED'), 'kit reconnu');
+  const par = page.locator('table.list tr', { hasText: 'Projecteur PAR LED' });
+  expect(await par.locator('input').inputValue() === '8', 'contenu du kit compté (8 PAR)');
+  await page.click('button:text-is("Annuler le dernier kit")');
+  await page.waitForTimeout(300);
+  const after = await par.locator('input').inputValue();
+  expect(after === '0' || after === '', `kit annulé (${after})`);
+  await invScan('DEMO-PIED'); await invScan('DEMO-PIED');
+  await page.reload(); await page.waitForTimeout(800);
+  expect(await page.locator('table.list tr', { hasText: 'Pied de micro perche' }).locator('input').inputValue() === '2', 'comptage gardé après rechargement');
+});
+
+await step('Inventaire : fiche (ajout de stock, état d’une unité, où est-il ?), unité perdue retrouvée au scan', async () => {
+  await page.locator('table.list tr', { hasText: 'Amplificateur LA4X' }).locator('button:text-is("Fiche")').click();
+  await page.waitForSelector('.modal');
+  expect((await page.locator('.modal').innerText()).includes('Où est cet article ?'), 'fiche ouverte');
+  await page.locator('.modal tr', { hasText: 'LA4X-1002' }).locator('button:has-text("Changer l")').click();
+  await page.locator('.modal label', { hasText: 'Perdue' }).last().locator('input').check();
+  await page.locator('.modal form button[type=submit]').last().click();
+  await page.waitForTimeout(400);
+  expect((await page.locator('.modal tr', { hasText: 'LA4X-1002' }).innerText()).includes('Perdue'), 'unité marquée perdue');
+  await page.keyboard.press('Escape');
+  await go('inventaire');
+  expect((await invScan('SN-LA4X-1002')).includes('retrouvée et remise en stock'), 'unité perdue retrouvée au scan');
+  await page.locator('table.list tr', { hasText: 'Pied de micro perche' }).locator('button:text-is("Fiche")').click();
+  await page.locator('.modal input[aria-label="Quantité à ajouter"]').fill('5');
+  await page.fill('.modal input[placeholder^="Note"]', 'achat Thomann');
+  await page.click('.modal button:text-is("Ajouter")');
+  await page.waitForTimeout(400);
+  expect((await page.locator('.modal').innerText()).includes('Ajout au stock — achat Thomann (+5)'), 'mouvement de stock daté');
+  await page.keyboard.press('Escape');
+});
+
+await step('Inventaire : unités non vues → en réparation, visibles en maintenance', async () => {
+  await go('inventaire');
+  await invScan('SN-ULXD-1001'); await invScan('SN-ULXD-1002'); await invScan('SN-ULXD-1003');
+  await page.click('button:has-text("écart")');
+  await page.waitForSelector('.modal');
+  const sel = page.locator('.modal select[aria-label="Unité ULXD-1004"]');
+  await sel.selectOption('repair');
+  await page.locator('.modal select[aria-label="Unité ULXD-1005"]').selectOption('none');
+  await page.locator('.modal select[aria-label="Unité ULXD-1006"]').selectOption('none');
+  await page.click('.modal button:text-is("Appliquer")');
+  await page.waitForSelector('text=Inventaire appliqué');
+  await go('maintenance');
+  const flagged = await page.locator('.card', { hasText: 'Unités signalées' }).innerText();
+  expect(flagged.includes('ULXD-1004') && flagged.includes('En réparation'), 'unité en réparation listée');
+});
+
 await ctx.close();
+
+/* ---------- Synchronisation : deux appareils, le vrai serveur PHP ---------- */
+const hasPhp = spawnSync('php', ['-v']).status === 0;
+if (hasPhp) {
+  console.log('\n  — synchronisation entre appareils (serveur PHP) —');
+  const root = mkdtempSync(join(tmpdir(), 'fabweb-'));
+  cpSync('dist', root, { recursive: true });
+  mkdirSync(join(root, 'api'));
+  cpSync('server/sync.php', join(root, 'api/sync.php'));
+  const SPORT = PORT + 700;
+  const php = spawn('php', ['-S', `127.0.0.1:${SPORT}`, '-t', root], {
+    env: { ...process.env, FABEVENT_AUTH: resolve('tests/server/auth-stub.php'), FABEVENT_DATA: mkdtempSync(join(tmpdir(), 'fabdata-')) }, stdio: 'ignore',
+  });
+  await new Promise((r) => setTimeout(r, 1200));
+  const SU = `http://127.0.0.1:${SPORT}/`;
+  const device = async (user) => {
+    const c = await browser.newContext({ viewport: { width: 1300, height: 900 } });
+    await c.addCookies([{ name: 'testuser', value: user, url: SU }]);
+    await c.addInitScript(() => { try { if (!localStorage.getItem('fab.sync.url')) localStorage.setItem('fab.sync.url', 'api/sync.php'); } catch {} });
+    const p = await c.newPage();
+    p.on('pageerror', (e) => consoleErrors.push(e.message));
+    p.on('dialog', (d) => d.accept());
+    return { c, p };
+  };
+  const syncOn = async (p) => { await p.goto(SU + '#/parametres'); await p.click('button:text-is("Synchroniser maintenant")'); await p.waitForTimeout(1500); };
+  const A = await device('nico');
+  const B = await device('collegue');
+  await step('Synchro : un contact créé sur un appareil apparaît sur l’autre', async () => {
+    await A.p.goto(SU + '#/contacts'); await A.p.waitForTimeout(500);
+    await A.p.click('button:text-is("+ Nouveau contact")');
+    await A.p.locator('.modal .field', { hasText: 'Société / Nom' }).locator('input').fill('Client synchronisé SA');
+    await A.p.click('.modal button[type=submit]');
+    await A.p.waitForTimeout(3500); // envoi automatique 2 s après la modification
+    await syncOn(B.p);
+    await B.p.goto(SU + '#/contacts'); await B.p.waitForTimeout(500);
+    expect(await B.p.locator('table.list tr', { hasText: 'Client synchronisé SA' }).count() === 1, 'contact reçu sur le 2e appareil');
+    expect((await B.p.locator('.net').innerText()).includes('synchronisé'), 'état « synchronisé » affiché');
+  });
+  await step('Synchro : modification et numérotation sans doublon entre appareils', async () => {
+    await B.p.locator('table.list tr', { hasText: 'Client synchronisé SA' }).click();
+    await B.p.locator('.modal .field', { hasText: 'Ville' }).first().locator('input').fill('Liège');
+    await B.p.click('.modal button[type=submit]');
+    await B.p.waitForTimeout(3500);
+    await syncOn(A.p);
+    await A.p.goto(SU + '#/contacts'); await A.p.waitForTimeout(500);
+    expect((await A.p.locator('table.list tr', { hasText: 'Client synchronisé SA' }).innerText()).includes('Liège'), 'modification reçue');
+    const newProject = async (p, name) => {
+      await p.goto(SU + '#/projets'); await p.waitForTimeout(400);
+      await p.click('button:text-is("+ Nouveau projet")');
+      await p.locator('.modal .field', { hasText: 'Nom du projet' }).locator('input').fill(name);
+      await p.click('.modal button[type=submit]');
+      await p.waitForSelector('.project-tabs');
+      return (await p.locator('h1').innerText()).split(' · ')[0];
+    };
+    const n1 = await newProject(A.p, 'Projet A');
+    const n2 = await newProject(B.p, 'Projet B'); // B n'a pas encore reçu le projet de A
+    expect(n1 !== n2, `numéros distincts (${n1} / ${n2})`);
+  });
+  await A.c.close(); await B.c.close();
+  php.kill();
+}
 
 await step('Aucune erreur dans la console du navigateur', async () => {
   expect(consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '));

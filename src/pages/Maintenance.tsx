@@ -1,4 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks';
+import { setUnitState, UNIT_STATE_LABELS, unitState } from '../codes';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Empty, Field, Modal, NumInput, PageHead } from '../components/ui';
@@ -113,6 +114,26 @@ export default function Maintenance() {
           </table>
         )}
       </div>
+      {(() => {
+        // unités signalées au scan (checklist, inventaire) : à réparer (encore utilisables) ou hors service
+        const flagged = av.units.filter((u) => u.defect || u.status === 'hs').sort((a, b) => ((a.history || []).slice(-1)[0]?.at || '').localeCompare((b.history || []).slice(-1)[0]?.at || ''));
+        return flagged.length ? (
+          <div className="card">
+            <h2>Unités signalées</h2>
+            <table className="list">
+              <thead><tr><th>Article</th><th>Unité</th><th>État</th><th>Défaut / historique</th><th /></tr></thead>
+              <tbody>{flagged.map((u) => (
+                <tr key={u.id}>
+                  <td><strong>{eqMap.get(u.equipmentId)?.name}</strong></td><td>n° {u.serial}</td>
+                  <td><span className={'badge ' + (u.status === 'hs' ? 'st-annule' : 'st-option')}>{UNIT_STATE_LABELS[unitState(u)]}</span></td>
+                  <td className="muted" style={{ fontSize: 12 }}>{u.defect || (u.history || []).slice(-1)[0]?.text}</td>
+                  <td><button className="small" onClick={() => setUnitState(u.id, 'ok')}>Remettre en service</button></td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        ) : null;
+      })()}
       <div className="card">
         <h2>Contrôles périodiques à faire (30 prochains jours)</h2>
         <p className="muted" style={{ marginTop: 0 }}>Règle la périodicité sur chaque article (ex. contrôle électrique tous les 12 mois).</p>
