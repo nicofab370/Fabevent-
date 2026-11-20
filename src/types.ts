@@ -50,6 +50,30 @@ export const CONTACT_TYPES: Record<ContactType, string> = {
   autre: 'Autre',
 };
 
+/** Commentaire sur un lieu (accès, électricité, retour d'expérience…). */
+export interface VenueComment {
+  id: ID;
+  at: string;
+  text: string;
+  /** projet pendant lequel la remarque a été faite */
+  projectId?: ID;
+  /** affiché en alerte sur les projets de ce lieu */
+  important?: boolean;
+  /** imprimé sur la feuille de route et le bon de sortie */
+  onRoadmap?: boolean;
+}
+
+/** Informations pratiques d'un lieu. */
+export interface VenueInfo {
+  access?: string;
+  power?: string;
+  onSite?: string;
+  capacity?: string;
+}
+export const VENUE_INFO_LABELS: Record<keyof VenueInfo, string> = {
+  access: 'Accès et déchargement', power: 'Électricité', onSite: 'Contact sur place', capacity: 'Salle : dimensions, capacité, accroche',
+};
+
 export interface Contact extends Base {
   type: ContactType;
   company: string;
@@ -78,9 +102,40 @@ export interface Contact extends Base {
   paymentDays?: number;
   /** moments de facturation par défaut de ses projets */
   moments?: ID[];
+  /** lieu : informations pratiques et commentaires */
+  venueInfo?: VenueInfo;
+  comments?: VenueComment[];
+  /** lieu : endroits (bâtiments, scènes, salles…), chacun pouvant avoir sa propre adresse */
+  spots?: VenueSpot[];
+  /** client : services (communication, RH, événementiel…) avec leurs interlocuteurs */
+  departments?: Department[];
+}
+
+/** Endroit d'un lieu : bâtiment, scène, salle, entrée… (adresse propre ou celle du lieu). */
+export interface VenueSpot {
+  id: ID;
+  name: string;
+  address?: string;
+  postalCode?: string;
+  city?: string;
+  info?: VenueInfo;
+}
+
+/** Service d'une société cliente. Ses coordonnées remplacent celles de la société sur les documents. */
+export interface Department {
+  id: ID;
+  name: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  postalCode?: string;
+  city?: string;
 }
 
 export interface ContactPerson {
+  id?: ID;
+  /** service de la société (vide = général) */
+  departmentId?: ID;
   name: string;
   role?: string;
   email?: string;
@@ -226,8 +281,13 @@ export interface Project extends Base {
   start: string;
   end: string;
   discount: number;
-  /** interlocuteur chez le client */
+  /** interlocuteur chez le client (nom affiché sur les documents) */
   contactPerson?: string;
+  contactPersonId?: ID;
+  /** service du client qui commande */
+  departmentId?: ID;
+  /** endroit du lieu (bâtiment, scène…) */
+  spotId?: ID;
   /** type de projet (paramétrable) */
   typeName?: string;
   color?: string;
@@ -329,6 +389,8 @@ export interface Subproject extends Base {
   prepStart?: string;
   /** fin du retour / contrôle au dépôt */
   returnEnd?: string;
+  /** endroit du lieu du projet où se trouve cette salle */
+  spotId?: ID;
   /** horaires détaillés ; s'ils existent, start/end/prepStart/returnEnd en sont déduits */
   periods?: Period[];
   groups?: EquipGroup[];
@@ -560,6 +622,8 @@ export interface SnapshotLine {
 
 export interface SnapshotSub {
   name: string;
+  /** adresse de l'endroit si elle diffère de celle du projet */
+  address?: string;
   periods?: { name: string; kind: PeriodKind; start: string; end: string }[];
   venue?: string;
   start: string;
@@ -612,6 +676,10 @@ export interface DocTemplates {
 export interface DocSnapshot {
   company: CompanyInfo;
   client?: Contact;
+  /** service du client (ses coordonnées priment sur celles de la société) */
+  department?: Department;
+  /** email de l'interlocuteur ou du service, pour l'envoi */
+  contactEmail?: string;
   project: Pick<Project, 'number' | 'name' | 'venue' | 'start' | 'end' | 'notes' | 'discount' | 'externalRef'>;
   /** coûts supplémentaires refacturés */
   extras?: { label: string; qty: number; unitPrice: number; total: number }[];
@@ -648,6 +716,8 @@ export interface DocSnapshot {
   partialInvoices?: { number: string; rooms: string[]; ht: number }[];
   /** rappel de paiement */
   reminder?: { level: number; invoiceNumber: string; invoiceDate: string; invoiceDue?: string; amount: number };
+  /** lieu : informations pratiques et commentaires à imprimer (feuille de route, bon de sortie) */
+  venueNotes?: { label: string; text: string }[];
   /** notes du projet prévues pour ce type de document */
   notes?: { title: string; text: string }[];
   /** caution à verser (hors TVA) */

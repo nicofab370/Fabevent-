@@ -1,5 +1,8 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
+import { EmailModal } from '../components/EmailModal';
+import type { Attachment } from '../email';
+import { htmlToPdf, safeFileName } from '../pdf';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { DOC_CSS, DocRender } from '../components/DocRender';
 import { PageHead } from '../components/ui';
@@ -15,6 +18,8 @@ export default function DocumentView() {
   const { id } = useParams();
   const nav = useNavigate();
   const ref = useRef<HTMLDivElement>(null);
+  const [mailing, setMailing] = useState(false);
+  const [busy, setBusy] = useState(false);
   const doc = useLiveQuery(() => db.docs.get(id!), [id]);
   const siblings = useLiveQuery(
     async () => (doc ? (await db.docs.where({ projectId: doc.projectId }).toArray()).filter((d) => d.type === doc.type).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) : []),
@@ -42,12 +47,21 @@ export default function DocumentView() {
       `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{margin:0;background:#fff}${DOC_CSS}</style></head><body>${body}</body></html>`,
       'text/html;charset=utf-8');
   };
-  const mail = () => {
-    const c = doc.snapshot.client;
-    const subject = encodeURIComponent(`${title} — ${doc.snapshot.project.name}`);
-    const body = encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint notre ${DOC_LABELS[doc.type].toLowerCase()} ${doc.number} pour « ${doc.snapshot.project.name} ».\n\nCordialement,\n${doc.snapshot.company.name}`);
-    location.href = `mailto:${c?.email || ''}?subject=${subject}&body=${body}`;
+  /** PDF du document tel qu'affiché (figé), pour l'email ou le téléchargement */
+  const makePdf = async (): Promise<Attachment> => ({
+    name: `${safeFileName(title)}.pdf`, type: 'application/pdf', blob: await htmlToPdf(ref.current?.innerHTML || '', DOC_CSS),
+  });
+  const attachments = async (): Promise<Attachment[]> => {
+    const list = [await makePdf()];
+    // facture : le XML Peppol (UBL) est joint s'il est complet
+    if (isInvoice && !peppolProblems(doc).length) list.push({ name: `${doc.number}.xml`, type: 'application/xml', blob: new Blob([buildUbl(doc)], { type: 'application/xml' }) });
+    return list;
   };
+  const mailDraft = () => ({
+    to: doc.snapshot.contactEmail || doc.snapshot.department?.email || doc.snapshot.client?.email || '',
+    subject: `${title} — ${doc.snapshot.project.name}`,
+    body: `Bonjour${doc.contactPerson ? ' ' + doc.contactPerson.split(' ')[0] : ''},\n\nVeuillez trouver ci-joint notre ${DOC_LABELS[doc.type].toLowerCase()} ${doc.number} pour « ${doc.snapshot.project.name} ».\n\nCordialement,\n${doc.snapshot.company.name}`,
+  });
 
   return (
     <>
@@ -65,7 +79,11 @@ export default function DocumentView() {
           </select>
           <button onClick={() => window.print()}>Imprimer / PDF</button>
           <button className="secondary" onClick={exportHtml}>Télécharger (HTML)</button>
-          <button className="secondary" onClick={mail}>Email</button>
+          <button className="secondary" disabled={busy} onClick={async () => {
+            setBusy(true);
+            try { const f = await makePdf(); download(f.name, f.blob, f.type); } catch (e) { alert('PDF impossible : ' + (e as Error).message); } finally { setBusy(false); }
+          }}>{busy ? 'PDF…' : 'Télécharger le PDF'}</button>
+          <button className="secondary" onClick={() => setMailing(true)}>Envoyer par email</button>
           {isInvoice && <button className="secondary" onClick={exportPeppol}>Peppol (XML)</button>}
           {(doc.type === 'facture' || doc.type === 'acompte') && <button className="secondary" onClick={makeCreditNote}>Créer un avoir</button>}
           {(doc.type === 'facture' || doc.type === 'acompte') && doc.status !== 'paye' && (doc.snapshot.dueDate || '9') < new Date().toISOString() && (
@@ -82,6 +100,10 @@ export default function DocumentView() {
         </div>
       </div>
       <div className="doc-wrap" ref={ref}><DocRender doc={doc} /></div>
+      {mailing && (
+        <EmailModal initial={mailDraft()} prepare={attachments} onClose={() => setMailing(false)}
+          onSent={() => { if (doc.status === 'brouillon') save(db.docs, { ...doc, status: 'envoye' }); }} />
+      )}
       <div className="no-print" style={{ marginTop: 12 }}>
         {(!isInvoice || doc.status === 'brouillon') && <button className="danger small" onClick={async () => {
           if (confirm('Supprimer définitivement ce document ?')) { await db.docs.delete(doc.id); nav('/projets/' + doc.projectId); }

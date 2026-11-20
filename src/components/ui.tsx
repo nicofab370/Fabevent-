@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { db, defaultSettings } from '../db';
 import type { ProjectStatus, Settings } from '../types';
 import { STATUS_LABELS } from '../types';
@@ -54,14 +54,35 @@ export function PageHead({ title, children }: { title: string; children?: ReactN
   );
 }
 
-/** Champ numérique qui accepte la virgule. */
-export function NumInput({ value, onChange, step = 'any', ...rest }: { value: number; onChange: (n: number) => void; step?: string; className?: string; min?: number; style?: React.CSSProperties }) {
+/**
+ * Champ numérique qui accepte la virgule. On peut le vider complètement : aucun « 0 » ne reste
+ * pendant la saisie (le champ vide vaut 0 pour les calculs). Au clic, le contenu est sélectionné
+ * pour être remplacé directement.
+ */
+export function NumInput({ value, onChange, step = 'any', placeholder, ...rest }: { value: number; onChange: (n: number) => void; step?: string; className?: string; min?: number; style?: React.CSSProperties; placeholder?: string; title?: string; 'aria-label'?: string }) {
+  const shown = (n: number) => (Number.isFinite(n) ? String(n).replace('.', ',') : '');
+  const [text, setText] = useState(shown(value));
+  const focused = useRef(false);
+  // valeur changée ailleurs : on la reprend, sauf pendant la saisie
+  useEffect(() => {
+    if (!focused.current) setText((t) => (t === '' && !value ? '' : shown(value)));
+  }, [value]);
   return (
     <input
-      type="number"
-      step={step}
-      value={Number.isFinite(value) ? value : 0}
-      onChange={(e) => onChange(e.target.value === '' ? 0 : parseFloat(e.target.value))}
+      type="text"
+      inputMode="decimal"
+      data-step={step}
+      value={text}
+      placeholder={placeholder ?? '0'}
+      onFocus={(e) => { focused.current = true; e.currentTarget.select(); }}
+      onBlur={() => { focused.current = false; setText((t) => (t.trim() === '' ? '' : shown(value))); }}
+      onChange={(e) => {
+        const raw = e.target.value;
+        if (!/^-?\d*[.,]?\d*$/.test(raw.trim())) return;
+        setText(raw);
+        const n = parseFloat(raw.replace(',', '.'));
+        onChange(raw.trim() === '' || raw.trim() === '-' || isNaN(n) ? 0 : n);
+      }}
       {...rest}
     />
   );

@@ -1,14 +1,17 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Fragment, useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { Empty, Field, Modal } from '../../components/ui';
 import { DEFAULT_PROJECT_TYPES, db } from '../../db';
 import { createDocument } from '../../documents';
 import type { DocType, Project, ProjectNote, ProjectStatus, Task, VatRegime } from '../../types';
-import { CONFIRMED, LANG_LABELS, STATUS_LABELS, VAT_REGIME_LABELS, type Lang } from '../../types';
+import { CONFIRMED, LANG_LABELS, STATUS_LABELS, VENUE_INFO_LABELS, type VenueInfo, VAT_REGIME_LABELS, type Lang } from '../../types';
 import { CustomFieldsEditor, TagInput } from '../../components/extra';
 import { blockPeriod, fmtDate, fmtRange, patch, save, sortPeriods, uid, usageDays } from '../../utils';
 import { ContactForm } from '../Contacts';
+import { VenueComments } from '../Venues';
+import { ContactPicker } from '../../components/ContactPicker';
+import { deptOf, ownAddress, placeAddress, placeName, projectPerson, spotOf } from '../../places';
 import { setProjectStatus } from './status';
 import { setProjectDistance, type ProjectData } from './shared';
 import { drivingRoute } from '../../geo';
@@ -29,7 +32,10 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
   const upd = (changes: Partial<Project>) => patch(db.projects, project.id, changes);
   const types = settings.projectTypes?.length ? settings.projectTypes : DEFAULT_PROJECT_TYPES;
   const venue = contacts.find((c) => c.id === project.venueId);
-  const venueAddress = venue ? [venue.address, venue.postalCode, venue.city].filter(Boolean).join(', ') : project.venue || '';
+  const dept = deptOf(client, project.departmentId);
+  const person = projectPerson(client, project);
+  const spot = spotOf(venue, project.spotId);
+  const venueAddress = venue ? placeAddress(venue, spot) : project.venue || '';
   const depots = settings.depots || [];
   const depot = depots.find((x) => x.id === (project.depotId || depots[0]?.id));
   const origin = (depot?.street || depot?.city ? [depot.street, depot.postalCode, depot.city].filter(Boolean).join(', ') : '')
@@ -56,7 +62,7 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
   /** Changement de client : propose d'appliquer ses remises par défaut. */
   const changeClient = async (clientId?: string) => {
     const c = contacts.find((x) => x.id === clientId);
-    await upd({ clientId, contactPerson: undefined });
+    await upd({ clientId, contactPerson: undefined, contactPersonId: undefined, departmentId: undefined });
     const eqDisc = c?.discounts?.equipment, totDisc = c?.discounts?.total;
     if (c && (eqDisc || totDisc) && confirm(`Appliquer les remises de ${c.company} (matériel ${eqDisc || 0} %, total ${totDisc || 0} %) à ce projet ?`)) {
       const fresh = await db.projects.get(project.id);
@@ -127,21 +133,20 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
                 {Object.entries(VAT_REGIME_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </Field>
-            {client?.persons?.length ? (
-              <Field label="Personne de contact" full>
-                <select value={project.contactPerson || ''} onChange={(e) => upd({ contactPerson: e.target.value || undefined })}>
-                  <option value="">—</option>
-                  {client.persons.map((x, i) => <option key={i} value={x.name}>{x.name}{x.role ? ` (${x.role})` : ''}</option>)}
-                </select>
+            {client && (
+              <Field label="Service / interlocuteur" full>
+                <ContactPicker client={client} value={project} onChange={(v) => upd(v)} />
               </Field>
-            ) : null}
+            )}
           </div>
           {client && (
             <dl className="kv" style={{ marginTop: 10 }}>
               {(client.address || client.city) && <><dt>Adresse</dt><dd>{[client.address, client.postalCode, client.city].filter(Boolean).join(', ')}</dd></>}
               {client.email && <><dt>Email</dt><dd><a href={`mailto:${client.email}`}>{client.email}</a></dd></>}
               {client.phone && <><dt>Téléphone</dt><dd><a href={`tel:${client.phone}`}>{client.phone}</a></dd></>}
-              {(() => { const p = client.persons?.find((x) => x.name === project.contactPerson); return p && (p.email || p.phone) ? <><dt>{p.name}</dt><dd>{[p.phone, p.email].filter(Boolean).join(' · ')}</dd></> : null; })()}
+              {dept && <><dt>Service</dt><dd>{dept.name}{[dept.phone, dept.email].some(Boolean) && <span className="muted"> · {[dept.phone, dept.email].filter(Boolean).join(' · ')}</span>}
+                {(dept.address || dept.city) && <div className="muted">{[dept.address, dept.postalCode, dept.city].filter(Boolean).join(', ')}</div>}</dd></>}
+              {person && (person.email || person.phone) ? <><dt>{person.name}</dt><dd>{person.phone && <a href={`tel:${person.phone}`}>{person.phone}</a>}{person.phone && person.email && ' · '}{person.email && <a href={`mailto:${person.email}`}>{person.email}</a>}</dd></> : null}
               {client.vatNumber && <><dt>TVA</dt><dd>{client.vatNumber}</dd></>}
             </dl>
           )}
@@ -154,7 +159,7 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
               <div style={{ display: 'flex', gap: 6 }}>
                 <select value={project.venueId || ''} onChange={(e) => {
                   const v = contacts.find((c) => c.id === e.target.value);
-                  upd({ venueId: e.target.value || undefined, venue: v ? v.company : project.venue });
+                  upd({ venueId: e.target.value || undefined, spotId: undefined, venue: v ? v.company : project.venue });
                 }}>
                   <option value="">—</option>
                   {contacts.filter((c) => c.type === 'lieu').map((c) => <option key={c.id} value={c.id}>{c.company}</option>)}
@@ -162,10 +167,45 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
                 <button type="button" className="secondary small" onClick={() => setNewContact('lieu')}>+</button>
               </div>
             </Field>
+            {venue && (
+              <Field label="Endroit" full>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <select aria-label="Endroit" value={project.spotId || ''} onChange={(e) => {
+                    const sp = spotOf(venue, e.target.value);
+                    upd({ spotId: sp?.id, venue: placeName(venue, sp) });
+                  }}>
+                    <option value="">{venue.spots?.length ? 'Tout le lieu / pas précisé' : 'Aucun endroit enregistré'}</option>
+                    {(venue.spots || []).map((x) => <option key={x.id} value={x.id}>{x.name}{ownAddress(x) ? ` — ${placeAddress(venue, x)}` : ''}</option>)}
+                  </select>
+                  <button type="button" className="secondary small" title="Nouvel endroit dans ce lieu" onClick={async () => {
+                    const name = prompt(`Nouvel endroit dans « ${venue.company} » (ex. Bâtiment B, Scène acoustique) :`)?.trim();
+                    if (!name) return;
+                    const address = prompt('Adresse de cet endroit (laisser vide si c\'est celle du lieu) :')?.trim() || undefined;
+                    const sp = { id: uid(), name, address };
+                    const fresh = await db.contacts.get(venue.id);
+                    await patch(db.contacts, venue.id, { spots: [...(fresh?.spots || []), sp] });
+                    await upd({ spotId: sp.id, venue: placeName(venue, sp) });
+                  }}>+</button>
+                </div>
+              </Field>
+            )}
             <Field label="Nom affiché sur les documents" full><LazyInput value={project.venue} onSave={(v) => upd({ venue: v || undefined })} /></Field>
           </div>
           {venueAddress && <p>{venueAddress}<br /><a href={route} target="_blank" rel="noreferrer">Voir l'itinéraire ↗</a></p>}
           <Distance d={d} from={origin} to={venueAddress} />
+          {venue && (
+            <>
+              {venue.venueInfo && Object.keys(venue.venueInfo).length > 0 && (
+                <dl className="kv" style={{ marginTop: 10 }}>
+                  {(Object.keys(VENUE_INFO_LABELS) as (keyof VenueInfo)[]).filter((k) => venue.venueInfo?.[k]).map((k) => (
+                    <Fragment key={k}><dt>{VENUE_INFO_LABELS[k]}</dt><dd style={{ whiteSpace: 'pre-wrap' }}>{venue.venueInfo![k]}</dd></Fragment>
+                  ))}
+                </dl>
+              )}
+              <h3 style={{ marginBottom: 4 }}>Commentaires sur le lieu <Link to={'/lieux/' + venue.id} className="muted" style={{ fontSize: 12, fontWeight: 400 }}>fiche du lieu ↗</Link></h3>
+              <VenueComments venue={venue} projects={[project]} projectId={project.id} />
+            </>
+          )}
         </div>
 
         <div className="card">
@@ -186,7 +226,7 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
           <h2 style={{ margin: 0 }}>Planning</h2>
           <button className="secondary small" onClick={() => goTab('planning')}>Gérer le planning</button>
         </div>
-        {subs.length === 0 ? <Empty>Aucune salle.</Empty> : (
+        {subs.length === 0 ? <Empty>Aucun sous-projet.</Empty> : (
           <table className="list">
             <tbody>
               {subs.map((sp) => {
@@ -224,7 +264,7 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
         <Modal title={newContact === 'client' ? 'Nouveau client' : 'Nouveau lieu'} onClose={() => setNewContact(null)}>
           <ContactForm initial={{ type: newContact, company: '' }} onDone={(c) => {
             setNewContact(null);
-            if (c) upd(newContact === 'client' ? { clientId: c.id, contactPerson: undefined } : { venueId: c.id, venue: c.company });
+            if (c) upd(newContact === 'client' ? { clientId: c.id, contactPerson: undefined, contactPersonId: undefined, departmentId: undefined } : { venueId: c.id, venue: c.company });
           }} />
         </Modal>
       )}

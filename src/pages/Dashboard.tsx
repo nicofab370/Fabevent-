@@ -48,7 +48,7 @@ export default function Dashboard() {
         <div className="stat"><b>{upcoming.length}</b><span>prestations dans les 30 j</span></div>
         <div className="stat"><b>{pendingQuotes}</b><span>demandes et devis en attente</span></div>
         <div className="stat" onClick={() => nav('/penuries')} style={{ cursor: 'pointer' }}><b style={{ color: firmShort ? 'var(--danger)' : undefined }}>{conflicts.length}</b><span>manques de matériel{conflicts.length ? ` (${firmShort} réels)` : ''}</span></div>
-        <div className="stat"><b style={{ color: unstaffed.length ? 'var(--danger)' : undefined }}>{unstaffed.length}</b><span>postes à pourvoir</span></div>
+        <div className="stat" onClick={() => nav('/attribution')} style={{ cursor: 'pointer' }}><b style={{ color: unstaffed.length ? 'var(--danger)' : undefined }}>{unstaffed.length}</b><span>postes à pourvoir</span></div>
         <div className="stat" onClick={() => nav('/maintenance')} style={{ cursor: 'pointer' }}><b style={{ color: dueInspections ? 'var(--danger)' : undefined }}>{dueInspections}</b><span>contrôles à faire (30 j)</span></div>
         <div className="stat" onClick={() => nav('/maintenance')} style={{ cursor: 'pointer' }}><b>{openRepairs}</b><span>réparations en cours</span></div>
         {expiringDocs > 0 && <div className="stat" onClick={() => nav('/equipe')} style={{ cursor: 'pointer' }}><b style={{ color: 'var(--danger)' }}>{expiringDocs}</b><span>documents du personnel à renouveler</span></div>}

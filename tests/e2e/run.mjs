@@ -49,6 +49,17 @@ async function step(name, fn) {
 const go = async (hash) => { await page.goto(U + '#/' + hash); await page.waitForTimeout(400); };
 const openProject = async (name) => { await go('projets'); await page.click(`text=${name}`); await page.waitForSelector('.project-tabs'); await page.waitForTimeout(300); };
 const tab = async (label) => { await page.click(`.project-tabs button:text-is("${label}")`); await page.waitForTimeout(300); };
+/** glisser-déposer HTML5 à la souris (la cible est d'abord ramenée à l'écran) */
+const drag = async (src, target) => {
+  await target.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(150);
+  const a = await src.boundingBox(); const t = await target.boundingBox();
+  await page.mouse.move(a.x + 10, a.y + a.height / 2); await page.mouse.down();
+  await page.mouse.move(a.x + 30, a.y + a.height / 2, { steps: 5 });
+  await page.mouse.move(t.x + 60, t.y + 20, { steps: 10 }); await page.mouse.up();
+  await page.waitForTimeout(500);
+};
+const crewMode = async (n) => { await page.click(`.crew-modes button:has-text("${n === 1 ? '1. Postes' : '2. Attribution'}")`); await page.waitForTimeout(200); };
 const field = (label) => page.locator('.field', { hasText: label });
 async function openDemo() {
   await go('');
@@ -116,7 +127,7 @@ await step('Démo : chargement et tableau de bord', async () => {
 
 await step('Dépôts : transfert proposé depuis Namur pour le festival', async () => {
   await openProject('Festival des Lumières');
-  const before = await page.locator('.alert').innerText();
+  const before = await page.locator('.alert:not(.venue-alert)').innerText();
   const m = before.match(/X12 \(−(\d+)\)/);
   expect(m, 'manque d’enceintes X12 attendu');
   await tab('Sous-locations & commandes');
@@ -125,7 +136,7 @@ await step('Dépôts : transfert proposé depuis Namur pour le festival', async 
   await page.click('.modal button[type=submit]');
   await page.waitForTimeout(400);
   await openProject('Festival des Lumières');
-  const after = (await page.locator('.alert').innerText()).match(/X12 \(−(\d+)\)/);
+  const after = (await page.locator('.alert:not(.venue-alert)').innerText()).match(/X12 \(−(\d+)\)/);
   expect(after && Number(after[1]) < Number(m[1]), `le manque doit diminuer (${m[1]} → ${after?.[1]})`);
 });
 
@@ -136,7 +147,7 @@ await step('Sous-location : confirmée, elle comble le manque', async () => {
   await field('Statut').locator('select').selectOption('confirme');
   await page.waitForTimeout(300);
   await openProject('Festival des Lumières');
-  const alert = await page.locator('.alert').innerText().catch(() => '');
+  const alert = await page.locator('.alert:not(.venue-alert)').innerText().catch(() => '');
   expect(!alert.includes('X12'), `plus de manque de X12 attendu, reçu : ${alert}`);
 });
 
@@ -256,6 +267,7 @@ await step('Projet récurrent : 2 répétitions hebdomadaires', async () => {
 await step('Personnel : heures sup., trajet sur la feuille de route, documents à renouveler', async () => {
   await openProject('Festival des Lumières');
   await tab('Équipe & transport');
+  await crewMode(1);
   expect(await page.locator('text=/h sup\\./').count(), 'heures supplémentaires affichées');
   await openProject('Conférence annuelle');
   await tab('Finances & documents');
@@ -273,8 +285,9 @@ await step('Sous-traitants : changer de rigger change la marge, pas le prix clie
   const totalBefore = await head().nth(2).innerText();
   const marginBefore = await head().nth(3).innerText();
   await tab('Équipe & transport');
-  const row = page.locator('table.list tbody tr', { has: page.locator('input[value="Rigger"]') }).first();
-  const select = row.locator('select').nth(1);
+  await crewMode(2);
+  const row = page.locator('table.crew-assign tbody tr', { hasText: 'Rigger' }).first();
+  const select = row.locator('select[aria-label="Technicien"]');
   const options = await select.locator('option').allInnerTexts();
   expect(options.some((o) => o.includes('Sam Moreau') && o.includes('260')), `coût de chaque candidat affiché : ${options.join(' | ')}`);
   await select.selectOption({ label: options.find((o) => o.includes('Sam Moreau')) });
@@ -390,12 +403,14 @@ await step('Consommables : passés en « Terminé », ils sortent du stock', asy
 await step('Indisponibilité d’un technicien signalée sur un poste', async () => {
   await openProject('Festival des Lumières');
   await tab('Équipe & transport');
+  await crewMode(2);
   expect(await page.locator('.avail.ko', { hasText: 'Indisponible' }).count(), 'Emma (congés) signalée indisponible');
 });
 
 await step('Véhicule réservé deux fois : conflit signalé', async () => {
   await openProject('Beurs Maastricht');
   await tab('Équipe & transport');
+  await crewMode(1);
   await page.locator('input[type=datetime-local]').last().fill('2030-01-01T00:00');
   await page.waitForTimeout(300);
   const va = page.locator('table.list').last().locator('tbody tr').first();
@@ -593,6 +608,7 @@ await step('Planification provisoire : « à confirmer » sur la feuille de rout
   expect((await page.locator('.doc').innerText()).includes('à confirmer'), 'poste provisoire masqué au technicien');
   await openProject('Festival des Lumières');
   await tab('Équipe & transport');
+  await crewMode(2);
   const stat = () => page.locator('.stat', { hasText: 'postes provisoires' }).locator('b').innerText();
   expect(Number(await stat()) > 0, 'postes provisoires comptés');
   await page.click('text=Rendre toute la planification finale');
@@ -600,10 +616,10 @@ await step('Planification provisoire : « à confirmer » sur la feuille de rout
   expect(Number(await stat()) === 0, 'plus aucun poste provisoire');
 });
 
-await step('Facture d’une salle, puis facture finale qui l’exclut', async () => {
+await step('Facture d’un sous-projet, puis facture finale qui l’exclut', async () => {
   await openProject('Conférence annuelle');
   await tab('Finances & documents');
-  await page.click('text=+ Facture d\'une salle');
+  await page.click('text=+ Facture d\'un sous-projet');
   await page.locator('.modal label', { hasText: 'Salle atelier 1' }).locator('input').check();
   await page.click('.modal button[type=submit]');
   await page.waitForSelector('.doc');
@@ -656,6 +672,7 @@ await step('Rendez-vous : affiché au planning et rend le participant indisponib
   await page.waitForTimeout(300);
   await openProject('Conférence annuelle');
   await tab('Équipe & transport');
+  await crewMode(2);
   expect(await page.locator('.avail.ko', { hasText: 'Indisponible' }).count(), 'Hugo indisponible pendant le rendez-vous');
 });
 
@@ -832,6 +849,268 @@ await step('Champ en liste déroulante : colonne et filtre des projets', async (
   await page.waitForTimeout(200);
   const rows = await page.locator('table.list tbody tr').allInnerTexts();
   expect(rows.length === 1 && rows[0].includes('Festival'), 'filtre sur la valeur');
+});
+
+console.log('\n  — base des lieux —');
+await step('Lieux : liste, recherche dans les commentaires, fiche avec projets', async () => {
+  await resetDemo();
+  await go('lieux');
+  expect((await page.locator('table.list tbody tr').count()) >= 3, 'lieux de la démo listés');
+  await page.fill('.toolbar input', 'monte-charge');
+  await page.waitForTimeout(200);
+  const rows = await page.locator('table.list tbody tr').allInnerTexts();
+  expect(rows.length === 1 && rows[0].includes('Palais des Congrès'), 'recherche dans les commentaires');
+  await page.locator('table.list tbody tr').first().click();
+  await page.waitForSelector('h2:has-text("Projets dans ce lieu")');
+  expect((await page.locator('.card', { hasText: 'Projets dans ce lieu' }).innerText()).includes('Gala de fin'), 'historique des projets');
+  expect(await field('Électricité').locator('textarea').inputValue() === '2 × 63 A tétra côté scène, 1 × 32 A en régie', 'infos pratiques');
+});
+
+await step('Lieux : commentaire ajouté depuis un projet, alerte et feuille de route', async () => {
+  await openProject('Festival des Lumières');
+  expect((await page.locator('.venue-alert').innerText()).includes('plaques de roulage'), 'alerte du lieu sur le projet');
+  const card = page.locator('.card', { hasText: 'Lieu de la prestation' });
+  await card.locator('.venue-comments textarea').fill('Prévoir 2 rallonges 63 A supplémentaires pour la scène acoustique');
+  await card.locator('.venue-comments label', { hasText: 'Sur la feuille de route' }).locator('input').check();
+  await card.locator('.venue-comments button[type=submit]').click();
+  await page.waitForTimeout(400);
+  expect((await card.innerText()).includes('2 rallonges 63 A'), 'commentaire affiché sur le projet');
+  await go('lieux');
+  await page.locator('tr', { hasText: 'Parc de la Boverie' }).click();
+  await page.waitForSelector('.venue-comments');
+  const venueCard = await page.locator('.card', { hasText: 'Commentaires' }).innerText();
+  expect(venueCard.includes('2 rallonges 63 A') && venueCard.includes('Festival des Lumières'), 'commentaire rattaché au lieu et au projet');
+  await openProject('Festival des Lumières');
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Feuille de route")');
+  await page.waitForSelector('.doc');
+  const fr = await page.locator('.doc').innerText();
+  expect(fr.includes('Entrée nord uniquement') && fr.includes('2 rallonges 63 A') && fr.includes('plaques de roulage'), 'infos et commentaires du lieu sur la feuille de route');
+  await openProject('Festival des Lumières');
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Devis")');
+  await page.waitForSelector('.doc');
+  expect(!(await page.locator('.doc').innerText()).includes('plaques de roulage'), 'pas sur le devis');
+});
+
+console.log('\n  — services clients et endroits —');
+await step('Client : recherche d’une personne, services et interlocuteurs', async () => {
+  await resetDemo();
+  await go('contacts');
+  await page.fill('.toolbar input', 'Anne');
+  await page.waitForTimeout(200);
+  const row = await page.locator('table.list tbody tr').first().innerText();
+  expect(row.includes('Ville de Namur') && row.includes('Anne Collin (Culture)'), 'personne trouvée avec son service');
+  await page.locator('table.list tbody tr').first().click();
+  const editor = page.locator('.people-editor');
+  expect((await editor.locator('.dept-box').count()) === 2, 'deux services');
+  await editor.locator('.dept-box', { has: page.locator('input[value="Culture"]') }).locator('button:has-text("+ Personne")').click();
+  await editor.locator('.dept-box', { has: page.locator('input[value="Culture"]') }).locator('.person-row').last().locator('input').first().fill('Sarah Lenoir');
+  await page.click('.modal button[type=submit]');
+  await page.waitForTimeout(300);
+  await openProject('Marché de Noël');
+  const picker = page.locator('select[aria-label="Interlocuteur"]');
+  expect((await picker.locator('option:checked').innerText()).includes('Julie Martin'), 'interlocuteur du projet');
+  expect((await picker.locator('optgroup[label="Service Culture"] option').allInnerTexts()).some((t) => t.includes('Sarah Lenoir')), 'nouvelle personne dans le service');
+});
+
+await step('Projet : choisir une personne d’un autre service, devis à l’adresse du service', async () => {
+  await openProject('Marché de Noël');
+  const picker = page.locator('select[aria-label="Interlocuteur"]');
+  await picker.selectOption({ label: 'Anne Collin (Programmatrice)' });
+  await page.waitForTimeout(400);
+  expect((await page.locator('.card', { has: page.locator('h2:text-is("Client")') }).innerText()).includes('Culture'), 'service affiché');
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Devis")');
+  await page.waitForSelector('.doc');
+  const doc = await page.locator('.doc').innerText();
+  expect(doc.includes('Culture') && doc.includes('Rue Rogier 9') && doc.includes('Anne Collin'), 'service, adresse du service et interlocuteur sur le devis');
+});
+
+await step('Projet : ajout rapide d’un interlocuteur dans un nouveau service', async () => {
+  await openProject('Marché de Noël');
+  await page.locator('.card', { hasText: 'Service / interlocuteur' }).locator('button[title="Nouvel interlocuteur ou nouveau service"]').click();
+  await page.locator('.modal .field', { hasText: 'Service' }).first().locator('select').selectOption('__new');
+  await page.locator('.modal .field', { hasText: 'Nom du nouveau service' }).locator('input').fill('Sports');
+  await page.locator('.modal .field', { hasText: 'Nom de la personne' }).locator('input').fill('Paul Noël');
+  await page.click('.modal button[type=submit]');
+  await page.waitForTimeout(500);
+  const picker = page.locator('select[aria-label="Interlocuteur"]');
+  expect((await picker.locator('option:checked').innerText()).includes('Paul Noël'), 'nouvel interlocuteur choisi');
+  expect((await picker.locator('optgroup[label="Service Sports"]').count()) === 1, 'nouveau service créé');
+});
+
+await step('Lieu : plusieurs endroits avec leur adresse, choisis par projet et par salle', async () => {
+  await go('lieux');
+  await page.locator('tr', { hasText: 'Parc de la Boverie' }).click();
+  await page.waitForSelector('.spots');
+  expect((await page.locator('.spots tbody tr').count()) === 3, 'trois endroits');
+  await page.fill('.spots input[name=spot]', 'Village food-trucks');
+  await page.click('.spots button:has-text("+ Endroit")');
+  await page.waitForTimeout(300);
+  expect((await page.locator('.spots tbody tr').count()) === 4, 'endroit ajouté');
+  await openProject('Festival des Lumières');
+  await page.locator('select[aria-label="Endroit"]').selectOption({ label: 'Grande scène — Quai de la Boverie (entrée nord), 4020, Liège' });
+  await page.waitForTimeout(300);
+  expect((await page.locator('.card', { hasText: 'Lieu de la prestation' }).innerText()).includes('Quai de la Boverie (entrée nord)'), 'adresse de l’endroit sur le projet');
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Feuille de route")');
+  await page.waitForSelector('.doc');
+  const fr = await page.locator('.doc').innerText();
+  expect(fr.includes('Scène acoustique') && fr.includes('Rue du Parc 2'), 'adresse de l’endroit de la salle');
+  expect(fr.includes('Coffret 32 A près du kiosque') && fr.includes('portail N2'), 'infos pratiques des endroits');
+});
+
+await step('Sous-projet : changer d’endroit dans sa fenêtre', async () => {
+  await openProject('Festival des Lumières');
+  await tab('Planning');
+  const room = page.locator('.card', { has: page.locator('h2', { hasText: 'Scène acoustique' }) });
+  await room.locator('button:has-text("Modifier les horaires")').click();
+  await page.locator('select[aria-label="Endroit du sous-projet"]').selectOption({ label: 'Loges artistes' });
+  await page.click('.modal button[type=submit]');
+  await page.waitForTimeout(300);
+  expect((await room.innerText()).includes('Loges artistes'), 'endroit de la salle mis à jour');
+});
+
+console.log('\n  — glisser-déposer, champs numériques, postes et attribution —');
+await step('Matériel : glisser un article du catalogue dans un groupe', async () => {
+  await resetDemo();
+  await openProject('Conférence annuelle');
+  await tab('Équipement');
+  const scene = page.locator('.sub', { hasText: 'Salle plénière' }).locator('.eq-group[data-group="Scène"]');
+  const before = await scene.locator('tbody tr').count();
+  await page.fill('.eq-catalogue input[aria-label="Rechercher dans le catalogue"]', 'SM58');
+  await drag(page.locator('.eq-catalogue .eq-cat-item', { hasText: 'Micro Shure SM58' }), scene);
+  expect((await scene.locator('tbody tr').count()) > before, 'ligne ajoutée au groupe Scène');
+  expect((await scene.innerText()).includes('Micro Shure SM58'), 'article déposé');
+});
+
+await step('Matériel : déplacer une ligne vers un autre groupe, « + » du catalogue sur le groupe choisi', async () => {
+  const room = page.locator('.sub', { hasText: 'Salle plénière' });
+  const scene = room.locator('.eq-group[data-group="Scène"]');
+  const son = room.locator('.eq-group[data-group="Son & vidéo"]');
+  await drag(scene.locator('tr', { hasText: 'Micro Shure SM58' }).locator('td.drag-handle'), son);
+  expect((await son.innerText()).includes('Micro Shure SM58') && !(await scene.innerText()).includes('Micro Shure SM58'), 'ligne déplacée');
+  await scene.locator('.eq-group-head strong').click();
+  await page.fill('.eq-catalogue input[aria-label="Quantité déposée"]', '3');
+  await page.fill('.eq-catalogue input[aria-label="Rechercher dans le catalogue"]', 'DI passive');
+  await page.locator('.eq-catalogue button[aria-label^="Ajouter"]').first().click();
+  await page.waitForTimeout(500);
+  const row = scene.locator('tr', { hasText: 'Boîte de direct DI passive' });
+  expect(await row.locator('input').first().inputValue() === '3', 'trois DI ajoutées au groupe choisi');
+});
+
+await step('Champ numérique : on peut le vider sans qu’un 0 reste', async () => {
+  const qtyInput = page.locator('.sub', { hasText: 'Salle plénière' }).locator('tr', { hasText: 'Boîte de direct DI passive' }).locator('input').first();
+  await qtyInput.fill('');
+  await page.waitForTimeout(300);
+  expect(await qtyInput.inputValue() === '', 'champ vide pendant la saisie');
+  await qtyInput.pressSequentially('5');
+  await page.waitForTimeout(300);
+  expect(await qtyInput.inputValue() === '5', `« 5 » et pas « 05 » (${await qtyInput.inputValue()})`);
+  await go('parametres');
+  const vat = page.locator('.field', { hasText: 'Taux de TVA' }).locator('input');
+  await vat.fill('');
+  expect(await vat.inputValue() === '', 'paramètre vidé sans 0');
+});
+
+await step('Sous-projets : le vocabulaire « sous-projet » remplace « salle »', async () => {
+  await openProject('Conférence annuelle');
+  await tab('Planning');
+  expect(await page.locator('button:has-text("+ Ajouter un sous-projet")').count() === 1, 'bouton « Ajouter un sous-projet »');
+  expect((await page.locator('.stats').first().innerText()).includes('sous-projet(s)'), 'compteur de sous-projets');
+});
+
+await step('Postes : prévoir 3 techniciens sur un créneau, sans les attribuer', async () => {
+  await openProject('Conférence annuelle');
+  await tab('Équipe & transport');
+  await crewMode(1);
+  const room = page.locator('.sub', { hasText: 'Salle atelier 2' });
+  const before = await room.locator('table.crew-posts tbody tr').count();
+  await room.locator('input[aria-label="Nombre de postes"]').fill('3');
+  await room.locator('input[aria-label="Fonction à ajouter"]').fill('Technicien');
+  await room.locator('button:has-text("+ Ajouter les postes")').click();
+  await page.waitForTimeout(600);
+  expect((await room.locator('table.crew-posts tbody tr').count()) === before + 3, 'trois postes créés');
+  expect((await room.locator('table.crew-posts tbody tr', { hasText: 'à pourvoir' }).count()) >= 3, 'postes à pourvoir');
+  expect((await room.locator('select[aria-label="Technicien"]').count()) === 0, 'pas de choix de technicien dans les postes');
+  await crewMode(2);
+  expect((await room.locator('table.crew-assign select[aria-label="Technicien"]').count()) === before + 3, 'attribution : un choix par poste');
+});
+
+await step('Attribution : page de tous les projets, candidats disponibles d’abord', async () => {
+  await go('attribution');
+  const row = page.locator('tr', { hasText: 'Conférence annuelle' }).filter({ hasText: 'Technicien' }).first();
+  await row.waitFor({ timeout: 5000 });
+  const sel = row.locator('select[aria-label="Technicien"]');
+  const opts = (await sel.locator('option').allInnerTexts()).slice(1);
+  const firstBusy = opts.findIndex((o) => /indisponible|déjà planifié/.test(o));
+  expect(firstBusy === -1 || opts.slice(firstBusy).every((o) => /indisponible|déjà planifié/.test(o)), `disponibles en premier : ${opts.join(' | ')}`);
+  const before = await page.locator('select[aria-label="Technicien"]').count();
+  await sel.selectOption({ index: 1 });
+  await page.waitForTimeout(500);
+  expect((await page.locator('select[aria-label="Technicien"]').count()) === before - 1, 'poste pourvu retiré de la liste « à pourvoir »');
+});
+
+console.log('\n  — emails avec pièces jointes —');
+const pdfPages = (buf) => (buf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length;
+
+await step('Document : PDF téléchargeable (vrai fichier PDF)', async () => {
+  await resetDemo();
+  await openProject('Conférence annuelle');
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Devis")');
+  await page.waitForSelector('.doc');
+  const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 30000 }), page.click('button:has-text("Télécharger le PDF")')]);
+  const buf = readFileSync(await dl.path());
+  expect(dl.suggestedFilename().endsWith('.pdf'), 'nom en .pdf');
+  expect(buf.subarray(0, 5).toString() === '%PDF-', 'fichier PDF');
+  expect(pdfPages(buf) >= 1 && buf.length > 20000, `PDF avec du contenu (${pdfPages(buf)} page(s), ${buf.length} octets)`);
+});
+
+await step('Email : brouillon .eml avec le PDF joint, statut « Envoyé »', async () => {
+  await page.click('button:has-text("Envoyer par email")');
+  await page.waitForSelector('.modal .attachments li', { timeout: 30000 });
+  const att = await page.locator('.modal .attachments').innerText();
+  expect(att.includes('.pdf'), 'PDF prêt en pièce jointe');
+  expect((await page.locator('.modal .field', { hasText: 'À' }).first().locator('input').inputValue()).includes('@'), 'destinataire prérempli');
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('.modal button:has-text("Brouillon prêt à envoyer")')]);
+  const eml = readFileSync(await dl.path(), 'utf8');
+  expect(dl.suggestedFilename().endsWith('.eml'), 'fichier .eml');
+  expect(eml.includes('X-Unsent: 1') && eml.includes('Content-Type: application/pdf'), 'brouillon avec PDF joint');
+  const b64 = eml.split('Content-Type: application/pdf')[1].split('\r\n\r\n')[1].split('--')[0].replace(/\s+/g, '');
+  expect(Buffer.from(b64, 'base64').subarray(0, 5).toString() === '%PDF-', 'pièce jointe = PDF valide');
+  await page.click('.modal button:text-is("Fermer")');
+  await page.waitForTimeout(300);
+  expect(await page.locator('select', { has: page.locator('option[value=accepte]') }).inputValue() === 'envoye', 'devis passé « Envoyé »');
+});
+
+await step('Email : facture avec PDF et XML Peppol joints', async () => {
+  await openProject('Marché de Noël');
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Facture")');
+  await page.waitForSelector('.doc');
+  await page.click('button:has-text("Envoyer par email")');
+  await page.waitForSelector('.modal .attachments li', { timeout: 30000 });
+  const att = await page.locator('.modal .attachments').innerText();
+  expect(att.includes('.pdf') && att.includes('.xml'), `PDF et XML joints (${att})`);
+  await page.click('.modal button:text-is("Fermer")');
+});
+
+await step('Email : bon de commande RH et planning du technicien (.ics) joints', async () => {
+  await openProject('Festival des Lumières');
+  await tab('Sous-locations & commandes');
+  await page.locator('button:has-text("Envoyer par email")').first().click();
+  await page.waitForSelector('.modal .attachments li', { timeout: 30000 });
+  expect((await page.locator('.modal .attachments').innerText()).includes('Bon-de-commande'), 'bon de commande en PDF');
+  await page.click('.modal button:text-is("Fermer")');
+  await openProject('Conférence annuelle');
+  await tab('Équipe & transport');
+  await crewMode(2);
+  await page.locator('button:has-text("Envoyer le planning")').first().click();
+  await page.waitForSelector('.modal .attachments li', { timeout: 10000 });
+  expect((await page.locator('.modal .attachments').innerText()).includes('.ics'), 'agenda .ics joint');
+  await page.click('.modal button:text-is("Fermer")');
 });
 
 await ctx.close();

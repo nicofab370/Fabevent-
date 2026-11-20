@@ -58,7 +58,7 @@ export const VARIABLE_GROUPS: { label: string; items: [string, string][] }[] = [
   ] },
   { label: 'Client', items: [
     ['client.nom', 'Nom / société'], ['client.contact', 'Personne de contact'], ['client.adresse', 'Adresse'], ['client.cp', 'Code postal'],
-    ['client.ville', 'Ville'], ['client.tva', 'N° TVA'], ['client.email', 'Email'], ['client.telephone', 'Téléphone'], ['client.bloc', 'Bloc adresse complet'],
+    ['client.ville', 'Ville'], ['client.service', 'Service du client'], ['client.tva', 'N° TVA'], ['client.email', 'Email'], ['client.telephone', 'Téléphone'], ['client.bloc', 'Bloc adresse complet'],
   ] },
   { label: 'Document', items: [
     ['document.titre', 'Titre'], ['document.type', 'Type'], ['document.numero', 'Numéro'], ['document.version', 'Version (v2…)'], ['document.date', "Date d'émission"],
@@ -76,10 +76,10 @@ export const VARIABLE_GROUPS: { label: string; items: [string, string][] }[] = [
     ['total.ht', 'Total HT'], ['total.tva', 'TVA'], ['total.taux_tva', 'Taux de TVA'], ['total.ttc', 'Total TTC'], ['total.remise', 'Remise'], ['total.reste', 'Reste à payer'],
   ] },
   { label: 'Blocs générés', items: [
-    ['bloc.entete', 'En-tête (gabarit ci-dessus)'], ['bloc.introduction', "Texte d'introduction"], ['bloc.salles', 'Salles : horaires, matériel, personnel, transport'],
+    ['bloc.entete', 'En-tête (gabarit ci-dessus)'], ['bloc.introduction', "Texte d'introduction"], ['bloc.salles', 'Sous-projets : horaires, matériel, personnel, transport'],
     ['bloc.frais', 'Frais supplémentaires'], ['bloc.lignes_simples', 'Lignes acompte / avoir'], ['bloc.options', 'Total des options'], ['bloc.totaux', 'Tableau des totaux'],
     ['bloc.conclusion', 'Texte de fin'], ['bloc.signature', 'Cadre de signature'], ['bloc.paiement', 'Paiement : IBAN, communication, QR'],
-    ['bloc.mention_tva', 'Mention de TVA (sinon sous les totaux)'], ['bloc.notes', 'Notes du projet prévues pour ce document'],
+    ['bloc.mention_tva', 'Mention de TVA (sinon sous les totaux)'], ['bloc.notes', 'Notes du projet et infos du lieu prévues pour ce document'],
     ['bloc.caution', 'Caution à verser'], ['bloc.conditions', 'Conditions générales'], ['bloc.pied', 'Pied de page (gabarit)'],
   ] },
 ];
@@ -93,6 +93,8 @@ export function docValues(doc: Doc): Record<string, string> {
   const co = s.company;
   const isInvoice = INVOICE_TYPES.includes(doc.type);
   const deposits = (s.deposits || []).reduce((a, d) => a + d.ttc, 0);
+  // un service avec sa propre adresse remplace celle de la société
+  const addr = clientAddress(doc);
   return {
     'societe.nom': co.name, 'societe.adresse': co.address || '', 'societe.telephone': co.phone || '', 'societe.email': co.email || '',
     'societe.tva': co.vatNumber || '', 'societe.numero_entreprise': co.siret || '', 'societe.iban': co.iban || '', 'societe.bic': co.bic || '',
@@ -100,8 +102,9 @@ export function docValues(doc: Doc): Record<string, string> {
     'libelle.numero': tr(doc, 'no'), 'libelle.date': tr(doc, 'date'), 'libelle.projet': tr(doc, 'project'),
     'societe.pied': s.footer || '',
     'client.nom': c?.company || '', 'client.contact': doc.contactPerson || [c?.firstName, c?.lastName].filter(Boolean).join(' '),
-    'client.adresse': c?.address || '', 'client.cp': c?.postalCode || '', 'client.ville': c?.city || '', 'client.tva': c?.vatNumber || '',
-    'client.email': c?.email || '', 'client.telephone': c?.phone || '',
+    'client.adresse': addr.address || '', 'client.cp': addr.postalCode || '', 'client.ville': addr.city || '', 'client.tva': c?.vatNumber || '',
+    'client.email': s.contactEmail || s.department?.email || c?.email || '', 'client.telephone': s.department?.phone || c?.phone || '',
+    'client.service': s.department?.name || '',
     'document.titre': (docLang(doc) === 'fr' && s.template?.title?.trim()) || DOC_TITLES[docLang(doc)][doc.type], 'document.type': DOC_TITLES[docLang(doc)][doc.type], 'document.numero': doc.number,
     'document.version': isInvoice ? '' : `— v${doc.version}`, 'document.date': fmtDate(s.issuedAt, false),
     'document.validite': s.validUntil ? fmtDate(s.validUntil, false) : '', 'document.echeance': s.dueDate && doc.type !== 'avoir' ? fmtDate(s.dueDate, false) : '',
@@ -124,8 +127,10 @@ function composite(doc: Doc, v: Record<string, string>): Record<string, string> 
   return {
     'societe.logo': s.company.logo ? `<img src="${esc(s.company.logo)}" alt="">` : '',
     'client.bloc': c && !isRoadmap ? `<strong>${esc(c.company)}</strong>` + lines([
-      (c.firstName || c.lastName) && esc([c.firstName, c.lastName].filter(Boolean).join(' ')), c.address && esc(c.address),
-      (c.postalCode || c.city) && esc([c.postalCode, c.city].filter(Boolean).join(' ')), c.vatNumber && `<span class="muted">${tr(doc, 'vat')} ${esc(c.vatNumber)}</span>`,
+      s.department && esc(s.department.name),
+      !s.department && !doc.contactPerson && (c.firstName || c.lastName) && esc([c.firstName, c.lastName].filter(Boolean).join(' ')),
+      clientAddress(doc).address && esc(clientAddress(doc).address!),
+      (clientAddress(doc).postalCode || clientAddress(doc).city) && esc([clientAddress(doc).postalCode, clientAddress(doc).city].filter(Boolean).join(' ')), c.vatNumber && `<span class="muted">${tr(doc, 'vat')} ${esc(c.vatNumber)}</span>`,
       doc.contactPerson && `${tr(doc, 'attention')} ${esc(doc.contactPerson)}`,
     ]) : '',
     'document.infos': lines([
@@ -158,4 +163,11 @@ export function fillTemplate(tpl: string, doc: Doc, blocks: Record<string, strin
 /** Retire les scripts et gestionnaires d'événements d'un gabarit. */
 export function stripScripts(html: string): string {
   return html.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+}
+
+/** Adresse de facturation : celle du service s'il en a une, sinon celle de la société. */
+function clientAddress(doc: Doc): { address?: string; postalCode?: string; city?: string } {
+  const d = doc.snapshot.department;
+  if (d && (d.address || d.city)) return d;
+  return doc.snapshot.client || {};
 }

@@ -24,6 +24,8 @@ import Projects from './pages/Projects';
 import SettingsPage from './pages/Settings';
 import Vehicles from './pages/Vehicles';
 import Shortages from './pages/Shortages';
+import Venues, { VenueDetail } from './pages/Venues';
+import CrewAssignmentPage from './pages/crewAssign';
 
 const NAV = [
   ['/', 'Tableau de bord', '◧'],
@@ -36,7 +38,9 @@ const NAV = [
   ['/transferts', 'Transferts', '⇵'],
   ['/maintenance', 'Maintenance', '⚒'],
   ['/contacts', 'Contacts', '☰'],
+  ['/lieux', 'Lieux', '⌂'],
   ['/equipe', 'Équipe', '☺'],
+  ['/attribution', 'Attribution', '✓'],
   ['/vehicules', 'Véhicules', '⛟'],
   ['/comptabilite', 'Export comptable', '€'],
   ['/rapports', 'Rapports', '↗'],
@@ -85,7 +89,10 @@ export default function App() {
           <Route path="/planning" element={<Calendar />} />
           <Route path="/materiel" element={<EquipmentList />} />
           <Route path="/materiel/:id" element={<EquipmentDetail />} />
+          <Route path="/lieux" element={<Venues />} />
+          <Route path="/lieux/:id" element={<VenueDetail />} />
           <Route path="/contacts" element={<Contacts />} />
+          <Route path="/attribution" element={<CrewAssignmentPage />} />
           <Route path="/equipe" element={<Crew />} />
           <Route path="/vehicules" element={<Vehicles />} />
           <Route path="/comptabilite" element={<Accounting />} />

@@ -19,10 +19,10 @@ const TOGGLES: [keyof DocStyle, string][] = [
   ['showCode', 'Références des articles'],
   ['showFactor', 'Colonne coefficient / jours'],
   ['showDiscount', 'Colonne remise'],
-  ['showPeriods', 'Horaires des salles'],
-  ['showSubtotals', 'Sous-total par salle'],
+  ['showPeriods', 'Horaires des sous-projets'],
+  ['showSubtotals', 'Sous-total par sous-projet'],
   ['hideZero', 'Masquer les lignes à 0 €'],
-  ['hideEquipmentDetail', 'Devis / factures : un total par salle au lieu du détail'],
+  ['hideEquipmentDetail', 'Devis / factures : un total par sous-projet au lieu du détail'],
   ['showSignature', 'Cadre « Bon pour accord » sur les devis'],
 ];
 
@@ -40,7 +40,7 @@ function sampleDoc(type: DocType, company: Doc['snapshot']['company'], footer: s
       company, footer, client: { id: 'c', createdAt: now, updatedAt: now, type: 'client', company: 'Client exemple SA', address: 'Rue de la Gare 1', postalCode: '5000', city: 'Namur', vatNumber: 'BE0123456789' },
       project: { number: 'P-2026-001', name: 'Projet exemple', venue: 'Salle des fêtes', start: d, end: d, discount: 0, externalRef: 'BC-123' },
       subprojects: [{
-        name: 'Salle 1', start: d, end: d, equipment,
+        name: 'Sous-projet 1', start: d, end: d, equipment,
         periods: [{ name: 'Montage', kind: 'montage', start: d, end: d }, { name: 'Prestation J1', kind: 'prestation', start: d, end: d }],
         crew: [{ function: 'Technicien son', person: 'Hugo', start: d, end: d, days: 1, rate: 300, total: 300, billable: true }], vehicles: [], subtotal: ht,
       }],

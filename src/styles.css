@@ -209,3 +209,34 @@ textarea.code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; fon
 .tag.small { font-size: 10px; padding: 0 6px; }
 .bulk-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .cal .ev.appt { background: #ede9fe; color: #5b21b6; border-left: 3px solid #7c3aed; }
+
+/* Glisser-déposer du matériel */
+.eq-layout.with-cat { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; align-items: start; }
+.eq-catalogue { position: sticky; top: 12px; max-height: calc(100vh - 24px); display: flex; flex-direction: column; margin: 0; }
+.eq-cat-list { overflow-y: auto; flex: 1; margin: 0 -6px; }
+.eq-cat-item { display: flex; align-items: center; gap: 8px; padding: 6px; border-radius: 8px; cursor: grab; font-size: 13px; }
+.eq-cat-item:hover { background: var(--bg); }
+.eq-cat-item:active { cursor: grabbing; }
+.eq-cat-item .thumb { width: 28px; height: 28px; margin: 0; }
+.drag-handle { cursor: grab; color: var(--muted); width: 18px; text-align: center; user-select: none; }
+.drop-zone { border-radius: 8px; transition: background .12s, box-shadow .12s; }
+.drop-zone.drop-target { box-shadow: inset 3px 0 0 var(--accent); }
+.drop-zone.drop-on { background: color-mix(in srgb, var(--accent) 10%, transparent); box-shadow: inset 0 0 0 2px var(--accent); }
+.drop-hint { border: 2px dashed var(--border); border-radius: 8px; padding: 10px; text-align: center; color: var(--muted); font-size: 13px; }
+@media (max-width: 1100px) {
+  .eq-layout.with-cat { grid-template-columns: 1fr; }
+  .eq-catalogue { position: static; max-height: 420px; order: -1; }
+}
+
+/* Postes à prévoir / attribution */
+.crew-posts input[aria-label="Fonction"] { min-width: 150px; }
+.crew-posts select { min-width: 110px; }
+.crew-posts input[type="datetime-local"] { min-width: 190px; }
+.crew-assign select[aria-label="Technicien"] { min-width: 260px; }
+.crew-modes { margin-bottom: 10px; }
+
+/* Envoi par email avec pièces jointes */
+.send-options { display: grid; gap: 10px; margin-top: 12px; }
+.send-option { display: grid; grid-template-columns: minmax(240px, auto) 1fr; gap: 10px; align-items: center; }
+.send-option button { width: 100%; }
+@media (max-width: 700px) { .send-option { grid-template-columns: 1fr; } }

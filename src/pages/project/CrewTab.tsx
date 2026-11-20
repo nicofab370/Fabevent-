@@ -1,4 +1,8 @@
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Empty, NumInput, StatusBadge } from '../../components/ui';
+import { CostCell, PersonSelect, type CrewContext } from '../crewAssign';
+import { EmailModal } from '../../components/EmailModal';
 import { appBaseUrl, db } from '../../db';
 import type { CrewAssignment, Person, Subproject, VehicleAssignment } from '../../types';
 import { RESERVING } from '../../types';
@@ -9,6 +13,10 @@ import { perKmFor, tripKm, vehiclePrice } from '../../geo';
 /** Onglet Équipe & transport : postes et véhicules par salle et par créneau, puis affectation. */
 export default function CrewTab({ d }: { d: ProjectData }) {
   const { project, projectCrew, people, settings } = d;
+  const [mailPerson, setMailPerson] = useState<Person | null>(null);
+  const [mode, setModeState] = useState<CrewMode>(() => { try { return (localStorage.getItem('fab.crewMode') as CrewMode) || 'postes'; } catch { return 'postes'; } });
+  const setMode = (m: CrewMode) => { setModeState(m); try { localStorage.setItem('fab.crewMode', m); } catch { /* sans stockage */ } };
+  const ctx: CrewContext = { people, allCrew: d.crew, subs: d.av.subs, unav: d.unav, catalogue: settings.crewFunctions || [] };
   const pMap = new Map(people.map((p) => [p.id, p]));
   const subMap = new Map(d.subs.map((s) => [s.id, s]));
   const assigned = people.filter((p) => projectCrew.some((c) => c.personId === p.id));
@@ -26,21 +34,36 @@ export default function CrewTab({ d }: { d: ProjectData }) {
       return { c, sp, a, b, label: `${fmtRange(a, b)} — ${c.function} · ${sp?.name}${pe ? ` (${pe.name})` : ''}${a !== c.start ? ' (trajet inclus)' : ''}` };
     });
 
-  const sendPlanning = (p: Person) => {
+  const planningMail = (p: Person) => {
     const items = schedule(p, true);
-    if (!items.length) return alert(`Aucun poste final pour ${p.name} : passe ses postes en « final » avant d'envoyer le planning.`);
-    const body = `Bonjour ${p.name.split(' ')[0]},\n\nVoici ton planning pour « ${project.name} »${project.venue ? ` (${project.venue})` : ''} :\n\n${items.map((i) => '- ' + i.label).join('\n')}\n\n${project.notes ? project.notes + '\n\n' : ''}Merci de me confirmer ta disponibilité.\n${settings.company.name}`;
-    location.href = `mailto:${p.email || ''}?subject=${encodeURIComponent(`Planning — ${project.name}`)}&body=${encodeURIComponent(body)}`;
+    const body = `Bonjour ${p.name.split(' ')[0]},\n\nVoici ton planning pour « ${project.name} »${project.venue ? ` (${project.venue})` : ''} :\n\n${items.map((i) => '- ' + i.label).join('\n')}\n\nLe fichier agenda joint (.ics) ajoute ces horaires à ton calendrier.\n\n${project.notes ? project.notes + '\n\n' : ''}Merci de me confirmer ta disponibilité.\n${settings.company.name}`;
+    return { to: p.email || '', subject: `Planning — ${project.name}`, body };
   };
-  const icsFor = (p: Person) => {
+  const sendPlanning = (p: Person) => {
+    if (!schedule(p, true).length) return alert(`Aucun poste final pour ${p.name} : passe ses postes en « final » avant d'envoyer le planning.`);
+    setMailPerson(p);
+  };
+  const icsText = (p: Person) => {
     const base = appBaseUrl(settings);
-    download(`${project.number}-${p.name.replace(/\s+/g, '-')}.ics`, buildIcs(`${project.name} — ${p.name}`, schedule(p, true).map(({ c, sp, a, b }) => ({
+    return buildIcs(`${project.name} — ${p.name}`, schedule(p, true).map(({ c, sp, a, b }) => ({
       uid: c.id, title: `${c.function} — ${project.name}`, start: a, end: b, location: sp?.venue || project.venue, description: sp?.name, url: `${base}#/projets/${project.id}`,
-    }))), 'text/calendar;charset=utf-8');
+    })));
   };
+  const icsName = (p: Person) => `${project.number}-${p.name.replace(/\s+/g, '-')}.ics`;
+  const icsFor = (p: Person) => download(icsName(p), icsText(p), 'text/calendar;charset=utf-8');
 
   return (
     <>
+      <div className="tabs crew-modes" role="tablist">
+        <button role="tab" className={mode === 'postes' ? 'on' : ''} onClick={() => setMode('postes')}>1. Postes à prévoir ({projectCrew.length})</button>
+        <button role="tab" className={mode === 'attribution' ? 'on' : ''} onClick={() => setMode('attribution')}>2. Attribution des techniciens{open.length ? ` (${open.length} à pourvoir)` : ''}</button>
+      </div>
+      {mode === 'postes' ? (
+        <div className="info">
+          Prévois d'abord les <strong>postes</strong> dont le projet a besoin (fonction, nombre, créneau, tarif client) et le transport.
+          Les techniciens s'attribuent ensuite dans l'onglet « 2. Attribution », ou pour tous les projets dans le menu <Link to="/attribution">Attribution</Link>.
+        </div>
+      ) : (
       <div className="card">
         <h2>Planification du personnel</h2>
         <div className="stats" style={{ marginBottom: 8 }}>
@@ -50,7 +73,7 @@ export default function CrewTab({ d }: { d: ProjectData }) {
           <div className="stat"><b style={{ color: provisional ? 'var(--accent)' : undefined }}>{provisional}</b><span>postes provisoires</span></div>
         </div>
         {provisional > 0 && <button className="secondary small" style={{ marginBottom: 8 }} onClick={async () => { for (const c of projectCrew.filter((x) => x.final === false)) await save(db.crew, { ...c, final: true }); }}>Rendre toute la planification finale</button>}
-        {assigned.length === 0 ? <Empty>Personne n'est encore affecté. Crée des postes dans les salles ci-dessous, puis choisis qui les occupe.</Empty> : (
+        {assigned.length === 0 ? <Empty>Personne n'est encore affecté. Crée des postes dans les sous-projets ci-dessous, puis choisis qui les occupe.</Empty> : (
           <table className="list">
             <tbody>
               {assigned.map((p) => (
@@ -67,12 +90,22 @@ export default function CrewTab({ d }: { d: ProjectData }) {
           </table>
         )}
       </div>
-      {d.subs.map((sp) => <RoomCrew key={sp.id} d={d} sp={sp} pMap={pMap} />)}
+      )}
+      {d.subs.map((sp) => <RoomCrew key={sp.id} d={d} sp={sp} pMap={pMap} mode={mode} ctx={ctx} />)}
+      {mailPerson && (
+        <EmailModal initial={planningMail(mailPerson)} onClose={() => setMailPerson(null)}
+          prepare={async () => [{ name: icsName(mailPerson), type: 'text/calendar', blob: new Blob([icsText(mailPerson)], { type: 'text/calendar;charset=utf-8' }) }]} />
+      )}
     </>
   );
 }
 
-function RoomCrew({ d, sp, pMap }: { d: ProjectData; sp: Subproject; pMap: Map<string, Person> }) {
+type CrewMode = 'postes' | 'attribution';
+
+function RoomCrew({ d, sp, pMap, mode, ctx }: { d: ProjectData; sp: Subproject; pMap: Map<string, Person>; mode: CrewMode; ctx: CrewContext }) {
+  const [addQty, setAddQty] = useState(1);
+  const [addFn, setAddFn] = useState('');
+  const [addPeriod, setAddPeriod] = useState('');
   const periods = sortPeriods(sp.periods || []);
   const [bStart, bEnd] = blockPeriod(sp);
   const crew = d.projectCrew.filter((c) => c.subprojectId === sp.id).sort((a, b) => a.start.localeCompare(b.start));
@@ -96,7 +129,7 @@ function RoomCrew({ d, sp, pMap }: { d: ProjectData; sp: Subproject; pMap: Map<s
   };
   const PeriodSelect = ({ value, onChange }: { value?: string; onChange: (v?: string) => void }) => (
     <select value={value || ''} onChange={(e) => onChange(e.target.value || undefined)}>
-      <option value="">Toute la salle</option>
+      <option value="">Tout le sous-projet</option>
       {periods.map((pe) => <option key={pe.id} value={pe.id}>{pe.name}</option>)}
     </select>
   );
@@ -108,44 +141,26 @@ function RoomCrew({ d, sp, pMap }: { d: ProjectData; sp: Subproject; pMap: Map<s
         <span className="muted">{fmtRange(bStart, bEnd)}</span>
       </div>
       <div className="sub-body">
-        <h3 style={{ marginBottom: 6 }}>Équipe</h3>
-        {crew.length > 0 && (
+        <h3 style={{ marginBottom: 6 }}>{mode === 'postes' ? 'Postes à prévoir' : 'Attribution des techniciens'}</h3>
+        {crew.length === 0 && mode === 'attribution' && <Empty>Aucun poste prévu : ajoute-les d'abord dans « 1. Postes à prévoir ».</Empty>}
+        {crew.length > 0 && mode === 'postes' && (
           <div className="table-wrap">
-            <table className="list">
-              <thead><tr><th>Fonction</th>{periods.length > 0 && <th>Créneau</th>}<th>Personne</th><th>Début</th><th>Fin</th><th>Unité</th><th title="Prix facturé au client (fonction)">Tarif client</th><th title="Ce que te coûte la personne affectée">Coût</th><th title="Final : visible du technicien (agenda, planning envoyé). Provisoire : pas encore communiqué.">Final</th><th title="Ajouter le temps de trajet du projet avant et après">Trajet</th><th>Facturé</th><th className="n">Total client</th><th className="n">Marge</th><th /></tr></thead>
+            <table className="list crew-posts">
+              <thead><tr><th>Fonction</th>{periods.length > 0 && <th>Créneau</th>}<th>Début</th><th>Fin</th><th>Unité</th><th title="Prix facturé au client pour la fonction">Tarif client</th><th title="Ajouter le temps de trajet du projet avant et après">Trajet</th><th>Facturé</th><th className="n">Total client</th><th>Technicien</th><th /></tr></thead>
               <tbody>
                 {crew.map((c) => {
-                  const issue = personIssue(c.personId, c.start, c.end, c.id, d.crew, d.av.subs, d.unav);
                   const person = c.personId ? pMap.get(c.personId) : undefined;
-                  const personCost = crewCostRate({ rateUnit: c.rateUnit }, person);
                   const a = crewAmount(c, d.settings, d.project.travelMinutes, crewCostRate(c, person));
-                  const margin = (c.billable ? a.billed : 0) - a.cost;
-                  const unitLabel = c.rateUnit === 'heure' ? '/h' : '/j';
                   return (
                     <tr key={c.id}>
                       <td>
-                        <input value={c.function} list="fonctions" onChange={(e) => {
+                        <input value={c.function} list="fonctions" aria-label="Fonction" onChange={(e) => {
                           const fn = e.target.value;
                           const rate = functionRate(fn, c.rateUnit, catalogue);
                           updCrew(c, { function: fn, ...(rate != null && catalogue.some((f) => f.name.toLowerCase() === fn.trim().toLowerCase()) ? { rate } : {}) });
                         }} />
                       </td>
                       {periods.length > 0 && <td><PeriodSelect value={c.periodId} onChange={(v) => updCrew(c, slot(v))} /></td>}
-                      <td>
-                        <select value={c.personId || ''} onChange={(e) => {
-                          const p = pMap.get(e.target.value);
-                          // le tarif client ne bouge pas ; le coût suit la personne choisie
-                          updCrew(c, { personId: e.target.value || undefined, cost: undefined, rate: c.rate || functionRate(c.function, c.rateUnit, catalogue, p) || 0 });
-                        }}>
-                          <option value="">— à pourvoir —</option>
-                          {[...d.people].sort((x, y) => crewCostRate({ rateUnit: c.rateUnit }, x) - crewCostRate({ rateUnit: c.rateUnit }, y)).map((x) => {
-                            const why = personIssue(x.id, c.start, c.end, c.id, d.crew, d.av.subs, d.unav);
-                            const cost = crewCostRate({ rateUnit: c.rateUnit }, x);
-                            return <option key={x.id} value={x.id}>{x.name}{x.external ? ' (ext.)' : ''} — {cost ? `${money(cost)}${unitLabel}` : 'coût ?'}{why ? ` — ${why}` : ''}</option>;
-                          })}
-                        </select>
-                        {issue && <div className="avail ko">{issue === 'indisponible' ? 'Indisponible' : 'Déjà planifié ailleurs'}</div>}
-                      </td>
                       <td><input type="datetime-local" value={c.start} onChange={(e) => updCrew(c, { start: e.target.value, periodId: undefined })} /></td>
                       <td><input type="datetime-local" value={c.end} onChange={(e) => updCrew(c, { end: e.target.value, periodId: undefined })} /></td>
                       <td>
@@ -156,19 +171,15 @@ function RoomCrew({ d, sp, pMap }: { d: ProjectData; sp: Subproject; pMap: Map<s
                           <option value="jour">/ jour</option><option value="heure">/ heure</option>
                         </select>
                       </td>
-                      <td><NumInput className="w-price" value={c.rate} onChange={(n) => updCrew(c, { rate: n })} /></td>
-                      <td>
-                        <NumInput className="w-price" value={c.cost ?? personCost} onChange={(n) => updCrew(c, { cost: n })} />
-                        {c.cost != null && c.cost !== personCost && (
-                          <button className="ghost small" title={`Revenir au coût de la personne (${money(personCost)}${unitLabel})`} onClick={() => updCrew(c, { cost: undefined })}>↺</button>
-                        )}
-                      </td>
-                      <td><input type="checkbox" aria-label="Planification finale" checked={c.final !== false} onChange={(e) => updCrew(c, { final: e.target.checked })} /></td>
+                      <td><NumInput className="w-price" value={c.rate} onChange={(n) => updCrew(c, { rate: n })} aria-label="Tarif client" /></td>
                       <td><input type="checkbox" checked={!!c.travel} disabled={!d.project.travelMinutes} title={d.project.travelMinutes ? `${d.project.travelMinutes} min avant et après` : 'Calcule d\'abord la distance du projet (onglet Général)'} onChange={(e) => updCrew(c, { travel: e.target.checked })} /></td>
                       <td><input type="checkbox" checked={c.billable} onChange={(e) => updCrew(c, { billable: e.target.checked })} /></td>
                       <td className="n">{money(a.billed)}{a.unit === 'heure' && <div className="muted" style={{ fontSize: 11 }}>{a.hours} h{a.overtime ? ` dont ${a.overtime} h sup.` : ''}</div>}</td>
-                      <td className="n"><span className={'avail ' + (margin < 0 ? 'ko' : 'ok')}>{money(round2(margin))}</span><div className="muted" style={{ fontSize: 11 }}>coût {money(a.cost)}</div></td>
-                      <td><button className="ghost" onClick={() => db.crew.delete(c.id)} aria-label="Retirer">✕</button></td>
+                      <td>{person ? <span>{person.name}{c.final === false && <span className="badge st-option" style={{ marginLeft: 4 }}>provisoire</span>}</span> : <span className="avail ko">à pourvoir</span>}</td>
+                      <td className="nowrap">
+                        <button className="ghost small" title="Dupliquer le poste" aria-label="Dupliquer le poste" onClick={() => save(db.crew, { ...c, id: '', createdAt: '', personId: undefined, cost: undefined })}>⧉</button>
+                        <button className="ghost" onClick={() => db.crew.delete(c.id)} aria-label="Retirer">✕</button>
+                      </td>
                     </tr>
                   );
                 })}
@@ -176,16 +187,57 @@ function RoomCrew({ d, sp, pMap }: { d: ProjectData; sp: Subproject; pMap: Map<s
             </table>
           </div>
         )}
-        <div className="toolbar" style={{ marginTop: 8 }}>
-          <datalist id="fonctions">{catalogue.map((f) => <option key={f.name} value={f.name} />)}</datalist>
-          <button className="small" onClick={() => save(db.crew, { projectId: sp.projectId, subprojectId: sp.id, function: defaultFn, ...slot(undefined), rate: functionRate(defaultFn, 'jour', catalogue) || 0, billable: true, final: !!d.settings.crewFinalByDefault })}>+ Poste</button>
-          {periods.map((pe) => (
-            <button key={pe.id} className="secondary small" onClick={() => save(db.crew, { projectId: sp.projectId, subprojectId: sp.id, function: defaultFn, ...slot(pe.id), rate: functionRate(defaultFn, 'jour', catalogue) || 0, billable: true, final: !!d.settings.crewFinalByDefault })}>+ Poste {pe.name}</button>
-          ))}
-        </div>
+        {crew.length > 0 && mode === 'attribution' && (
+          <div className="table-wrap">
+            <table className="list crew-assign">
+              <thead><tr><th>Poste</th><th>Horaires</th><th>Technicien</th><th title="Ce que te coûte la personne affectée">Coût</th><th title="Final : visible du technicien (agenda, planning envoyé). Provisoire : pas encore communiqué.">Final</th><th className="n">Total client</th><th className="n">Marge</th></tr></thead>
+              <tbody>
+                {crew.map((c) => {
+                  const person = c.personId ? pMap.get(c.personId) : undefined;
+                  const a = crewAmount(c, d.settings, d.project.travelMinutes, crewCostRate(c, person));
+                  const margin = (c.billable ? a.billed : 0) - a.cost;
+                  const pe = periods.find((x) => x.id === c.periodId);
+                  return (
+                    <tr key={c.id}>
+                      <td><strong>{c.function}</strong>{pe && <div className="muted">{pe.name}</div>}</td>
+                      <td className="nowrap">{fmtRange(c.start, c.end)}</td>
+                      <td><PersonSelect c={c} ctx={ctx} /></td>
+                      <td className="nowrap"><CostCell c={c} person={person} /></td>
+                      <td><input type="checkbox" aria-label="Planification finale" checked={c.final !== false} onChange={(e) => updCrew(c, { final: e.target.checked })} /></td>
+                      <td className="n">{c.billable ? money(a.billed) : <span className="muted">non facturé</span>}</td>
+                      <td className="n">{!c.personId && c.cost == null ? <span className="muted">à pourvoir</span> : <><span className={'avail ' + (margin < 0 ? 'ko' : 'ok')}>{money(round2(margin))}</span><div className="muted" style={{ fontSize: 11 }}>coût {money(a.cost)}</div></>}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {mode === 'postes' && (
+          <form className="toolbar add-posts" style={{ marginTop: 8 }} onSubmit={async (e) => {
+            e.preventDefault();
+            const fn = addFn.trim() || defaultFn;
+            const n = Math.max(1, Math.min(50, Math.round(addQty || 1)));
+            for (let i = 0; i < n; i++) {
+              await save(db.crew, { projectId: sp.projectId, subprojectId: sp.id, function: fn, ...slot(addPeriod || undefined), rate: functionRate(fn, 'jour', catalogue) || 0, billable: true, final: !!d.settings.crewFinalByDefault });
+            }
+          }}>
+            <datalist id="fonctions">{catalogue.map((f) => <option key={f.name} value={f.name} />)}</datalist>
+            <NumInput className="w-qty" value={addQty} onChange={setAddQty} aria-label="Nombre de postes" />
+            <span>×</span>
+            <input list="fonctions" value={addFn} onChange={(e) => setAddFn(e.target.value)} placeholder={defaultFn} aria-label="Fonction à ajouter" style={{ maxWidth: 200 }} />
+            {periods.length > 0 && (
+              <select value={addPeriod} onChange={(e) => setAddPeriod(e.target.value)} aria-label="Créneau des postes" style={{ width: 'auto' }}>
+                <option value="">Tout le sous-projet</option>
+                {periods.map((pe) => <option key={pe.id} value={pe.id}>{pe.name}</option>)}
+              </select>
+            )}
+            <button type="submit" className="small">+ Ajouter les postes</button>
+          </form>
+        )}
 
-        <h3 style={{ margin: '16px 0 6px' }}>Transport</h3>
-        {d.vehicles.length === 0 ? <Empty>Ajoute d'abord tes véhicules dans le menu Véhicules.</Empty> : (
+        {mode === 'postes' && <h3 style={{ margin: '16px 0 6px' }}>Transport</h3>}
+        {mode !== 'postes' ? null : d.vehicles.length === 0 ? <Empty>Ajoute d'abord tes véhicules dans le menu Véhicules.</Empty> : (
           <>
             {vas.length > 0 && (
               <div className="table-wrap">

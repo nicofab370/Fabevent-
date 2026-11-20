@@ -29,8 +29,8 @@ export default function Warehouse() {
     <>
       <PageHead title="Entrepôt" />
       <div className="info">Choisis une prestation pour préparer la sortie ou pointer le retour, à la douchette ou avec la caméra du téléphone.
-        Les salles confirmées apparaissent ici ; une salle encore en attente apparaît dès qu'elle est marquée « prête pour la préparation » (onglet Planning).</div>
-      <label className="check-row" style={{ marginBottom: 8 }}><input type="checkbox" checked={onlyReady} onChange={(e) => setOnlyReady(e.target.checked)} /> Seulement les salles prêtes pour la préparation</label>
+        Les sous-projets confirmés apparaissent ici ; un sous-projet encore en attente apparaît dès qu'il est marqué « prête pour la préparation » (onglet Planning).</div>
+      <label className="check-row" style={{ marginBottom: 8 }}><input type="checkbox" checked={onlyReady} onChange={(e) => setOnlyReady(e.target.checked)} /> Seulement les sous-projets prêts pour la préparation</label>
       <div className="card">
         {list.length === 0 ? <Empty>Aucune prestation à préparer.</Empty> : (
           <table className="list">

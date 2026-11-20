@@ -1,4 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
+import { useRef, useState } from 'react';
+import { EmailModal } from '../components/EmailModal';
+import { htmlToPdf, safeFileName } from '../pdf';
 import { useNavigate, useParams } from 'react-router-dom';
 import { DOC_CSS } from '../components/DocRender';
 import { Empty, Field, NumInput, PageHead, useSettings } from '../components/ui';
@@ -49,6 +52,8 @@ export function SubrentalDetail() {
   const sr = useLiveQuery(() => db.subrentals.get(id!), [id]);
   const contacts = useLiveQuery(() => db.contacts.orderBy('company').toArray(), []) || [];
   const project = useLiveQuery(() => (sr ? db.projects.get(sr.projectId) : undefined), [sr?.projectId]);
+  const [mailing, setMailing] = useState(false);
+  const orderRef = useRef<HTMLDivElement>(null);
   if (!sr) return <p>Chargement…</p>;
   const upd = (patch: Partial<Subrental>) => save(db.subrentals, { ...sr, ...patch });
   const supplier = contacts.find((c) => c.id === sr.supplierId);
@@ -62,8 +67,7 @@ export function SubrentalDetail() {
         <PageHead title={`Sous-location ${sr.number}`}>
           <button className="secondary" onClick={() => nav('/projets/' + sr.projectId)}>← Projet</button>
           <button onClick={() => window.print()}>Bon de commande (PDF)</button>
-          {supplier?.email && <a className="btn secondary" style={{ background: 'var(--soft)', color: 'var(--text)', border: '1px solid var(--border)' }}
-            href={`mailto:${supplier.email}?subject=${encodeURIComponent(`Demande de sous-location ${sr.number}`)}&body=${encodeURIComponent(`Bonjour,\n\nPourriez-vous nous confirmer la disponibilité du matériel suivant du ${fmtDate(sr.start)} au ${fmtDate(sr.end)} :\n\n${sr.lines.map((l) => `- ${l.qty} × ${l.name}`).join('\n')}\n\nMerci,\n${settings.company.name}`)}`}>Email au fournisseur</a>}
+          <button className="secondary" onClick={() => setMailing(true)}>Envoyer au fournisseur</button>
           <button className="danger" onClick={async () => { if (confirm('Supprimer cette sous-location ?')) { await db.subrentals.delete(sr.id); nav('/souslocations'); } }}>Supprimer</button>
         </PageHead>
         <div className="card">
@@ -105,7 +109,16 @@ export function SubrentalDetail() {
           <Field label="Notes" full><textarea value={sr.notes || ''} onChange={(e) => upd({ notes: e.target.value })} /></Field>
         </div>
       </div>
-      <div className="doc-wrap print-only-doc">
+      {mailing && (
+        <EmailModal onClose={() => setMailing(false)}
+          initial={{
+            to: supplier?.email || '',
+            subject: `Demande de sous-location ${sr.number}`,
+            body: `Bonjour,\n\nPourriez-vous nous confirmer la disponibilité du matériel suivant du ${fmtDate(sr.start)} au ${fmtDate(sr.end)} (bon de commande ci-joint) :\n\n${sr.lines.map((l) => `- ${l.qty} × ${l.name}`).join('\n')}\n\nMerci,\n${settings.company.name}`,
+          }}
+          prepare={async () => [{ name: `Bon-de-commande-${safeFileName(sr.number)}.pdf`, type: 'application/pdf', blob: await htmlToPdf(orderRef.current?.innerHTML || '', DOC_CSS) }]} />
+      )}
+      <div className="doc-wrap print-only-doc" ref={orderRef}>
         <div className="doc">
           <div className="head">
             <div>{settings.company.logo && <img src={settings.company.logo} alt="" />}<div><strong>{settings.company.name}</strong></div>

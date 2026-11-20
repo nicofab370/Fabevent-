@@ -38,7 +38,7 @@ export default function Shortages() {
   return (
     <>
       <PageHead title="Pénuries">
-        <CsvButton onClick={() => exportCsv('penuries', ['Article', 'Manque', 'Type', 'Projet', 'Salle', 'Du', 'Au'], rows)} />
+        <CsvButton onClick={() => exportCsv('penuries', ['Article', 'Manque', 'Type', 'Projet', 'Sous-projet', 'Du', 'Au'], rows)} />
       </PageHead>
       <div className="info">
         <strong>Manque réel</strong> : même sans compter les demandes et projets en attente, le stock ne suffit pas — sous-loue, transfère ou remplace.
@@ -56,7 +56,7 @@ export default function Shortages() {
         {list.length === 0 ? <Empty>Aucun manque de matériel à venir.</Empty> : (
           <div className="table-wrap">
             <table className="list">
-              <thead><tr><th>Article</th><th className="n">Manque</th><th>Type</th><th>Projet</th><th>Salle</th><th>Période</th><th /></tr></thead>
+              <thead><tr><th>Article</th><th className="n">Manque</th><th>Type</th><th>Projet</th><th>Sous-projet</th><th>Période</th><th /></tr></thead>
               <tbody>
                 {list.map((c, i) => {
                   const s = sMap.get(c.subprojectId);

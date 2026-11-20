@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Field, PageHead, useSettings } from '../components/ui';
+import { Field, NumInput, PageHead, useSettings } from '../components/ui';
 import { currentWorkspace, db, DEFAULT_PROJECT_TYPES, listWorkspaces, switchWorkspace, TABLES } from '../db';
 import { DEMO_WORKSPACE, seedDemo } from '../demo';
 import type { InvoiceMoment, Settings } from '../types';
@@ -152,7 +152,7 @@ export default function SettingsPage() {
           return (
             <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6, alignItems: 'center', maxWidth: 640, flexWrap: 'wrap' }}>
               <input value={f.name} onChange={(e) => upd({ name: e.target.value })} placeholder="Fonction" style={{ flex: 2, minWidth: 160 }} />
-              <label className="check-row">€/jour <input type="number" step="any" value={f.dayRate} onChange={(e) => upd({ dayRate: parseFloat(e.target.value) || 0 })} style={{ width: 90 }} /></label>
+              <label className="check-row">€/jour <NumInput step="any" value={f.dayRate} onChange={(n) => upd({ dayRate: n })} style={{ width: 90 }} /></label>
               <label className="check-row">€/heure <input type="number" step="any" value={f.hourRate ?? ''} onChange={(e) => upd({ hourRate: e.target.value === '' ? undefined : parseFloat(e.target.value) })} style={{ width: 90 }} /></label>
               <button type="button" className="ghost" onClick={() => setS({ ...s, crewFunctions: all.filter((_, j) => j !== i) })} aria-label="Retirer">✕</button>
             </div>
@@ -185,11 +185,11 @@ export default function SettingsPage() {
           return (
             <div key={m.id} style={{ display: 'flex', gap: 8, marginBottom: 6, maxWidth: 760, flexWrap: 'wrap', alignItems: 'center' }}>
               <input value={m.name} onChange={(e) => upd({ name: e.target.value })} placeholder="Nom (affiché sur la facture)" style={{ flex: 2, minWidth: 180 }} />
-              <input type="number" step="any" value={m.percent} onChange={(e) => upd({ percent: parseFloat(e.target.value) || 0 })} style={{ width: 80 }} title="Part du total (%)" /> %
+              <NumInput step="any" value={m.percent} onChange={(n) => upd({ percent: n })} style={{ width: 80 }} title="Part du total (%)" /> %
               <select value={m.trigger} onChange={(e) => upd({ trigger: e.target.value as InvoiceMoment['trigger'] })} style={{ width: 'auto' }}>
                 {Object.entries(MOMENT_TRIGGERS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
-              {m.trigger !== 'accord' && <><input type="number" value={m.days || 0} onChange={(e) => upd({ days: parseInt(e.target.value) || 0 })} style={{ width: 70 }} title="Décalage en jours" /> j {m.trigger === 'avant' ? 'avant' : 'après'}</>}
+              {m.trigger !== 'accord' && <><NumInput value={m.days || 0} onChange={(n) => upd({ days: n })} style={{ width: 70 }} title="Décalage en jours" /> j {m.trigger === 'avant' ? 'avant' : 'après'}</>}
               <button type="button" className="ghost" onClick={() => setS({ ...s, invoiceMoments: moments.filter((_, j) => j !== i) })} aria-label="Retirer">✕</button>
             </div>
           );
@@ -198,25 +198,25 @@ export default function SettingsPage() {
 
         <h2 style={{ marginTop: 20 }}>Tarification</h2>
         <div className="form">
-          <Field label="Taux de TVA (%)"><input type="number" step="any" value={s.vatRate} onChange={(e) => setS({ ...s, vatRate: parseFloat(e.target.value) || 0 })} /></Field>
-          <Field label="Transport : prix au km par défaut (€ HT)"><input type="number" step="any" value={s.pricePerKm ?? 1} onChange={(e) => setS({ ...s, pricePerKm: parseFloat(e.target.value) || 0 })} /></Field>
-          <Field label="Transport : allers-retours par défaut"><input type="number" step="1" min={1} value={s.defaultTrips ?? 2} onChange={(e) => setS({ ...s, defaultTrips: parseInt(e.target.value) || 1 })} /></Field>
+          <Field label="Taux de TVA (%)"><NumInput step="any" value={s.vatRate} onChange={(n) => setS({ ...s, vatRate: n })} /></Field>
+          <Field label="Transport : prix au km par défaut (€ HT)"><NumInput step="any" value={s.pricePerKm ?? 1} onChange={(n) => setS({ ...s, pricePerKm: n })} /></Field>
+          <Field label="Transport : allers-retours par défaut"><NumInput step="1" min={1} value={s.defaultTrips ?? 2} onChange={(n) => setS({ ...s, defaultTrips: n || 1 })} /></Field>
           <Field label=" "><label className="check-row"><input type="checkbox" checked={s.structuredComm !== false} onChange={(e) => setS({ ...s, structuredComm: e.target.checked })} /> Communication structurée belge (+++…+++) sur les factures</label></Field>
-          <Field label="Heures sup. au-delà de (heures / jour)"><input type="number" step="0.5" value={s.overtimeAfter ?? 10} onChange={(e) => setS({ ...s, overtimeAfter: parseFloat(e.target.value) || 0 })} /></Field>
-          <Field label="Majoration des heures sup. (%)"><input type="number" value={s.overtimeRate ?? 50} onChange={(e) => setS({ ...s, overtimeRate: parseFloat(e.target.value) || 0 })} /></Field>
-          <Field label="Rappels : nouveau délai accordé (jours)"><input type="number" value={s.reminderDays ?? 10} onChange={(e) => setS({ ...s, reminderDays: parseInt(e.target.value) || 0 })} /></Field>
+          <Field label="Heures sup. au-delà de (heures / jour)"><NumInput step="0.5" value={s.overtimeAfter ?? 10} onChange={(n) => setS({ ...s, overtimeAfter: n })} /></Field>
+          <Field label="Majoration des heures sup. (%)"><NumInput value={s.overtimeRate ?? 50} onChange={(n) => setS({ ...s, overtimeRate: n })} /></Field>
+          <Field label="Rappels : nouveau délai accordé (jours)"><NumInput value={s.reminderDays ?? 10} onChange={(n) => setS({ ...s, reminderDays: n })} /></Field>
           {(['autoliquidation', 'exonere', 'hors_ue'] as const).map((r) => (
             <Field key={r} label={`Mention légale — ${VAT_REGIME_LABELS[r]}`} full>
               <input value={s.vatMentions?.[r] ?? DEFAULT_VAT_MENTIONS[r]} onChange={(e) => setS({ ...s, vatMentions: { ...s.vatMentions, [r]: e.target.value } })} />
             </Field>
           ))}
-          <Field label="Délai de paiement des factures (jours)"><input type="number" value={s.paymentDays} onChange={(e) => setS({ ...s, paymentDays: parseInt(e.target.value) || 0 })} /></Field>
-          <Field label="Validité des devis (jours)"><input type="number" value={s.quoteValidityDays} onChange={(e) => setS({ ...s, quoteValidityDays: parseInt(e.target.value) || 0 })} /></Field>
+          <Field label="Délai de paiement des factures (jours)"><NumInput value={s.paymentDays} onChange={(n) => setS({ ...s, paymentDays: n })} /></Field>
+          <Field label="Validité des devis (jours)"><NumInput value={s.quoteValidityDays} onChange={(n) => setS({ ...s, quoteValidityDays: n })} /></Field>
           <Field label="Coefficients par durée (1 j, 2 j, 3 j…) séparés par des « ; »" full>
             <input value={s.factors.join(' ; ')} onChange={(e) => setS({ ...s, factors: e.target.value.split(';').map((x) => parseFloat(x.replace(',', '.'))).filter((x) => !isNaN(x)) })} />
           </Field>
-          <Field label="Au-delà : + par jour supplémentaire"><input type="number" step="any" value={s.factorExtraPerDay} onChange={(e) => setS({ ...s, factorExtraPerDay: parseFloat(e.target.value) || 0 })} /></Field>
-          <Field label="Assurance du matériel par défaut (% de la location, 0 = aucune)"><input type="number" step="any" value={s.insurancePct ?? 0} onChange={(e) => setS({ ...s, insurancePct: parseFloat(e.target.value) || 0 })} /></Field>
+          <Field label="Au-delà : + par jour supplémentaire"><NumInput step="any" value={s.factorExtraPerDay} onChange={(n) => setS({ ...s, factorExtraPerDay: n })} /></Field>
+          <Field label="Assurance du matériel par défaut (% de la location, 0 = aucune)"><NumInput step="any" value={s.insurancePct ?? 0} onChange={(n) => setS({ ...s, insurancePct: n })} /></Field>
           <Field label="Conditions générales (imprimées après les devis)" full><textarea style={{ minHeight: 120 }} value={s.terms || ''} onChange={(e) => setS({ ...s, terms: e.target.value || undefined })} placeholder="Annulation, casse, retards, assurance…" /></Field>
           <Field label=" " full><label className="check-row"><input type="checkbox" checked={!!s.termsOnInvoices} onChange={(e) => setS({ ...s, termsOnInvoices: e.target.checked })} /> Imprimer aussi les conditions générales sur les factures</label></Field>
           <Field label="Pied de page des documents" full><textarea value={s.footer} onChange={(e) => setS({ ...s, footer: e.target.value })} /></Field>

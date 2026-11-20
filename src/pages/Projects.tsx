@@ -8,6 +8,7 @@ import type { Project, ProjectStatus } from '../types';
 import { STATUS_LABELS } from '../types';
 import { fmtRange, save, toLocalInput } from '../utils';
 import { ContactForm } from './Contacts';
+import { ContactPicker } from '../components/ContactPicker';
 import { CsvButton, customText, exportCsv, Tags } from '../components/extra';
 
 type Draft = Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'number'> & Partial<Project>;
@@ -50,7 +51,7 @@ export function ProjectForm({ initial, onDone }: { initial?: Draft; onDone: (p?:
       <Field label="Nom du projet *" full><input required autoFocus value={p.name} onChange={(e) => set('name', e.target.value)} /></Field>
       <Field label="Client">
         <div style={{ display: 'flex', gap: 6 }}>
-          <select value={p.clientId || ''} onChange={(e) => set('clientId', e.target.value || undefined)}>
+          <select value={p.clientId || ''} onChange={(e) => setP({ ...p, clientId: e.target.value || undefined, contactPerson: undefined, contactPersonId: undefined, departmentId: undefined })}>
             <option value="">—</option>
             {clients.map((c) => <option key={c.id} value={c.id}>{c.company}</option>)}
           </select>
@@ -58,13 +59,10 @@ export function ProjectForm({ initial, onDone }: { initial?: Draft; onDone: (p?:
         </div>
       </Field>
       {(() => {
-        const persons = clients.find((c) => c.id === p.clientId)?.persons || [];
-        return persons.length > 0 ? (
-          <Field label="Interlocuteur">
-            <select value={p.contactPerson || ''} onChange={(e) => set('contactPerson', e.target.value || undefined)}>
-              <option value="">—</option>
-              {persons.map((x, i) => <option key={i} value={x.name}>{x.name}{x.role ? ` (${x.role})` : ''}</option>)}
-            </select>
+        const client = clients.find((c) => c.id === p.clientId);
+        return client ? (
+          <Field label="Service / interlocuteur">
+            <ContactPicker client={client} value={p} onChange={(v) => setP({ ...p, ...v })} />
           </Field>
         ) : null;
       })()}
@@ -124,7 +122,7 @@ export default function Projects() {
         {templates.length > 0 && <button className="secondary" onClick={() => setFromTemplate(true)}>+ À partir d'un modèle</button>}
         <button onClick={() => setCreating(true)}>+ Nouveau projet</button>
       </PageHead>
-      {showTemplates && <div className="info">Un modèle se crée depuis un projet existant (« Enregistrer comme modèle ») : il garde salles, horaires, matériel, postes et coûts, sans rien réserver.</div>}
+      {showTemplates && <div className="info">Un modèle se crée depuis un projet existant (« Enregistrer comme modèle ») : il garde sous-projets, horaires, matériel, postes et coûts, sans rien réserver.</div>}
       <div className="card">
         <div className="toolbar">
           <input placeholder="Rechercher…" value={q} onChange={(e) => setQ(e.target.value)} />

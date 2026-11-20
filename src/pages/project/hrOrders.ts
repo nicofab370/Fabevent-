@@ -38,8 +38,13 @@ export function hrOrders(d: ProjectData): HrOrder[] {
 const esc = (v: unknown) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 export function printHrOrder(d: ProjectData, o: HrOrder) {
+  printHtml(`Bon de commande — ${o.supplier}`, hrOrderHtml(d, o), DOC_CSS);
+}
+
+/** Bon de commande RH en HTML (impression et PDF joint à l'email). */
+export function hrOrderHtml(d: ProjectData, o: HrOrder): string {
   const co = d.settings.company;
-  printHtml(`Bon de commande — ${o.supplier}`, `<div class="doc">
+  return `<div class="doc">
     <div class="head"><div>${co.logo ? `<img src="${co.logo}">` : ''}<div><strong>${esc(co.name)}</strong></div><div style="white-space:pre-line">${esc(co.address)}</div></div>
     <div class="box"><h1>Bon de commande — prestations</h1><div>Date : ${fmtDate(new Date().toISOString(), false)}</div>
     <div>Projet : ${esc(d.project.number)} ${esc(d.project.name)}</div><div style="margin-top:8px"><strong>${esc(o.supplier)}</strong><div>${esc(o.address)}</div></div></div></div>
@@ -47,10 +52,11 @@ export function printHrOrder(d: ProjectData, o: HrOrder) {
     <table><thead><tr><th>Fonction</th><th>Technicien</th><th>Horaires</th><th class="n">Quantité</th><th class="n">Montant HT</th></tr></thead>
     <tbody>${o.lines.map((l) => `<tr><td>${esc(l.function)}</td><td>${esc(l.person)}</td><td>${fmtDate(l.start)} → ${fmtDate(l.end)}</td><td class="n">${esc(l.qty)}</td><td class="n">${money(l.cost)}</td></tr>`).join('')}</tbody></table>
     <table class="totals"><tbody><tr class="grand"><td>Total HT</td><td class="n">${money(o.total)}</td></tr></tbody></table>
-    <div class="sign"><div>Bon pour accord du prestataire</div></div></div>`, DOC_CSS);
+    <div class="sign"><div>Bon pour accord du prestataire</div></div></div>`;
 }
 
-export function mailHrOrder(d: ProjectData, o: HrOrder) {
+/** Email du bon de commande RH (le PDF est joint par la fenêtre d'envoi). */
+export function hrOrderMail(d: ProjectData, o: HrOrder) {
   const body = `Bonjour,\n\nNous confirmons la commande suivante pour « ${d.project.name} »${d.project.venue ? ` (${d.project.venue})` : ''} :\n\n${o.lines.map((l) => `- ${l.function} — ${l.person} : ${fmtDate(l.start)} → ${fmtDate(l.end)} (${l.qty}) : ${money(l.cost)} HT`).join('\n')}\n\nTotal : ${money(o.total)} HT\n\nMerci de nous confirmer.\n${d.settings.company.name}`;
-  location.href = `mailto:${o.email || ''}?subject=${encodeURIComponent(`Bon de commande — ${d.project.number} ${d.project.name}`)}&body=${encodeURIComponent(body)}`;
+  return { to: o.email || '', subject: `Bon de commande — ${d.project.number} ${d.project.name}`, body };
 }
