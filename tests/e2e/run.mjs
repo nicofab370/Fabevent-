@@ -321,6 +321,7 @@ await step('Inventaire : scan inconnu refusé, écart appliqué au stock', async
   const row = page.locator('table.list tr', { hasText: 'Pied de micro perche' });
   await row.locator('input').fill('18');
   await page.click('button:has-text("Appliquer 1 écart")');
+  await page.click('.modal button:text-is("Appliquer")');
   await page.waitForSelector('text=Inventaire appliqué');
   await go('materiel');
   expect((await page.locator('table.list tr', { hasText: 'Pied de micro perche' }).innerText()).includes('18'), 'stock mis à 18');
@@ -1195,6 +1196,60 @@ await step('Checklist libre : import d’un bon PDF', async () => {
   await page.waitForSelector('.checklist-scan', { timeout: 20000 });
   const txt = await page.locator('body').innerText();
   expect(txt.includes('Bon de préparation test') && txt.includes('Pack ambiance 8 PAR LED') && txt.includes('Client : Société test'), 'bon PDF lu (titre, client, lignes)');
+});
+
+const invScan = async (c) => { await page.fill('.scan-input', c); await page.press('.scan-input', 'Enter'); await page.waitForTimeout(300); return page.locator('.flash').first().innerText(); };
+
+await step('Inventaire : kit compté d’un coup, annulation, comptage gardé au rechargement', async () => {
+  await resetDemo();
+  await go('inventaire');
+  expect((await invScan('DEMO-KITPAR')).includes('Kit Pack ambiance 8 PAR LED'), 'kit reconnu');
+  const par = page.locator('table.list tr', { hasText: 'Projecteur PAR LED' });
+  expect(await par.locator('input').inputValue() === '8', 'contenu du kit compté (8 PAR)');
+  await page.click('button:text-is("Annuler le dernier kit")');
+  await page.waitForTimeout(300);
+  const after = await par.locator('input').inputValue();
+  expect(after === '0' || after === '', `kit annulé (${after})`);
+  await invScan('DEMO-PIED'); await invScan('DEMO-PIED');
+  await page.reload(); await page.waitForTimeout(800);
+  expect(await page.locator('table.list tr', { hasText: 'Pied de micro perche' }).locator('input').inputValue() === '2', 'comptage gardé après rechargement');
+});
+
+await step('Inventaire : fiche (ajout de stock, état d’une unité, où est-il ?), unité perdue retrouvée au scan', async () => {
+  await page.locator('table.list tr', { hasText: 'Amplificateur LA4X' }).locator('button:text-is("Fiche")').click();
+  await page.waitForSelector('.modal');
+  expect((await page.locator('.modal').innerText()).includes('Où est cet article ?'), 'fiche ouverte');
+  await page.locator('.modal tr', { hasText: 'LA4X-1002' }).locator('button:has-text("Changer l")').click();
+  await page.locator('.modal label', { hasText: 'Perdue' }).last().locator('input').check();
+  await page.locator('.modal form button[type=submit]').last().click();
+  await page.waitForTimeout(400);
+  expect((await page.locator('.modal tr', { hasText: 'LA4X-1002' }).innerText()).includes('Perdue'), 'unité marquée perdue');
+  await page.keyboard.press('Escape');
+  await go('inventaire');
+  expect((await invScan('SN-LA4X-1002')).includes('retrouvée et remise en stock'), 'unité perdue retrouvée au scan');
+  await page.locator('table.list tr', { hasText: 'Pied de micro perche' }).locator('button:text-is("Fiche")').click();
+  await page.locator('.modal input[aria-label="Quantité à ajouter"]').fill('5');
+  await page.fill('.modal input[placeholder^="Note"]', 'achat Thomann');
+  await page.click('.modal button:text-is("Ajouter")');
+  await page.waitForTimeout(400);
+  expect((await page.locator('.modal').innerText()).includes('Ajout au stock — achat Thomann (+5)'), 'mouvement de stock daté');
+  await page.keyboard.press('Escape');
+});
+
+await step('Inventaire : unités non vues → en réparation, visibles en maintenance', async () => {
+  await go('inventaire');
+  await invScan('SN-ULXD-1001'); await invScan('SN-ULXD-1002'); await invScan('SN-ULXD-1003');
+  await page.click('button:has-text("écart")');
+  await page.waitForSelector('.modal');
+  const sel = page.locator('.modal select[aria-label="Unité ULXD-1004"]');
+  await sel.selectOption('repair');
+  await page.locator('.modal select[aria-label="Unité ULXD-1005"]').selectOption('none');
+  await page.locator('.modal select[aria-label="Unité ULXD-1006"]').selectOption('none');
+  await page.click('.modal button:text-is("Appliquer")');
+  await page.waitForSelector('text=Inventaire appliqué');
+  await go('maintenance');
+  const flagged = await page.locator('.card', { hasText: 'Unités signalées' }).innerText();
+  expect(flagged.includes('ULXD-1004') && flagged.includes('En réparation'), 'unité en réparation listée');
 });
 
 await ctx.close();
