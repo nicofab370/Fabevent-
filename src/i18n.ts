@@ -14,7 +14,7 @@ const fr = {
   remaining: 'Montant restant dû', deposit: 'Acompte', toPay: 'Reste à payer', securityDeposit: 'Caution à verser (non soumise à la TVA)', depositPaid: 'payée', depositRefunded: 'remboursée', terms: 'Conditions générales', notes: 'Remarques', venue: 'Lieu', approval: 'Bon pour accord (date, signature, cachet)',
   preparedBy: 'Préparé par', checkedBy: 'Vérifié / retour par', pay: 'Merci de verser', onAccount: 'sur le compte', withComm: 'avec la communication',
   structured: 'structurée', scan: 'Scannez le QR code avec votre application bancaire.', partial: 'Facture partielle — sous-projets facturés',
-  alreadyInvoiced: 'Déjà facturé séparément :', toConfirm: 'à confirmer',
+  alreadyInvoiced: 'Déjà facturé séparément :', toConfirm: 'à confirmer', client: 'Client', document: 'Document',
 };
 type Dict = typeof fr;
 
@@ -29,7 +29,7 @@ const nl: Dict = {
   remaining: 'Openstaand bedrag', deposit: 'Voorschot', toPay: 'Te betalen saldo', securityDeposit: 'Waarborg (niet onderworpen aan btw)', depositPaid: 'betaald', depositRefunded: 'terugbetaald', terms: 'Algemene voorwaarden', notes: 'Opmerkingen', venue: 'Locatie', approval: 'Voor akkoord (datum, handtekening, stempel)',
   preparedBy: 'Voorbereid door', checkedBy: 'Gecontroleerd / retour door', pay: 'Gelieve', onAccount: 'over te schrijven op rekening', withComm: 'met de',
   structured: 'gestructureerde mededeling', scan: 'Scan de QR-code met uw bankapp.', partial: 'Gedeeltelijke factuur — gefactureerde deelprojecten',
-  alreadyInvoiced: 'Reeds apart gefactureerd:', toConfirm: 'te bevestigen',
+  alreadyInvoiced: 'Reeds apart gefactureerd:', toConfirm: 'te bevestigen', client: 'Klant', document: 'Document',
 };
 
 const en: Dict = {
@@ -43,7 +43,7 @@ const en: Dict = {
   remaining: 'Amount outstanding', deposit: 'Deposit', toPay: 'Balance due', securityDeposit: 'Security deposit (not subject to VAT)', depositPaid: 'paid', depositRefunded: 'refunded', terms: 'Terms and conditions', notes: 'Notes', venue: 'Venue', approval: 'Approved (date, signature, stamp)',
   preparedBy: 'Prepared by', checkedBy: 'Checked / returned by', pay: 'Please transfer', onAccount: 'to account', withComm: 'with the',
   structured: 'structured reference', scan: 'Scan the QR code with your banking app.', partial: 'Partial invoice — sub-projects invoiced',
-  alreadyInvoiced: 'Already invoiced separately:', toConfirm: 'to be confirmed',
+  alreadyInvoiced: 'Already invoiced separately:', toConfirm: 'to be confirmed', client: 'Client', document: 'Document',
 };
 
 export const DICT: Record<Lang, Dict> = { fr, nl, en };

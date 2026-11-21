@@ -10,6 +10,53 @@ import { fmtDate, money } from './utils';
 
 export const DEFAULT_HTML: DocHtml = {
   header: `<div class="head">
+  <div class="d-co">
+    {{societe.logo}}
+    <div class="d-co-name">{{societe.nom}}</div>
+    <div class="pre muted">{{societe.adresse}}</div>
+    <div class="muted">{{societe.telephone}}</div>
+    <div class="muted">{{societe.email}}</div>
+    <div class="muted d-small">{{societe.identifiants}}</div>
+  </div>
+  <div class="d-title">
+    <h1>{{document.titre}}</h1>
+    <div class="d-no">{{libelle.numero}} {{document.numero}} {{document.version}}</div>
+  </div>
+</div>
+<div class="d-cards">
+  <div class="d-card"><div class="d-lbl">{{libelle.client}}</div>{{client.bloc}}</div>
+  <div class="d-card"><div class="d-lbl">{{libelle.projet}}</div>
+    <strong>{{projet.nom}}</strong>
+    <div class="muted">{{projet.numero}}</div>
+    {{projet.reference_bloc}}
+    <div>{{projet.debut}} → {{projet.fin}}</div>
+    <div class="muted">{{projet.lieu}}</div>
+  </div>
+  <div class="d-card"><div class="d-lbl">{{libelle.document}}</div>
+    <div>{{libelle.date}} : <strong>{{document.date}}</strong></div>
+    {{document.infos}}
+  </div>
+</div>`,
+  layout: `{{bloc.entete}}
+{{bloc.introduction}}
+{{bloc.notes}}
+{{bloc.salles}}
+{{bloc.frais}}
+{{bloc.lignes_simples}}
+{{bloc.options}}
+{{bloc.totaux}}
+{{bloc.caution}}
+{{bloc.conclusion}}
+{{bloc.signature}}
+{{bloc.paiement}}
+{{bloc.conditions}}
+{{bloc.pied}}`,
+  footer: `<div class="foot">{{societe.pied}}</div>`,
+  css: '',
+};
+
+/** En-tête par défaut des versions précédentes : remplacé par le nouveau s'il n'a pas été modifié. */
+const LEGACY_HEADER = `<div class="head">
   <div>
     {{societe.logo}}
     <div><strong>{{societe.nom}}</strong></div>
@@ -30,24 +77,15 @@ export const DEFAULT_HTML: DocHtml = {
   <strong>{{libelle.projet}} {{projet.numero}} — {{projet.nom}}</strong>
   {{projet.reference_bloc}}
   <div class="muted">{{projet.debut}} → {{projet.fin}} · {{projet.lieu}}</div>
-</div>`,
-  layout: `{{bloc.entete}}
-{{bloc.introduction}}
-{{bloc.notes}}
-{{bloc.salles}}
-{{bloc.frais}}
-{{bloc.lignes_simples}}
-{{bloc.options}}
-{{bloc.totaux}}
-{{bloc.caution}}
-{{bloc.conclusion}}
-{{bloc.signature}}
-{{bloc.paiement}}
-{{bloc.conditions}}
-{{bloc.pied}}`,
-  footer: `<div class="foot">{{societe.pied}}</div>`,
-  css: '',
-};
+</div>`;
+
+/** Gabarit complet : valeurs par défaut, ancien en-tête standard remplacé par le nouveau. */
+export function withDefaults(h?: Partial<DocHtml>): DocHtml {
+  const out = { ...DEFAULT_HTML, ...h };
+  const norm = (v: string) => v.replace(/\s+/g, ' ').trim();
+  if (norm(out.header) === norm(LEGACY_HEADER)) out.header = DEFAULT_HTML.header;
+  return out;
+}
 
 /** Catalogue affiché dans l'éditeur (liste cliquable). */
 export const VARIABLE_GROUPS: { label: string; items: [string, string][] }[] = [
@@ -68,7 +106,7 @@ export const VARIABLE_GROUPS: { label: string; items: [string, string][] }[] = [
     ['projet.nom', 'Nom'], ['projet.numero', 'Numéro'], ['projet.lieu', 'Lieu'], ['projet.debut', 'Début'], ['projet.fin', 'Fin'],
     ['projet.reference_client', 'Référence du client'], ['projet.reference_bloc', 'Ligne « Votre référence »'], ['projet.notes', 'Notes'],
   ] },
-  { label: 'Libellés traduits', items: [['libelle.numero', 'N° / Nr. / No.'], ['libelle.date', 'Date / Datum'], ['libelle.projet', 'Projet / Project']] },
+  { label: 'Libellés traduits', items: [['libelle.numero', 'N° / Nr. / No.'], ['libelle.date', 'Date / Datum'], ['libelle.projet', 'Projet / Project'], ['libelle.client', 'Client / Klant'], ['libelle.document', 'Document']] },
   { label: 'Paiement & TVA', items: [
     ['paiement.communication', 'Communication (structurée)'], ['paiement.qr', 'QR code de virement'], ['tva.regime', 'Régime de TVA'], ['tva.mention', 'Mention légale de TVA'],
   ] },
@@ -99,7 +137,7 @@ export function docValues(doc: Doc): Record<string, string> {
     'societe.nom': co.name, 'societe.adresse': co.address || '', 'societe.telephone': co.phone || '', 'societe.email': co.email || '',
     'societe.tva': co.vatNumber || '', 'societe.numero_entreprise': co.siret || '', 'societe.iban': co.iban || '', 'societe.bic': co.bic || '',
     'societe.identifiants': [co.siret && `${tr(doc, 'companyNo')} ${co.siret}`, co.vatNumber && `${tr(doc, 'vat')} ${co.vatNumber}`].filter(Boolean).join(' · '),
-    'libelle.numero': tr(doc, 'no'), 'libelle.date': tr(doc, 'date'), 'libelle.projet': tr(doc, 'project'),
+    'libelle.numero': tr(doc, 'no'), 'libelle.date': tr(doc, 'date'), 'libelle.projet': tr(doc, 'project'), 'libelle.client': tr(doc, 'client'), 'libelle.document': tr(doc, 'document'),
     'societe.pied': s.footer || '',
     'client.nom': c?.company || '', 'client.contact': doc.contactPerson || [c?.firstName, c?.lastName].filter(Boolean).join(' '),
     'client.adresse': addr.address || '', 'client.cp': addr.postalCode || '', 'client.ville': addr.city || '', 'client.tva': c?.vatNumber || '',

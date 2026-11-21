@@ -1,7 +1,7 @@
 import { Fragment, useMemo, type CSSProperties, type ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { DEFAULT_DOC_STYLE } from '../db';
-import { DEFAULT_HTML, fillTemplate, stripScripts } from '../docTemplate';
+import { DEFAULT_HTML, fillTemplate, stripScripts, withDefaults } from '../docTemplate';
 import { epcPayload, qrSvg } from '../payment';
 import { docLang, REMINDER_TEXTS, tr, VAT_SHORT } from '../i18n';
 import type { Doc, DocStyle } from '../types';
@@ -9,29 +9,58 @@ import { INVOICE_TYPES } from '../types';
 import { fmtDate, money } from '../utils';
 
 export const DOC_CSS = `
-.doc{--accent:#111;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#111;background:#fff;max-width:820px;margin:0 auto;padding:32px;font-size:13px;line-height:1.45}
+.doc{--accent:#1d4ed8;--accent-soft:#eef2fd;--accent-line:#c7d4f7;--accent-ink:#fff;font-family:Inter,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#1c2330;background:#fff;max-width:820px;margin:0 auto;padding:0 40px 36px;font-size:12.5px;line-height:1.5;border-top:8px solid var(--accent);-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .doc.f-serif{font-family:Georgia,'Times New Roman',serif}.doc.f-arrondie{font-family:'Trebuchet MS','Segoe UI',Verdana,sans-serif}
-.doc h1{font-size:22px;margin:0 0 4px;color:var(--accent)}.doc h2{font-size:15px;margin:22px 0 6px;border-bottom:2px solid var(--accent);padding-bottom:3px}
-.doc h3{font-size:13px;margin:12px 0 4px;color:#444}
-.doc .head{display:flex;justify-content:space-between;gap:24px;margin-bottom:20px}
-.doc .head img,.doc .logo-centre img{max-height:60px;max-width:180px}
+.doc h1{font-size:28px;line-height:1.1;margin:0;color:var(--accent);font-weight:800;letter-spacing:-.01em}
+.doc h2{font-size:14px;margin:26px 0 8px;padding:7px 12px;background:var(--accent-soft);border-left:4px solid var(--accent);border-radius:0 6px 6px 0;color:#111}
+.doc h3{font-size:10.5px;margin:14px 0 4px;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;font-weight:700}
+.doc section>.muted:first-of-type{margin:-2px 0 6px 2px}
+.doc .head{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;padding:26px 0 18px;border-bottom:1px solid var(--accent-line);margin-bottom:16px}
+.doc .head img,.doc .logo-centre img{max-height:64px;max-width:200px;display:block;margin-bottom:8px}
+.doc .d-co-name{font-size:15px;font-weight:700;color:#111}
+.doc .head .d-title{text-align:right}.doc .head .d-no{margin-top:6px;font-size:13px;color:#4b5563;font-weight:600}
+.doc .d-small{font-size:11px}
+.doc .d-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:0 0 18px}
+.doc .d-card{background:var(--accent-soft);border-radius:8px;padding:10px 12px}
+.doc .d-card:has(>.d-lbl:only-child){display:none}
+.doc .d-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.08em;font-weight:700;color:var(--accent);margin-bottom:3px}
 .doc .logo-centre{text-align:center;margin-bottom:12px}
-.doc .box{border:1px solid #ccc;border-top:3px solid var(--accent);border-radius:6px;padding:10px 12px;min-width:220px}
-.doc .muted{color:#666}.doc .right{text-align:right}
-.doc table{width:100%;border-collapse:collapse;margin:4px 0 8px}
-.doc th,.doc td{border-bottom:1px solid #e3e3e3;padding:5px 6px;text-align:left;vertical-align:top}
-.doc th{background:#f4f4f4;font-weight:600;font-size:12px}
+.doc .box{border:1px solid var(--accent-line);border-top:3px solid var(--accent);border-radius:8px;padding:10px 12px;min-width:220px}
+.doc .muted{color:#6b7280}.doc .right{text-align:right}
+.doc table{width:100%;border-collapse:separate;border-spacing:0;margin:4px 0 10px}
+.doc th,.doc td{border-bottom:1px solid #e8ebf0;padding:6px 8px;text-align:left;vertical-align:top}
+.doc th{background:var(--accent);color:var(--accent-ink);font-weight:600;font-size:11px;border-bottom:0}
+.doc th:first-child{border-radius:6px 0 0 6px}.doc th:last-child{border-radius:0 6px 6px 0}
+.doc tbody tr:nth-child(even) td{background:#f9fafb}
+.doc tr.grp td{background:var(--accent-soft)!important;color:var(--accent);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
 .doc td.n,.doc th.n{text-align:right;white-space:nowrap}
-.doc .check{width:22px;height:14px;border:1px solid #888;display:inline-block}
-.doc .totals{margin-left:auto;width:300px;margin-top:12px}
-.doc .totals td{border:none;padding:3px 6px}.doc .totals tr.grand td{font-weight:700;font-size:15px;border-top:2px solid var(--accent)}
-.doc .foot{margin-top:28px;font-size:11px;color:#666;border-top:1px solid #ddd;padding-top:8px;white-space:pre-wrap}
-.doc .text{white-space:pre-wrap;margin:14px 0}.doc .mention{font-size:12px;font-style:italic;text-align:right}
-.doc .pay{display:flex;gap:16px;align-items:center;border:1px solid #ddd;border-radius:6px;padding:10px 12px;margin-top:16px}.doc .pay svg{flex:none}
-.doc .pay .comm{font-family:ui-monospace,Menlo,monospace;font-size:15px;font-weight:700}.doc .pre{white-space:pre-line}
-.doc tr.opt td{color:#666;font-style:italic}
-.doc .sign{display:flex;gap:24px;margin-top:24px}.doc .sign div{flex:1;border:1px solid #ccc;height:80px;padding:6px;border-radius:6px}
-@media print{.doc{padding:0;max-width:none}}
+.doc .check{width:22px;height:14px;border:1.5px solid #9ca3af;border-radius:3px;display:inline-block}
+.doc .subtotal{text-align:right;margin:2px 0 0}.doc .subtotal span{display:inline-block;background:var(--accent-soft);border-radius:6px;padding:4px 10px;font-weight:700}
+.doc .totals{margin-left:auto;width:320px;margin-top:16px;background:var(--accent-soft);border-radius:10px;padding:6px}
+.doc .totals td{border:none;padding:4px 10px;background:none!important}
+.doc .totals tr.grand td{font-weight:800;font-size:15px;background:var(--accent)!important;color:var(--accent-ink)}
+.doc .totals tr.grand td:first-child{border-radius:7px 0 0 7px}.doc .totals tr.grand td:last-child{border-radius:0 7px 7px 0}
+.doc .foot{margin-top:30px;font-size:10.5px;color:#6b7280;border-top:1px solid var(--accent-line);padding-top:10px;white-space:pre-wrap;text-align:center}
+.doc .text{white-space:pre-wrap;margin:14px 0}.doc .mention{font-size:11.5px;font-style:italic;text-align:right;color:#4b5563}
+.doc .pay{display:flex;gap:16px;align-items:center;border:1px solid var(--accent-line);background:#fff;border-left:4px solid var(--accent);border-radius:8px;padding:12px 14px;margin-top:18px}.doc .pay svg{flex:none}
+.doc .pay .comm{font-family:ui-monospace,Menlo,monospace;font-size:15px;font-weight:700;color:var(--accent)}.doc .pre{white-space:pre-line}
+.doc tr.opt td{color:#6b7280;font-style:italic}
+.doc .doc-options{border:1px dashed var(--accent-line);border-radius:8px;padding:6px 10px;margin:10px 0}
+.doc .deposit{background:var(--accent-soft);border-radius:8px;padding:8px 12px}
+.doc .sign{display:flex;gap:24px;margin-top:26px}.doc .sign div{flex:1;border:1.5px dashed var(--accent-line);height:86px;padding:8px 10px;border-radius:8px;color:#4b5563;font-size:11px}
+.doc .terms{font-size:.95em;color:#4b5563}
+.doc.t-sobre{border-top:0;padding-top:24px;color:#111}
+.doc.t-sobre h1{color:#111;font-size:24px}.doc.t-sobre h2{background:none;border-left:0;border-bottom:2px solid var(--accent);border-radius:0;padding:0 0 3px}
+.doc.t-sobre h3{color:#444}.doc.t-sobre .d-lbl{color:#444}
+.doc.t-sobre .d-card,.doc.t-sobre .subtotal span,.doc.t-sobre .deposit{background:none;border:1px solid #ddd}
+.doc.t-sobre th{background:#f4f4f4;color:#111}.doc.t-sobre tbody tr:nth-child(even) td{background:none}
+.doc.t-sobre tr.grp td{background:#fafafa!important;color:#111}
+.doc.t-sobre .totals{background:none}.doc.t-sobre .totals tr.grand td{background:none!important;color:#111;border-top:2px solid var(--accent)}
+.doc [data-bloc]{border-radius:6px;transition:outline-color .15s}
+.doc.marking [data-bloc]{cursor:pointer;outline:2px solid transparent;outline-offset:4px}
+.doc.marking [data-bloc]:hover{outline-color:#cbd5e1}
+@media print{.doc{padding:0 0 0;max-width:none}}
+@media (max-width:600px){.doc{padding:0 16px 24px}.doc .d-cards{grid-template-columns:1fr}.doc .head{flex-direction:column}.doc .head .d-title{text-align:left}.doc .totals{width:100%}}
 `;
 
 /** Ancien format conservé pour compatibilité : {client}, {projet}… */
@@ -40,17 +69,40 @@ export function fillVars(text: string | undefined, doc: Doc): string {
 }
 
 /** Rend un document : gabarit HTML (en-tête, mise en page, pied) + blocs générés. */
-export function DocRender({ doc }: { doc: Doc }) {
-  const st = { ...DEFAULT_DOC_STYLE, ...doc.snapshot.template?.style };
-  const html = useMemo(() => buildDocHtml(doc), [doc]);
-  return <div className={`doc f-${st.font}`} style={{ '--accent': st.color } as CSSProperties} dangerouslySetInnerHTML={{ __html: html }} />;
+export function DocRender({ doc, mark, highlight, onPick }: { doc: Doc; mark?: boolean; highlight?: string; onPick?: (bloc: string) => void }) {
+  const st = docStyle(doc);
+  const html = useMemo(() => buildDocHtml(doc, { mark }), [doc, mark]);
+  return (
+    <>
+      {highlight && <style>{`.doc [data-bloc="${highlight.replace(/[^\w]/g, '')}"]{outline:2px solid ${st.color}!important;outline-offset:4px}`}</style>}
+      <div className={`doc f-${st.font} t-${st.theme || 'moderne'}${mark ? ' marking' : ''}`} style={accentVars(st.color)}
+        onClick={onPick ? (e) => { const b = (e.target as HTMLElement).closest('[data-bloc]'); if (b) onPick(b.getAttribute('data-bloc')!); } : undefined}
+        dangerouslySetInnerHTML={{ __html: html }} />
+    </>
+  );
 }
 
-export function buildDocHtml(doc: Doc): string {
+/** style du document ; l'ancien noir par défaut devient la couleur par défaut actuelle */
+export function docStyle(doc: Doc): DocStyle {
+  const st = { ...DEFAULT_DOC_STYLE, ...doc.snapshot.template?.style };
+  if (/^#1{6}$/i.test(st.color)) st.color = DEFAULT_DOC_STYLE.color;
+  return st;
+}
+
+/** variables de couleur : teinte claire, filet et couleur du texte sur l'accent (calculés, pour le PDF aussi) */
+export function accentVars(color: string): CSSProperties {
+  const m = /^#?([0-9a-f]{6})$/i.exec(color.trim());
+  const [r, g, b] = m ? [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16)) : [29, 78, 216];
+  const mix = (t: number) => `rgb(${[r, g, b].map((c) => Math.round(c + (255 - c) * t)).join(',')})`;
+  const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  return { '--accent': `rgb(${r},${g},${b})`, '--accent-soft': mix(0.92), '--accent-line': mix(0.75), '--accent-ink': lum > 0.62 ? '#111' : '#fff' } as CSSProperties;
+}
+
+export function buildDocHtml(doc: Doc, opts: { mark?: boolean } = {}): string {
   const s = doc.snapshot;
   const t = s.template;
   const st: DocStyle = { ...DEFAULT_DOC_STYLE, ...t?.style };
-  const h = { ...DEFAULT_HTML, ...t?.html };
+  const h = withDefaults(t?.html);
   const showPrices = !s.hidePrices;
   const isRoadmap = doc.type === 'feuille_route';
   const isPacking = doc.type === 'bon_sortie';
@@ -133,6 +185,7 @@ export function buildDocHtml(doc: Doc): string {
   blocks['bloc.pied'] = isRoadmap || !s.footer && h.footer === DEFAULT_HTML.footer ? '' : fillTemplate(h.footer, doc, blocks);
   const css = h.css.trim() ? `<style>${h.css.replace(/<\/style/gi, '')}</style>` : '';
   const tail = h.layout.includes('bloc.conditions') ? '' : blocks['bloc.conditions'];
+  if (opts.mark) for (const k of Object.keys(blocks)) if (blocks[k]) blocks[k] = `<div data-bloc="${k.slice(5)}">${blocks[k]}</div>`;
   return stripScripts(css + fillTemplate(h.layout, doc, blocks) + tail);
 }
 
@@ -189,7 +242,7 @@ function Rooms({ doc, st }: { doc: Doc; st: DocStyle }) {
                   <tbody>
                     {lines.map((l, j) => (<Fragment key={j}>
                       {st.showGroups && l.group && l.group !== lines[j - 1]?.group && (
-                        <tr><td colSpan={(isPacking ? 4 : 2) + (showPrices ? priceCols : 0)} style={{ fontWeight: 600, background: '#fafafa' }}>{l.group}</td></tr>
+                        <tr className="grp"><td colSpan={(isPacking ? 4 : 2) + (showPrices ? priceCols : 0)}>{l.group}</td></tr>
                       )}
                       <tr className={l.optional ? 'opt' : ''}>
                         {isPacking && <td><span className="check" /></td>}
@@ -262,7 +315,7 @@ function Rooms({ doc, st }: { doc: Doc; st: DocStyle }) {
                 </table>
               </>
             )}
-            {showPrices && st.showSubtotals && <div className="right"><strong>{tr(doc, 'subtotal')} {sp.name} : {money(sp.subtotal)}</strong></div>}
+            {showPrices && st.showSubtotals && <div className="subtotal"><span>{tr(doc, 'subtotal')} {sp.name} : {money(sp.subtotal)}</span></div>}
           </section>
         );
       })}
