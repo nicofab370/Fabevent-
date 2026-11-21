@@ -101,11 +101,13 @@ export default function SettingsPage() {
 
         <h2 style={{ marginTop: 20 }}>Dépôts</h2>
         <p className="muted" style={{ marginTop: 0 }}>
-          Avec un seul dépôt, rien à faire. Avec plusieurs, le stock se répartit par dépôt, chaque projet part d'un dépôt
+          L'adresse du dépôt sert à calculer la distance jusqu'au lieu de chaque projet (et donc le transport).
+          Avec plusieurs dépôts, le stock se répartit par dépôt, chaque projet part d'un dépôt
           et tu peux transférer du matériel de l'un à l'autre. Le premier est le dépôt principal.
         </p>
-        {(s.depots || []).map((dp, i, all) => {
-          const upd = (patch: Partial<typeof dp>) => setS({ ...s, depots: all.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
+        {/* le dépôt principal est toujours affiché : son adresse sert au calcul des distances */}
+        {(s.depots?.length ? s.depots : [{ id: 'main', name: 'Dépôt principal', letter: s.codeLetter || 'F', street: s.company.street, postalCode: s.company.postalCode, city: s.company.city, country: s.company.country }]).map((dp, i, all) => {
+          const upd = (patch: Partial<typeof dp>) => setS({ ...s, depots: all.map((x, j) => (j === i ? { ...x, ...patch, id: x.id === 'main' ? uid() : x.id } : x)) });
           return (
             <div key={dp.id} className="depot-row">
               <input value={dp.name} onChange={(e) => upd({ name: e.target.value })} placeholder="Nom" />

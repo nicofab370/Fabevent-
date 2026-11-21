@@ -110,7 +110,7 @@ export function SubrentalDetail() {
         </div>
       </div>
       {mailing && (
-        <EmailModal onClose={() => setMailing(false)}
+        <EmailModal onClose={() => setMailing(false)} kind="sous_location" vars={{ societe: settings.company.name, numero: sr.number, dates: `${fmtDate(sr.start)} → ${fmtDate(sr.end)}` }}
           initial={{
             to: supplier?.email || '',
             subject: `Demande de sous-location ${sr.number}`,

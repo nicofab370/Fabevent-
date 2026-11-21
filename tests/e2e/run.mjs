@@ -3,7 +3,7 @@
  * Lancement : npm run test:e2e  (construit l'application, la sert, puis déroule les scénarios).
  */
 import { spawn, spawnSync } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createRequire } from 'node:module';
@@ -1173,7 +1173,7 @@ await step('Email : brouillon .eml avec le PDF joint, statut « Envoyé »', asy
   await page.waitForSelector('.modal .attachments li', { timeout: 30000 });
   const att = await page.locator('.modal .attachments').innerText();
   expect(att.includes('.pdf'), 'PDF prêt en pièce jointe');
-  expect((await page.locator('.modal .field', { hasText: 'À' }).first().locator('input').inputValue()).includes('@'), 'destinataire prérempli');
+  expect(((await page.locator('.modal .rcpt').first().getAttribute('title')) || '').includes('@'), 'destinataire prérempli');
   const [dl] = await Promise.all([page.waitForEvent('download'), page.click('.modal button:has-text("Brouillon prêt à envoyer")')]);
   const eml = readFileSync(await dl.path(), 'utf8');
   expect(dl.suggestedFilename().endsWith('.eml'), 'fichier .eml');
@@ -1690,6 +1690,154 @@ await step('Élément hors inventaire : créé depuis un article, ajouté avec l
   await ctx.close();
 });
 
+/* ---------- Lot : mails, équipe, devis, feuille de route, sous-projets ---------- */
+console.log('\n  — mails, équipe, devis, feuille de route, sous-projets —');
+ctx = await newContext();
+
+await step('Devis : les options dans une section à part, avec leur total', async () => {
+  await openDemo();
+  await openProject('Mariage Dupont-Lemaire');
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Devis")');
+  await page.waitForSelector('.doc');
+  const opt = await page.locator('.doc .doc-options').innerText();
+  expect(opt.includes('Options proposées') && opt.includes('Lyre') && opt.includes('Total des options'), `section options (${opt.slice(0, 120)})`);
+  const main = await page.locator('.doc section').first().innerText();
+  expect(!main.split('Options proposées')[0].includes('en option'), 'les options ne sont plus mêlées au matériel');
+});
+
+await step('Mails : modèle enregistré proposé d’office, destinataire depuis le carnet d’adresses', async () => {
+  const docUrl = page.url();
+  await go('modeles?onglet=mails');
+  await page.click('.mail-kinds button:has-text("Devis")');
+  await page.click('button:text-is("+ Nouveau modèle")');
+  await page.fill('input[aria-label="Nom du modèle"]', 'Devis chaleureux');
+  await page.fill('input[aria-label="Objet du modèle"]', 'Notre proposition {numero} pour {projet}');
+  await page.click('button:text-is("Enregistrer le modèle")');
+  await page.waitForTimeout(300);
+  expect((await page.locator('.tpl-mail').innerText()).includes('Devis chaleureux'), 'modèle listé');
+  await page.goto(docUrl); await page.waitForSelector('.doc');
+  await page.click('button:has-text("Envoyer par email")');
+  await page.waitForSelector('.modal .attachments li', { timeout: 30000 });
+  const subject = await page.locator('.modal .field', { hasText: 'Objet' }).locator('input').inputValue();
+  expect(subject.startsWith('Notre proposition D-') && subject.includes('Mariage Dupont-Lemaire'), `modèle appliqué (${subject})`);
+  const before = await page.locator('.modal .recipients').first().locator('.rcpt').count();
+  await page.locator('.modal input[aria-label="À : ajouter une adresse"]').fill('Namur');
+  await page.waitForSelector('.rcpt-hits button');
+  await page.locator('.rcpt-hits button', { hasText: 'Ville de Namur' }).first().dispatchEvent('mousedown');
+  await page.waitForTimeout(200);
+  expect(await page.locator('.modal .recipients').first().locator('.rcpt').count() === before + 1, 'destinataire ajouté depuis le carnet');
+  expect((await page.locator('.modal').innerText()).includes('Envoi direct indisponible'), 'sans serveur : les autres façons d’envoyer restent proposées');
+  await page.click('.modal button:text-is("Fermer")');
+});
+
+await step('Feuille de route : contacts du client et du lieu', async () => {
+  await openProject('Festival des Lumières');
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Feuille de route")');
+  await page.waitForSelector('.doc');
+  const c = await page.locator('.doc .doc-contacts').innerText();
+  expect(c.includes('Client') && c.includes('Sophie Renard') && c.includes('prod@exemple.be'), `contact client (${c.slice(0, 160)})`);
+});
+
+await step('Projet : client et lieu modifiables depuis leur champ ; départ de la distance = dépôt', async () => {
+  await openProject('Mariage Dupont-Lemaire');
+  await page.click('button[aria-label="Modifier le client"]');
+  await page.locator('.modal .field', { hasText: 'Téléphone' }).locator('input').fill('+32 470 11 22 33');
+  await page.click('.modal button[type=submit]');
+  await page.waitForTimeout(300);
+  expect((await page.locator('.card', { has: page.locator('h2:text-is("Client")') }).innerText()).includes('+32 470 11 22 33'), 'client modifié sans quitter le projet');
+  expect((await page.locator('.distance').innerText()).includes('Départ : Dépôt'), 'distance calculée depuis le dépôt');
+});
+
+await step('Sous-projet : suppression visible, avec confirmation', async () => {
+  await tab('Planning');
+  await page.click('button:text-is("+ Ajouter un sous-projet")');
+  await page.locator('.modal .field', { hasText: 'Nom' }).first().locator('input').fill('Afterparty');
+  await page.click('.modal button[type=submit]');
+  await page.waitForTimeout(400);
+  expect(await page.locator('h2', { hasText: 'Afterparty' }).count() === 1, 'sous-projet ajouté');
+  await page.click('button[aria-label="Supprimer le sous-projet Afterparty"]');
+  await page.waitForTimeout(400);
+  expect(await page.locator('h2', { hasText: 'Afterparty' }).count() === 0, 'sous-projet supprimé');
+});
+
+await step('Équipe : remplacer un technicien confirmé (noté pas dispo), détails envoyés au remplaçant', async () => {
+  await openProject('Conférence annuelle');
+  await tab('Équipe & transport');
+  await page.click('.crew-modes button:has-text("2. Attribution")');
+  const row = page.locator('table.crew-assign tr', { hasText: 'Montage' }).first();
+  await row.locator('button:has-text("Remplacer")').click();
+  await page.waitForSelector('.modal');
+  expect((await page.locator('.modal').innerText()).includes('Tom Simon'), 'personne à remplacer');
+  for (const cb of await page.locator('.modal label', { hasText: 'prévenir' }).locator('input').all()) await cb.uncheck();
+  await page.click('.modal button:has-text("Retirer")');
+  await page.waitForSelector('.modal .replace-row');
+  await page.locator('.modal .replace-row', { hasText: 'Karim' }).locator('button:text-is("Attribuer")').click();
+  await page.waitForSelector('.modal .attachments li');
+  expect((await page.locator('.modal .field', { hasText: 'Objet' }).locator('input').inputValue()).startsWith('Confirmé'), 'mail de confirmation avec les détails');
+  expect((await page.locator('.modal .attachments').innerText()).includes('.ics'), 'agenda joint');
+  await page.click('.modal button:text-is("Fermer")');
+  await page.waitForTimeout(300);
+  const r2 = page.locator('table.crew-assign tr', { hasText: 'Montage' }).first();
+  expect((await r2.locator('select[aria-label="Technicien"] option:checked').innerText()).includes('Karim'), 'remplaçant attribué');
+  expect((await r2.locator('.req-chips').innerText()).includes('✗ Tom'), 'l’ancien noté « pas dispo »');
+});
+
+await step('Équipe : demander les dispos, réponse notée, attribution depuis la réponse', async () => {
+  await page.click('.crew-modes button:has-text("1. Postes")');
+  await page.locator('input[aria-label="Fonction à ajouter"]').first().fill('Rigger');
+  await page.locator('.add-posts button[type=submit]').first().click();
+  await page.waitForTimeout(300);
+  await page.click('.crew-modes button:has-text("2. Attribution")');
+  await page.click('button:has-text("Demander les dispos pour les")');
+  await page.waitForSelector('.modal .ask-people');
+  await page.locator('.modal input[aria-label^="Demander à Emma"]').check();
+  await page.locator('.modal input[aria-label^="Demander à Lucas"]').check();
+  await page.click('.modal button:has-text("Demander à 2 personne(s)")');
+  await page.waitForSelector('.modal:has-text("Demandes envoyées")');
+  await page.click('.modal button:text-is("Terminé")');
+  const row = page.locator('table.crew-assign tr', { hasText: 'Rigger' }).first();
+  expect((await row.locator('.req-chips').innerText()).includes('⏳ Emma'), 'demande en attente affichée');
+  await row.locator('.req-chip', { hasText: 'Lucas' }).click();
+  await row.locator('button:text-is("Noter : pas disponible")').click();
+  await page.waitForTimeout(300);
+  await row.locator('.req-chip', { hasText: 'Emma' }).click();
+  await row.locator('button:text-is("Noter : disponible")').click();
+  await page.waitForTimeout(300);
+  expect((await row.locator('.req-chips').innerText()).includes('✓ Emma') && (await row.locator('.req-chips').innerText()).includes('✗ Lucas'), 'réponses notées');
+  expect((await row.locator('select[aria-label="Technicien"] option').nth(1).innerText()).includes('Emma'), 'la personne disponible proposée en premier');
+  await row.locator('.req-chip', { hasText: 'Emma' }).click();
+  await row.locator('button:has-text("Attribuer Emma")').click();
+  await page.waitForSelector('.modal .attachments li');
+  await page.click('.modal button:text-is("Fermer")');
+  await page.waitForTimeout(300);
+  expect((await row.locator('select[aria-label="Technicien"] option:checked').innerText()).includes('Emma'), 'attribuée depuis sa réponse');
+});
+
+await step('Équipe : formulaire d’inscription (sans serveur : expliqué)', async () => {
+  await go('equipe');
+  expect((await page.locator('.signup-link').innerText()).includes('hébergement'), 'formulaire expliqué sans serveur');
+});
+
+await step('Liste de sortie : créer un projet avec ses articles', async () => {
+  await go('checklists');
+  await page.click('button:text-is("Coller du texte")');
+  await page.fill('.modal textarea', 'Son\n2   Enceinte L-Acoustics X12   SON-12   2\n4   Micro Shure SM58   MIC-58   4\nDivers\n1   Rouleau de scotch   AB-99   1');
+  await page.click('.modal button:text-is("Créer la checklist")');
+  await page.waitForSelector('.checklist-scan');
+  await page.click('button[aria-label="Menu de la checklist"]');
+  await page.click('.modal button:has-text("Créer un projet avec cette liste")');
+  await page.locator('.modal .field', { hasText: 'Nom du projet' }).locator('input').fill('Projet depuis liste');
+  await page.click('.modal button:text-is("Créer le projet")');
+  await page.waitForSelector('.project-tabs');
+  expect((await page.locator('h1').innerText()).includes('Projet depuis liste'), 'projet créé');
+  await tab('Équipement');
+  const eq = await page.locator('.sub').first().innerText();
+  expect(eq.includes('Enceinte L-Acoustics X12') && eq.includes('Micro Shure SM58'), 'articles reconnus en matériel du projet');
+  await tab('Général').catch(() => {});
+});
+
 /* ---------- Synchronisation : deux appareils, le vrai serveur PHP ---------- */
 const hasPhp = spawnSync('php', ['-v']).status === 0;
 if (hasPhp) {
@@ -1698,9 +1846,12 @@ if (hasPhp) {
   cpSync('dist', root, { recursive: true });
   mkdirSync(join(root, 'api'));
   cpSync('server/sync.php', join(root, 'api/sync.php'));
+  cpSync('server/mail.php', join(root, 'api/mail.php'));
+  cpSync('server/public.php', join(root, 'api/public.php'));
+  const OUTBOX = mkdtempSync(join(tmpdir(), 'fabmail-'));
   const SPORT = PORT + 700;
   const php = spawn('php', ['-S', `127.0.0.1:${SPORT}`, '-t', root], {
-    env: { ...process.env, FABEVENT_AUTH: resolve('tests/server/auth-stub.php'), FABEVENT_DATA: mkdtempSync(join(tmpdir(), 'fabdata-')) }, stdio: 'ignore',
+    env: { ...process.env, FABEVENT_AUTH: resolve('tests/server/auth-stub.php'), FABEVENT_DATA: mkdtempSync(join(tmpdir(), 'fabdata-')), FABEVENT_MAIL_OUTBOX: OUTBOX }, stdio: 'ignore',
   });
   await new Promise((r) => setTimeout(r, 1200));
   const SU = `http://127.0.0.1:${SPORT}/`;
@@ -1746,6 +1897,86 @@ if (hasPhp) {
     const n1 = await newProject(A.p, 'Projet A');
     const n2 = await newProject(B.p, 'Projet B'); // B n'a pas encore reçu le projet de A
     expect(n1 !== n2, `numéros distincts (${n1} / ${n2})`);
+  });
+  const mails = () => readdirSync(OUTBOX).sort().map((f) => readFileSync(join(OUTBOX, f), 'utf8'));
+  const textOf = (eml) => { const part = eml.split('Content-Type: text/plain; charset=UTF-8')[1].split('\r\n\r\n')[1].split('--')[0]; return Buffer.from(part.replace(/\s+/g, ''), 'base64').toString('utf8'); };
+  await step('Mail : envoyé directement depuis FabEvent, PDF joint', async () => {
+    await A.p.goto(SU + '#/projets'); await A.p.waitForTimeout(400);
+    await A.p.click('text=Projet A'); await A.p.waitForSelector('.project-tabs');
+    await A.p.click('.project-tabs button:text-is("Finances & documents")');
+    await A.p.click('button:text-is("+ Devis")');
+    await A.p.waitForSelector('.doc');
+    await A.p.click('button:has-text("Envoyer par email")');
+    await A.p.waitForSelector('.send-direct button', { timeout: 30000 });
+    await A.p.locator('.modal input[aria-label="À : ajouter une adresse"]').fill('client@exemple.org');
+    await A.p.keyboard.press('Enter');
+    await A.p.waitForSelector('.modal .attachments li', { timeout: 30000 });
+    await A.p.click('.send-direct button');
+    await A.p.waitForSelector('.modal .flash.ok:has-text("Envoyé à client@exemple.org")', { timeout: 15000 });
+    const m = mails().slice(-1)[0] || '';
+    expect(m.includes('To: client@exemple.org') && m.includes('Content-Type: application/pdf'), 'mail parti avec le PDF');
+    await A.p.click('.modal button:text-is("Fermer")');
+  });
+  await step('Équipe : demande de dispo par lien, le technicien répond, la réponse revient dans FabEvent', async () => {
+    await A.p.goto(SU + '#/equipe'); await A.p.waitForTimeout(400);
+    await A.p.click('button:text-is("+ Nouvelle personne")');
+    await A.p.locator('.modal .field', { hasText: 'Nom' }).first().locator('input').fill('Sam Lien');
+    await A.p.locator('.modal .field', { hasText: 'Email' }).locator('input').fill('sam@exemple.org');
+    await A.p.click('.modal button[type=submit]');
+    await A.p.goto(SU + '#/projets'); await A.p.waitForTimeout(400);
+    await A.p.click('text=Projet A'); await A.p.waitForSelector('.project-tabs');
+    await A.p.click('.project-tabs button:text-is("Équipe & transport")');
+    await A.p.click('.crew-modes button:has-text("1. Postes")');
+    await A.p.locator('input[aria-label="Fonction à ajouter"]').first().fill('Régisseur');
+    await A.p.locator('.add-posts button[type=submit]').first().click();
+    await A.p.click('.crew-modes button:has-text("2. Attribution")');
+    await A.p.click('button:has-text("Demander les dispos pour les")');
+    await A.p.locator('.modal input[aria-label^="Demander à Sam"]').check();
+    await A.p.waitForSelector('.modal p:has-text("Chacun reçoit son propre lien")');
+    await A.p.click('.modal button:has-text("Demander à 1 personne(s)")');
+    await A.p.waitForSelector('.modal:has-text("mail envoyé avec le lien")', { timeout: 15000 });
+    await A.p.click('.modal button:text-is("Terminé")');
+    await A.p.waitForTimeout(3500); // la demande part au serveur
+    const body = textOf(mails().slice(-1)[0]);
+    const link = (body.match(/https?:\/\/\S+public\.php\?r=\w+/) || [])[0];
+    expect(!!link && body.includes('Bonjour Sam'), `lien de réponse dans le mail (${body.slice(0, 200)})`);
+    const T = await browser.newContext(); const tp = await T.newPage();
+    await tp.goto(link);
+    expect((await tp.locator('body').innerText()).includes('Régisseur'), 'page publique : le poste est affiché');
+    await tp.fill('textarea[name=note]', 'Je peux aussi conduire le camion');
+    await tp.click('button:has-text("Je suis disponible")');
+    expect((await tp.locator('.msg').innerText()).includes('disponibilité est enregistrée'), 'réponse enregistrée');
+    await T.close();
+    await syncOn(A.p);
+    await A.p.goto(SU + '#/projets'); await A.p.waitForTimeout(400);
+    await A.p.click('text=Projet A'); await A.p.waitForSelector('.project-tabs');
+    await A.p.click('.project-tabs button:text-is("Équipe & transport")');
+    await A.p.click('.crew-modes button:has-text("2. Attribution")');
+    const chips = await A.p.locator('table.crew-assign tr', { hasText: 'Régisseur' }).locator('.req-chips').innerText();
+    expect(chips.includes('✓ Sam') && chips.includes('💬'), `réponse reçue dans FabEvent (${chips})`);
+  });
+  await step('Équipe : formulaire d’inscription public, fiche à valider', async () => {
+    await A.p.goto(SU + '#/equipe'); await A.p.waitForTimeout(400);
+    await A.p.click('button:text-is("Ouvrir le formulaire d\'inscription")');
+    await A.p.waitForSelector('input[aria-label="Lien du formulaire d\'inscription"]');
+    const link = await A.p.locator('input[aria-label="Lien du formulaire d\'inscription"]').inputValue();
+    await A.p.waitForTimeout(3500);
+    const T = await browser.newContext(); const tp = await T.newPage();
+    await tp.goto(link);
+    await tp.fill('#name', 'Alex Candidat'); await tp.fill('#email', 'alex@exemple.org'); await tp.fill('#city', 'Namur');
+    await tp.fill('#other', 'Technicien vidéo');
+    await tp.check('input[name=consent]');
+    await tp.waitForTimeout(3200); // anti-robot : formulaire rempli en plus de 3 s
+    await tp.click('button:has-text("Envoyer ma fiche")');
+    expect((await tp.locator('.msg').innerText()).includes('ta fiche est envoyée'), 'fiche envoyée');
+    await T.close();
+    await syncOn(A.p);
+    await A.p.goto(SU + '#/equipe'); await A.p.waitForTimeout(500);
+    const pend = await A.p.locator('.signup-pending').innerText();
+    expect(pend.includes('Alex Candidat') && pend.includes('Technicien vidéo'), 'inscription à valider');
+    await A.p.locator('.signup-pending tr', { hasText: 'Alex Candidat' }).locator('button:text-is("Valider")').click();
+    await A.p.waitForTimeout(300);
+    expect(await A.p.locator('table.list tr', { hasText: 'Alex Candidat' }).count() === 1, 'technicien ajouté à l’équipe');
   });
   await A.c.close(); await B.c.close();
   php.kill();

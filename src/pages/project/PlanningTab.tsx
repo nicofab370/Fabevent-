@@ -5,7 +5,7 @@ import { db } from '../../db';
 import type { Period, PeriodKind, Project, ProjectStatus, Subproject } from '../../types';
 import { FIRM, PERIOD_LABELS, STATUS_LABELS } from '../../types';
 import { shiftBetween, shiftDate, shiftProject, type Shift } from '../../projectOps';
-import { blockPeriod, deleteSubproject, fmtDate, fmtRange, nowIso, patch, save, sortPeriods, syncPeriods, toLocalInput, uid, usageDays } from '../../utils';
+import { blockPeriod, confirmDeleteSubproject, deleteSubproject, fmtDate, fmtRange, nowIso, patch, save, sortPeriods, syncPeriods, toLocalInput, uid, usageDays } from '../../utils';
 import type { ProjectData } from './shared';
 import { ownAddress, placeAddress, placeName, spotOf } from '../../places';
 
@@ -44,6 +44,7 @@ export default function PlanningTab({ d, onEditSub }: { d: ProjectData; onEditSu
                   </label>
                 )}
                 <button className="secondary small" onClick={() => duplicateSub(d, sp, onEditSub)}>Dupliquer</button>
+                <button className="danger small" onClick={() => confirmDeleteSubproject(sp)} aria-label={`Supprimer le sous-projet ${sp.name}`}>Supprimer</button>
                 <button className="small" onClick={() => onEditSub(sp)}>Modifier les horaires</button>
               </div>
             </div>
@@ -234,7 +235,7 @@ export function SubprojectModal({ sp, project, onClose }: { sp: Partial<Subproje
         <Field label="Notes" full><textarea value={d.notes || ''} onChange={(e) => set('notes', e.target.value)} /></Field>
         <div className="form-actions">
           {d.id && <button type="button" className="danger" style={{ marginRight: 'auto' }} onClick={async () => {
-            if (confirm('Supprimer ce sous-projet et son contenu ?')) { await deleteSubproject(d.id!); onClose(); }
+            if (await confirmDeleteSubproject({ id: d.id!, name: d.name || '', projectId: d.projectId! })) onClose();
           }}>Supprimer</button>}
           <button type="button" className="secondary" onClick={onClose}>Annuler</button>
           <button type="submit">Enregistrer</button>

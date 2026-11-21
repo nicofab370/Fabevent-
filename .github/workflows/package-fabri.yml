@@ -1,7 +1,7 @@
 name: Paquet pour l'hébergement FABRI.live
 
 # À chaque mise à jour de main : un zip prêt à déposer sur l'hébergement
-# (dossier fabevent/ = l'application + api/sync.php). Onglet Actions → dernière exécution → Artifacts.
+# (dossier fabevent/ = l'application + api/sync.php, mail.php, public.php). Onglet Actions → dernière exécution → Artifacts.
 on:
   push:
     branches: [main]
@@ -26,6 +26,7 @@ jobs:
           mkdir -p paquet/fabevent/api
           cp -r dist/. paquet/fabevent/
           cp server/sync.php paquet/fabevent/api/sync.php
+          cp server/mail.php server/public.php server/mail-config.example.php paquet/fabevent/api/
           cp docs/deploiement-fabri.md paquet/LISEZMOI.md
       - uses: actions/upload-artifact@v4
         with:

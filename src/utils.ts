@@ -352,12 +352,35 @@ export async function deleteProject(projectId: string) {
 }
 
 export async function deleteSubproject(subprojectId: string) {
-  await db.transaction('rw', [db.subprojects, db.lines, db.crew, db.vehicleAssignments], async () => {
+  await db.transaction('rw', [db.subprojects, db.lines, db.crew, db.vehicleAssignments, db.subrentals], async () => {
     await db.lines.where({ subprojectId }).delete();
     await db.crew.where({ subprojectId }).delete();
     await db.vehicleAssignments.where({ subprojectId }).delete();
+    // les sous-locations restent sur le projet (commande fournisseur déjà passée)
+    await db.subrentals.where({ subprojectId }).modify({ subprojectId: undefined });
     await db.subprojects.delete(subprojectId);
   });
+}
+
+/**
+ * Suppression d'un sous-projet après confirmation : prévient s'il reste du matériel sorti non rentré,
+ * des techniciens affectés, des documents ou si c'est le dernier sous-projet. Renvoie true si supprimé.
+ */
+export async function confirmDeleteSubproject(sp: { id: string; name: string; projectId: string }): Promise<boolean> {
+  const [lines, crew, siblings] = await Promise.all([
+    db.lines.where({ subprojectId: sp.id }).toArray(), db.crew.where({ subprojectId: sp.id }).toArray(), db.subprojects.where({ projectId: sp.projectId }).count(),
+  ]);
+  const out = lines.reduce((a, l) => a + Math.max(0, (l.outQty || 0) - (l.inQty || 0)), 0);
+  const people = crew.filter((c) => c.personId).length;
+  const warn = [
+    out ? `⚠ ${out} article(s) sorti(s) et pas encore rentré(s) : fais d'abord le retour, sinon ils disparaissent de la checklist.` : '',
+    people ? `${people} technicien(s) affecté(s) perdront ce poste.` : '',
+    siblings <= 1 ? 'C\'est le dernier sous-projet du projet.' : '',
+  ].filter(Boolean);
+  const msg = `Supprimer le sous-projet « ${sp.name} » avec son matériel (${lines.length} ligne(s)), ses postes (${crew.length}) et ses véhicules ?${warn.length ? '\n\n' + warn.join('\n') : ''}\n\nLes documents déjà établis (devis, factures) ne changent pas.`;
+  if (!confirm(msg)) return false;
+  await deleteSubproject(sp.id);
+  return true;
 }
 
 /* ---------- Contrôles périodiques ---------- */

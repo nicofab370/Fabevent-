@@ -5,9 +5,9 @@ import { Empty, Field, Modal, PageHead, StatusBadge } from '../components/ui';
 import { Scanner } from '../components/Scanner';
 import { addExtraCode, contentsText, findByCode, setUnitState, unitState, type CodeHit } from '../codes';
 import { useAvailability } from '../data';
-import { db } from '../db';
+import { db, nextNumber } from '../db';
 import { importFile, rowsFromText, type ImportedList } from '../importList';
-import type { Equipment, EquipmentLine, FreeChecklist, FreeLine, SerialUnit, Subproject } from '../types';
+import type { Equipment, EquipmentLine, FreeChecklist, FreeLine, Project, SerialUnit, Subproject } from '../types';
 import { fmtDate, nowIso, patch, save, uid } from '../utils';
 import { RepairModal } from './Maintenance';
 import { ItemSheet, beep } from './Inventory';
@@ -73,6 +73,8 @@ export interface ChecklistSource {
   addExtra?: (equipmentId: string, n: number, serial?: string) => Promise<void>;
   /** une ligne de plus sur une ligne existante */
   bumpQty: (key: string, n: number) => Promise<void>;
+  /** actions en plus dans le menu ⋯ */
+  menuExtra?: { label: string; run: () => void }[];
   /** checklist libre : modifier les lignes et la liste */
   edit?: {
     update: (key: string, d: LineDraft) => Promise<void>;
@@ -426,6 +428,7 @@ export function ChecklistView({ src }: { src: ChecklistSource }) {
           <div className="cl-menu">
             {src.edit && <button className="secondary" onClick={() => { setEditing(!editing); setMenu(false); }}>{editing ? 'Quitter le mode édition' : '✎ Modifier les lignes (corriger l\'import)'}</button>}
             <button className="secondary" onClick={() => { const v = !allFolded; const n = { ...fold }; for (const c of cats) n[`${src.title}|c|${c}`] = v; for (const l of src.lines) if (isKit(l)) n[`${src.title}|k|${l.key}`] = v; setFoldState(n); try { localStorage.setItem(FOLD, JSON.stringify(n)); } catch { /* */ } setMenu(false); }}>{allFolded ? 'Tout déplier' : 'Tout replier'}</button>
+            {src.menuExtra?.map((m) => <button key={m.label} className="secondary" onClick={() => { setMenu(false); m.run(); }}>{m.label}</button>)}
             <button className="secondary" onClick={async () => { setMenu(false); await resetPhase(); }}>↺ Tout décocher ({ph})</button>
             <button className="secondary" onClick={() => { setMenu(false); printSheet(src, false, isKit); }}>🖨 Imprimer / PDF (A4) avec l'état actuel</button>
             <button className="secondary" onClick={() => { setMenu(false); printSheet(src, true, isKit); }}>🖨 Imprimer vierge (à remplir à la main)</button>
@@ -728,6 +731,7 @@ export function FreeChecklistPage() {
   const nav = useNavigate();
   const cl = useLiveQuery(() => db.checklists.get(id!), [id]);
   const av = useAvailability();
+  const [toProject, setToProject] = useState(false);
   if (!cl) return <p>Chargement…</p>;
   const setLines = (fn: (ls: FreeLine[]) => FreeLine[]) => db.transaction('rw', db.checklists, async () => {
     const fresh = await db.checklists.get(cl.id);
@@ -743,6 +747,7 @@ export function FreeChecklistPage() {
     backTo: { to: '/checklists', label: 'Checklists' },
     label: cl.title,
     kitMode: true,
+    menuExtra: [{ label: cl.projectId ? '📁 Ouvrir le projet créé avec cette liste' : '📁 Créer un projet avec cette liste', run: () => (cl.projectId ? nav('/projets/' + cl.projectId) : setToProject(true)) }],
     phase: cl.phase, setPhase: (p) => patch(db.checklists, cl.id, { phase: p }),
     lines: cl.lines.map((l) => ({
       key: l.id, name: l.name, code: l.code, equipmentId: l.equipmentId, qty: l.qty, out: l.out, back: l.back,
@@ -789,7 +794,90 @@ export function FreeChecklistPage() {
       removeList: async () => { await db.checklists.delete(cl.id); nav('/checklists'); },
     },
   };
-  return <ChecklistView src={src} />;
+  return (
+    <>
+      {cl.projectId && <div className="info no-print">Projet créé avec cette liste : <Link to={'/projets/' + cl.projectId}>ouvrir le projet</Link>.</div>}
+      <ChecklistView src={src} />
+      {toProject && <ProjectFromList cl={cl} equipment={av.equipment} onClose={(pid) => { setToProject(false); if (pid) nav('/projets/' + pid); }} />}
+    </>
+  );
+}
+
+/** Dates du bon (« 12-12-2026 10:00 ») → datetime-local. */
+function parseBE(s?: string): string | undefined {
+  const m = String(s || '').match(/(\d{2})[-/.](\d{2})[-/.](\d{4})(?:\s+(\d{1,2})[:h](\d{2}))?/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}T${(m[4] || '08').padStart(2, '0')}:${m[5] || '00'}` : undefined;
+}
+
+/**
+ * Crée un projet FabEvent à partir d'une liste de sortie : un sous-projet avec les articles reconnus
+ * (les autres lignes sont notées dans le projet), et au choix ce qui est déjà sorti / rentré.
+ */
+function ProjectFromList({ cl, equipment, onClose }: { cl: FreeChecklist; equipment: Equipment[]; onClose: (projectId?: string) => void }) {
+  const clients = useLiveQuery(() => db.contacts.where({ type: 'client' }).toArray(), []) || [];
+  const eqMap = new Map(equipment.map((e) => [e.id, e]));
+  const dates = cl.plan.map((p) => [parseBE(p.from), parseBE(p.to)]).filter((x) => x[0]);
+  const today = new Date(); today.setHours(8, 0, 0, 0);
+  const iso = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  const [name, setName] = useState(cl.title || 'Projet');
+  const [clientId, setClientId] = useState(() => clients.find((c) => cl.meta.Client && c.company.toLowerCase() === cl.meta.Client.toLowerCase())?.id || '');
+  const [start, setStart] = useState(dates.map((x) => x[0]!).sort()[0] || iso(today));
+  const [end, setEnd] = useState(dates.map((x) => x[1] || x[0]!).sort().slice(-1)[0] || iso(new Date(today.getTime() + 10 * 3600000)));
+  const [keepCounts, setKeepCounts] = useState(true);
+  // client du bon reconnu par son nom, une fois les contacts chargés
+  useEffect(() => {
+    if (clientId || !cl.meta.Client) return;
+    const c = clients.find((x) => x.company.toLowerCase() === cl.meta.Client.toLowerCase());
+    if (c) setClientId(c.id);
+  }, [clients.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  const kitIds = new Set(cl.lines.filter((l) => l.equipmentId && eqMap.get(l.equipmentId)?.isKit).map((l) => l.id));
+  // le contenu d'un kit du catalogue suit le kit ; les autres lignes reconnues deviennent des lignes du projet
+  const known = cl.lines.filter((l) => l.equipmentId && eqMap.has(l.equipmentId) && !(l.parent && kitIds.has(l.parent)));
+  const parents = new Set(cl.lines.map((l) => l.parent).filter(Boolean));
+  const unknown = cl.lines.filter((l) => !l.equipmentId && !parents.has(l.id));
+  return (
+    <Modal title="Créer un projet avec cette liste" onClose={() => onClose()}>
+      <form className="form" onSubmit={async (e) => {
+        e.preventDefault();
+        const number = await nextNumber('P');
+        const notes = unknown.length ? `Lignes de la liste « ${cl.title} » hors catalogue :\n${unknown.map((l) => `- ${l.qty} × ${l.name}${l.code ? ` (${l.code})` : ''}`).join('\n')}` : undefined;
+        const client = clients.find((c) => c.id === clientId);
+        const p = await save(db.projects, {
+          number, name: name.trim() || cl.title, status: 'confirme', clientId: clientId || undefined, venue: cl.meta['Lieu de la prestation'] || undefined,
+          start, end, notes, vatRegime: client?.vatRegime, discount: client?.discounts?.total || 0,
+        } as Project);
+        const sp = await save(db.subprojects, { projectId: p.id, name: 'Principal', venue: p.venue, status: p.status, start, end, order: 0 }) as Subproject;
+        const qtys: Record<string, number> = {};
+        for (const l of known) qtys[l.equipmentId!] = (qtys[l.equipmentId!] || 0) + l.qty;
+        await addEquipmentToSub(sp, equipment, [], qtys);
+        if (keepCounts) {
+          const lines = await db.lines.where({ subprojectId: sp.id }).toArray();
+          for (const pl of lines.filter((x) => !x.parentLineId)) {
+            const src = known.filter((l) => l.equipmentId === pl.equipmentId);
+            const out = src.reduce((a, l) => a + l.out, 0), back = src.reduce((a, l) => a + l.back, 0);
+            if (out || back) await patch(db.lines, pl.id, { outQty: out, inQty: back, outSerials: src.flatMap((l) => l.outSerials || []), inSerials: src.flatMap((l) => l.inSerials || []) });
+          }
+          await warehouseStatus(sp.id);
+        }
+        await patch(db.checklists, cl.id, { projectId: p.id });
+        onClose(p.id);
+      }}>
+        <Field label="Nom du projet" full><input required autoFocus value={name} onChange={(e) => setName(e.target.value)} /></Field>
+        <Field label="Client" full>
+          <select value={clientId} onChange={(e) => setClientId(e.target.value)}>
+            <option value="">—</option>
+            {clients.map((c) => <option key={c.id} value={c.id}>{c.company}</option>)}
+          </select>
+        </Field>
+        <Field label="Début"><input type="datetime-local" required value={start} onChange={(e) => setStart(e.target.value)} /></Field>
+        <Field label="Fin"><input type="datetime-local" required value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
+        <label className="check-row full"><input type="checkbox" checked={keepCounts} onChange={(e) => setKeepCounts(e.target.checked)} /> Reprendre ce qui est déjà sorti / rentré</label>
+        <p className="muted full" style={{ margin: 0 }}>{known.length} ligne(s) du catalogue deviennent le matériel du projet (sous-projet « Principal », prix du catalogue).
+          {unknown.length > 0 && ` ${unknown.length} ligne(s) hors catalogue sont notées dans le projet.`}</p>
+        <div className="form-actions"><button type="button" className="secondary" onClick={() => onClose()}>Annuler</button><button type="submit">Créer le projet</button></div>
+      </form>
+    </Modal>
+  );
 }
 
 /** Transforme un bon importé en checklist libre ; les codes connus sont reliés au catalogue (pour le scan). */

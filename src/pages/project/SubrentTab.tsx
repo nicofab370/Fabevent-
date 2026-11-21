@@ -135,7 +135,8 @@ export default function SubrentTab({ d }: { d: ProjectData }) {
         )}
       </div>
       {mailOrder && (
-        <EmailModal initial={hrOrderMail(d, mailOrder)} onClose={() => setMailOrder(null)}
+        <EmailModal initial={hrOrderMail(d, mailOrder)} onClose={() => setMailOrder(null)} kind="sous_location"
+          vars={{ projet: project.name, lieu: project.venue, societe: d.settings.company.name, dates: fmtRange(project.start, project.end) }}
           prepare={async () => [{ name: `${safeFileName(`Bon-de-commande-${project.number}-${mailOrder.supplier}`)}.pdf`, type: 'application/pdf', blob: await htmlToPdf(hrOrderHtml(d, mailOrder), DOC_CSS) }]} />
       )}
     </>

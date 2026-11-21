@@ -73,6 +73,23 @@ remises par défaut du client.
 **Matériel** : étiquettes QR imprimables (planches A4, rouleau), articles de remplacement proposés en cas de manque,
 archivage, photos, inventaire par scan avec mise à jour du stock, valeur du parc.
 
+**Mails depuis la plateforme** : devis, factures, bons, plannings, demandes de dispo partent directement de FabEvent avec leurs
+pièces jointes (serveur `mail.php` sur l'hébergement, SMTP). Destinataires depuis le carnet d'adresses (contacts, interlocuteurs,
+services, techniciens), copie, **modèles de mail par type** (Modèles → Mails, ou « Enregistrer comme modèle » : les noms, dates
+et montants deviennent des variables). Sans serveur : partage, brouillon .eml ou messagerie.
+
+**Équipe** :
+- « 📨 Demander les dispos » sur un ou plusieurs postes : chaque technicien reçoit un lien et répond en un clic, poste par poste.
+  La réponse revient sur le poste (⏳ ✓ ✗, avec son mot), et on peut aussi la noter à la main.
+- Les personnes disponibles sont proposées en premier.
+- « Attribuer » envoie au technicien les détails du poste par mail : lieu, adresse, horaires, contact sur place, agenda .ics.
+- « ⇄ Remplacer » : un technicien confirmé qui n'est plus disponible est noté « pas dispo », prévenu, puis remplacé.
+- **Formulaire d'inscription** public pour ajouter des techniciens à la base (fiches à valider).
+
+**Devis** : les options dans une section à part, avec leur total. **Feuille de route** : contacts du client et du lieu.
+**Projet** : client et lieu modifiables depuis leur champ (✎), distance calculée depuis l'adresse du dépôt, suppression
+d'un sous-projet (avec avertissements). **Liste de sortie** libre → « Créer un projet avec cette liste ».
+
 **Étiqueteuse Brother PT-P750W** (Matériel › Étiquettes, format « ruban TZe ») : QR du code interne (ex. `F-S-0010-03`
 pour une unité) + code + nom, sur ruban de 6 à 24 mm.
 - *Impression directe en USB* (WebUSB : Chrome / Edge sur macOS, Linux, ChromeOS, Android avec câble OTG) : FabEvent

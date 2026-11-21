@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Empty, Field, Modal, NumInput, StatusBadge } from '../../components/ui';
 import { db } from '../../db';
 import type { EquipGroup, Equipment, EquipmentLine, Subproject } from '../../types';
-import { availableQty, blockPeriod, factorFor, fmtRange, lineBlock, lineDays, lineTotal, money, nowIso, round2, save, sortPeriods, uid, type Reservation, patch } from '../../utils';
+import { availableQty, blockPeriod, confirmDeleteSubproject, factorFor, fmtRange, lineBlock, lineDays, lineTotal, money, nowIso, round2, save, sortPeriods, uid, type Reservation, patch } from '../../utils';
 import { isPerPiece, type ProjectData } from './shared';
 import { codeFromScan, findByCode } from '../../codes';
 
@@ -159,6 +159,7 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
           <strong>{money(total)} HT</strong>
           <button className="secondary small" onClick={() => setEditGroup({ name: '', periodIds: [] })}>+ Groupe</button>
           <button className="secondary small" onClick={() => nav('/entrepot/' + sp.id)}>Préparer / scanner</button>
+          <button className="ghost small" title="Supprimer ce sous-projet" aria-label={`Supprimer le sous-projet ${sp.name}`} onClick={() => confirmDeleteSubproject(sp)}>🗑</button>
         </div>
       </div>
       <div className="sub-body">

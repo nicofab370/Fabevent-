@@ -8,6 +8,8 @@ import type { CrewAssignment, Person, Subproject, VehicleAssignment } from '../.
 import { RESERVING } from '../../types';
 import { blockPeriod, buildIcs, crewAmount, crewCostRate, crewWindow, functionRate, daysBetween, download, fmtRange, money, overlaps, round2, save, sortPeriods, patch } from '../../utils';
 import { personIssue, type ProjectData } from './shared';
+import { PostRequests, useCrewDialogs } from '../crewRequests';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { perKmFor, tripKm, vehiclePrice } from '../../geo';
 
 /** Onglet Équipe & transport : postes et véhicules par salle et par créneau, puis affectation. */
@@ -16,7 +18,9 @@ export default function CrewTab({ d }: { d: ProjectData }) {
   const [mailPerson, setMailPerson] = useState<Person | null>(null);
   const [mode, setModeState] = useState<CrewMode>(() => { try { return (localStorage.getItem('fab.crewMode') as CrewMode) || 'postes'; } catch { return 'postes'; } });
   const setMode = (m: CrewMode) => { setModeState(m); try { localStorage.setItem('fab.crewMode', m); } catch { /* sans stockage */ } };
-  const ctx: CrewContext = { people, allCrew: d.crew, subs: d.av.subs, unav: d.unav, catalogue: settings.crewFunctions || [] };
+  const requests = useLiveQuery(() => db.crewRequests.where({ projectId: project.id }).toArray(), [project.id]) || [];
+  const ctx: CrewContext = { people, allCrew: d.crew, subs: d.av.subs, unav: d.unav, catalogue: settings.crewFunctions || [], requests };
+  const cd = useCrewDialogs();
   const pMap = new Map(people.map((p) => [p.id, p]));
   const subMap = new Map(d.subs.map((s) => [s.id, s]));
   const assigned = people.filter((p) => projectCrew.some((c) => c.personId === p.id));
@@ -91,9 +95,14 @@ export default function CrewTab({ d }: { d: ProjectData }) {
         )}
       </div>
       )}
-      {d.subs.map((sp) => <RoomCrew key={sp.id} d={d} sp={sp} pMap={pMap} mode={mode} ctx={ctx} />)}
+      {mode === 'attribution' && open.length > 0 && (
+        <div className="toolbar"><button onClick={() => cd.askProject(project.id, open.map((c) => c.id))}>📨 Demander les dispos pour les {open.length} poste(s) à pourvoir</button></div>
+      )}
+      {d.subs.map((sp) => <RoomCrew key={sp.id} d={d} sp={sp} pMap={pMap} mode={mode} ctx={ctx} actionsFor={cd.forPost} />)}
+      {cd.dialogs}
       {mailPerson && (
-        <EmailModal initial={planningMail(mailPerson)} onClose={() => setMailPerson(null)}
+        <EmailModal initial={planningMail(mailPerson)} onClose={() => setMailPerson(null)} kind="planning"
+          vars={{ prenom: mailPerson.name.split(' ')[0], projet: project.name, lieu: project.venue, societe: settings.company.name, postes: schedule(mailPerson, true).map((i) => '- ' + i.label).join('\n'), dates: fmtRange(project.start, project.end) }}
           prepare={async () => [{ name: icsName(mailPerson), type: 'text/calendar', blob: new Blob([icsText(mailPerson)], { type: 'text/calendar;charset=utf-8' }) }]} />
       )}
     </>
@@ -102,7 +111,7 @@ export default function CrewTab({ d }: { d: ProjectData }) {
 
 type CrewMode = 'postes' | 'attribution';
 
-function RoomCrew({ d, sp, pMap, mode, ctx }: { d: ProjectData; sp: Subproject; pMap: Map<string, Person>; mode: CrewMode; ctx: CrewContext }) {
+function RoomCrew({ d, sp, pMap, mode, ctx, actionsFor }: { d: ProjectData; sp: Subproject; pMap: Map<string, Person>; mode: CrewMode; ctx: CrewContext; actionsFor: (c: CrewAssignment) => { onAsk: () => void; onReplace: () => void; onDetails: () => void } }) {
   const [addQty, setAddQty] = useState(1);
   const [addFn, setAddFn] = useState('');
   const [addPeriod, setAddPeriod] = useState('');
@@ -201,7 +210,7 @@ function RoomCrew({ d, sp, pMap, mode, ctx }: { d: ProjectData; sp: Subproject; 
                     <tr key={c.id}>
                       <td><strong>{c.function}</strong>{pe && <div className="muted">{pe.name}</div>}</td>
                       <td className="nowrap">{fmtRange(c.start, c.end)}</td>
-                      <td><PersonSelect c={c} ctx={ctx} /></td>
+                      <td><PersonSelect c={c} ctx={ctx} /><PostRequests c={c} people={ctx.people} requests={ctx.requests || []} {...actionsFor(c)} /></td>
                       <td className="nowrap"><CostCell c={c} person={person} /></td>
                       <td><input type="checkbox" aria-label="Planification finale" checked={c.final !== false} onChange={(e) => updCrew(c, { final: e.target.checked })} /></td>
                       <td className="n">{c.billable ? money(a.billed) : <span className="muted">non facturé</span>}</td>
