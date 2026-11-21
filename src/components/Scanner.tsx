@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import wasmUrl from 'zxing-wasm/reader/zxing_reader.wasm?url';
+import { Icon } from './Icon';
 
 /*
  * Scanner caméra (repris de la version FABRI.live en production) :
@@ -205,7 +206,7 @@ export function Scanner({ onCode, onClose }: { onCode: (code: string) => boolean
         <video ref={videoRef} playsInline muted autoPlay />
         <div className="scanner-aim" aria-hidden />
         {status && <div className="scanner-wait">{status}</div>}
-        {flash !== null && <div className={'scanflash ' + (flash ? 'ok' : 'err')} aria-hidden>{flash ? '✓' : '✕'}</div>}
+        {flash !== null && <div className={'scanflash ' + (flash ? 'ok' : 'err')} aria-hidden><Icon name={flash ? 'check' : 'x'} size={72} /></div>}
         <div className="scanner-ui">
           {cams.length > 1 && (
             <select aria-label="Objectif" value={camId} onChange={(e) => switchCam(e.target.value)}>
@@ -217,7 +218,7 @@ export function Scanner({ onCode, onClose }: { onCode: (code: string) => boolean
           ))}
           {torch !== null && (
             <button type="button" className={'campill' + (torch ? ' on' : '')} aria-label="Lampe" aria-pressed={torch}
-              onClick={() => trackRef.current?.applyConstraints({ advanced: [{ torch: !torch } as MediaTrackConstraintSet] }).then(() => setTorch(!torch)).catch(() => {})}>⚡</button>
+              onClick={() => trackRef.current?.applyConstraints({ advanced: [{ torch: !torch } as MediaTrackConstraintSet] }).then(() => setTorch(!torch)).catch(() => {})}><Icon name="bolt" /></button>
           )}
           {onClose && <button type="button" className="campill" onClick={onClose}>Fermer</button>}
         </div>

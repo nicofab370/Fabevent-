@@ -29,28 +29,29 @@ import { SyncBadge } from './components/SyncPanel';
 import Venues, { VenueDetail } from './pages/Venues';
 import CrewAssignmentPage from './pages/crewAssign';
 import QrCard from './pages/QrCard';
+import { Icon, type IconName } from './components/Icon';
 
-const NAV = [
-  ['/', 'Tableau de bord', '◧'],
-  ['/projets', 'Projets', '▤'],
-  ['/planning', 'Planning', '▦'],
-  ['/materiel', 'Matériel', '◫'],
-  ['/entrepot', 'Entrepôt', '⇄'],
-  ['/penuries', 'Pénuries', '⚠'],
-  ['/souslocations', 'Sous-locations', '⇆'],
-  ['/transferts', 'Transferts', '⇵'],
-  ['/maintenance', 'Maintenance', '⚒'],
-  ['/contacts', 'Contacts', '☰'],
-  ['/lieux', 'Lieux', '⌂'],
-  ['/equipe', 'Équipe', '☺'],
-  ['/attribution', 'Attribution', '✓'],
-  ['/vehicules', 'Véhicules', '⛟'],
-  ['/comptabilite', 'Export comptable', '€'],
-  ['/rapports', 'Rapports', '↗'],
-  ['/import', 'Import', '⇪'],
-  ['/modeles', 'Modèles de documents', '✎'],
-  ['/parametres', 'Paramètres', '⚙'],
-] as const;
+const NAV: [string, string, IconName][] = [
+  ['/', 'Tableau de bord', 'grid'],
+  ['/projets', 'Projets', 'folder'],
+  ['/planning', 'Planning', 'calendar'],
+  ['/materiel', 'Matériel', 'box'],
+  ['/entrepot', 'Entrepôt', 'scan'],
+  ['/penuries', 'Pénuries', 'warning'],
+  ['/souslocations', 'Sous-locations', 'swap'],
+  ['/transferts', 'Transferts', 'transfer'],
+  ['/maintenance', 'Maintenance', 'wrench'],
+  ['/contacts', 'Contacts', 'users'],
+  ['/lieux', 'Lieux', 'building'],
+  ['/equipe', 'Équipe', 'user'],
+  ['/attribution', 'Attribution', 'user-check'],
+  ['/vehicules', 'Véhicules', 'truck'],
+  ['/comptabilite', 'Export comptable', 'receipt'],
+  ['/rapports', 'Rapports', 'chart'],
+  ['/import', 'Import', 'upload'],
+  ['/modeles', 'Modèles de documents', 'file'],
+  ['/parametres', 'Paramètres', 'sliders'],
+];
 
 export default function App() {
   const [online, setOnline] = useState(navigator.onLine);
@@ -73,14 +74,14 @@ export default function App() {
         <nav>
           {NAV.map(([to, label, icon]) => (
             <NavLink key={to} to={to} end={to === '/'}>
-              <span className="ico">{icon}</span>{label}
+              <Icon name={icon} />{label}
             </NavLink>
           ))}
         </nav>
         <SyncBadge online={online} />
       </aside>
       <div className="topbar">
-        <button className="ghost" onClick={() => setMenu(!menu)} aria-label="Menu">☰</button>
+        <button className="ghost" onClick={() => setMenu(!menu)} aria-label="Menu"><Icon name="menu" /></button>
         <div className="brand">Fab<span>Event</span></div>
       </div>
       <main className="main">

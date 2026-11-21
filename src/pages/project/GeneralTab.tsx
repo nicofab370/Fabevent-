@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Empty, Field, Modal } from '../../components/ui';
 import { DEFAULT_PROJECT_TYPES, db } from '../../db';
 import { createDocument } from '../../documents';
-import type { DocType, Project, ProjectNote, ProjectStatus, Task, VatRegime } from '../../types';
+import type { Contact, DocType, Project, ProjectNote, ProjectStatus, Task, VatRegime } from '../../types';
 import { CONFIRMED, LANG_LABELS, STATUS_LABELS, VENUE_INFO_LABELS, type VenueInfo, VAT_REGIME_LABELS, type Lang } from '../../types';
 import { CustomFieldsEditor, TagInput } from '../../components/extra';
 import { blockPeriod, fmtDate, fmtRange, patch, save, sortPeriods, uid, usageDays } from '../../utils';
@@ -17,6 +17,7 @@ import { setProjectDistance, type ProjectData } from './shared';
 import { drivingRoute } from '../../geo';
 import { NumInput } from '../../components/ui';
 import { money } from '../../utils';
+import { Icon } from '../../components/Icon';
 
 /** Champ texte enregistré à la sortie du champ (pas à chaque frappe). */
 function LazyInput({ value, onSave, ...rest }: { value?: string; onSave: (v: string) => void; placeholder?: string; type?: string; required?: boolean }) {
@@ -29,6 +30,8 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
   const nav = useNavigate();
   const { project, client, contacts, settings, subs, docs, conflicts, projectCrew, projectVas, lines } = d;
   const [newContact, setNewContact] = useState<'client' | 'lieu' | null>(null);
+  /** modification rapide du client ou du lieu choisi, sans quitter le projet */
+  const [editContact, setEditContact] = useState<Contact | null>(null);
   const upd = (changes: Partial<Project>) => patch(db.projects, project.id, changes);
   const types = settings.projectTypes?.length ? settings.projectTypes : DEFAULT_PROJECT_TYPES;
   const venue = contacts.find((c) => c.id === project.venueId);
@@ -38,8 +41,10 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
   const venueAddress = venue ? placeAddress(venue, spot) : project.venue || '';
   const depots = settings.depots || [];
   const depot = depots.find((x) => x.id === (project.depotId || depots[0]?.id));
-  const origin = (depot?.street || depot?.city ? [depot.street, depot.postalCode, depot.city].filter(Boolean).join(', ') : '')
-    || [settings.company.street, settings.company.postalCode, settings.company.city].filter(Boolean).join(', ') || settings.company.address?.replace(/\n/g, ', ') || '';
+  const depotAddress = depot?.street || depot?.city ? [depot.street, depot.postalCode, depot.city].filter(Boolean).join(', ') : '';
+  // distance calculée depuis le dépôt de base du projet ; à défaut, depuis l'adresse de la société
+  const origin = depotAddress || [settings.company.street, settings.company.postalCode, settings.company.city].filter(Boolean).join(', ') || settings.company.address?.replace(/\n/g, ', ') || '';
+  const originLabel = depotAddress ? `${depot!.name} — ${depotAddress}` : origin ? `adresse de la société (${origin}) : renseigne l'adresse du dépôt dans Paramètres` : '';
   const route = venueAddress ? `https://www.google.com/maps/dir/?api=1${origin ? `&origin=${encodeURIComponent(origin)}` : ''}&destination=${encodeURIComponent(venueAddress)}` : '';
 
   // Avancée du projet
@@ -124,7 +129,8 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
                   <option value="">—</option>
                   {contacts.filter((c) => c.type === 'client' || c.id === project.clientId).map((c) => <option key={c.id} value={c.id}>{c.company}</option>)}
                 </select>
-                <button type="button" className="secondary small" onClick={() => setNewContact('client')}>+</button>
+                <button type="button" className="secondary small" title="Nouveau client" onClick={() => setNewContact('client')}>+</button>
+                {client && <button type="button" className="secondary small" title="Modifier ce client" aria-label="Modifier le client" onClick={() => setEditContact(client)}><Icon name="edit" /></button>}
               </div>
             </Field>
             <Field label="Régime de TVA" full>
@@ -164,7 +170,8 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
                   <option value="">—</option>
                   {contacts.filter((c) => c.type === 'lieu').map((c) => <option key={c.id} value={c.id}>{c.company}</option>)}
                 </select>
-                <button type="button" className="secondary small" onClick={() => setNewContact('lieu')}>+</button>
+                <button type="button" className="secondary small" title="Nouveau lieu" onClick={() => setNewContact('lieu')}>+</button>
+                {venue && <button type="button" className="secondary small" title="Modifier ce lieu" aria-label="Modifier le lieu" onClick={() => setEditContact(venue)}><Icon name="edit" /></button>}
               </div>
             </Field>
             {venue && (
@@ -191,8 +198,8 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
             )}
             <Field label="Nom affiché sur les documents" full><LazyInput value={project.venue} onSave={(v) => upd({ venue: v || undefined })} /></Field>
           </div>
-          {venueAddress && <p>{venueAddress}<br /><a href={route} target="_blank" rel="noreferrer">Voir l'itinéraire ↗</a></p>}
-          <Distance d={d} from={origin} to={venueAddress} />
+          {venueAddress && <p>{venueAddress}<br /><a href={route} target="_blank" rel="noreferrer">Voir l'itinéraire <Icon name="external" /></a></p>}
+          <Distance d={d} from={origin} to={venueAddress} fromLabel={originLabel} />
           {venue && (
             <>
               {venue.venueInfo && Object.keys(venue.venueInfo).length > 0 && (
@@ -202,7 +209,7 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
                   ))}
                 </dl>
               )}
-              <h3 style={{ marginBottom: 4 }}>Commentaires sur le lieu <Link to={'/lieux/' + venue.id} className="muted" style={{ fontSize: 12, fontWeight: 400 }}>fiche du lieu ↗</Link></h3>
+              <h3 style={{ marginBottom: 4 }}>Commentaires sur le lieu <Link to={'/lieux/' + venue.id} className="muted" style={{ fontSize: 12, fontWeight: 400 }}>fiche du lieu <Icon name="external" /></Link></h3>
               <VenueComments venue={venue} projects={[project]} projectId={project.id} />
             </>
           )}
@@ -211,7 +218,7 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
         <div className="card">
           <h2>Avancée du projet</h2>
           <div className="progress-steps">
-            {steps.map((s) => <span key={s.label} className={'step ' + s.state}>{s.state === 'done' ? '✓' : s.state === 'warn' ? '!' : '○'} {s.label}</span>)}
+            {steps.map((s) => <span key={s.label} className={'step ' + s.state}><Icon name={s.state === 'done' ? 'check' : s.state === 'warn' ? 'warning' : 'circle'} />{s.label}</span>)}
           </div>
           <h3 style={{ margin: '14px 0 6px' }}>Bons de livraison et feuilles d'appel</h3>
           <div className="toolbar" style={{ marginBottom: 0 }}>
@@ -260,6 +267,16 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
         <Files projectId={project.id} />
       </div>
 
+      {editContact && (
+        <Modal title={editContact.type === 'lieu' ? `Modifier le lieu — ${editContact.company}` : `Modifier — ${editContact.company}`} onClose={() => setEditContact(null)}>
+          <ContactForm initial={editContact} onDone={(c) => {
+            setEditContact(null);
+            // le nom du lieu est aussi gardé sur le projet (documents)
+            if (c && c.id === project.venueId && c.company !== project.venue) upd({ venue: c.company });
+          }} />
+          <p className="muted" style={{ marginBottom: 0 }}>Interlocuteurs, services{editContact.type === 'lieu' ? ', endroits et infos pratiques' : ''} : <Link to={editContact.type === 'lieu' ? '/lieux/' + editContact.id : '/contacts'}>{editContact.type === 'lieu' ? 'fiche complète du lieu' : 'Contacts'}</Link>.</p>
+        </Modal>
+      )}
       {newContact && (
         <Modal title={newContact === 'client' ? 'Nouveau client' : 'Nouveau lieu'} onClose={() => setNewContact(null)}>
           <ContactForm initial={{ type: newContact, company: '' }} onDone={(c) => {
@@ -292,7 +309,7 @@ function NoteList({ project }: { project: Project }) {
           <div key={n.id} className="note-item" style={{ borderTop: '1px solid var(--line)', paddingTop: 8, marginTop: 8 }}>
             <div style={{ display: 'flex', gap: 8 }}>
               <LazyInput value={n.title} onSave={(title) => upd({ title })} placeholder="Titre (ex. Accès au site)" />
-              <button className="ghost" onClick={() => set(list.filter((_, j) => j !== i))} aria-label="Supprimer la note">✕</button>
+              <button className="ghost" onClick={() => set(list.filter((_, j) => j !== i))} aria-label="Supprimer la note"><Icon name="x" /></button>
             </div>
             <LazyText value={n.text} onSave={(text) => upd({ text })} />
             <div className="muted" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 12 }}>
@@ -331,7 +348,7 @@ function Tasks({ project }: { project: Project }) {
           <input type="checkbox" checked={t.done} onChange={(e) => setTasks(tasks.map((x) => (x.id === t.id ? { ...x, done: e.target.checked } : x)))} />
           <span style={{ flex: 1 }}>{t.text}</span>
           {t.due && <span className={!t.done && t.due < today ? 'avail ko' : 'muted'} style={{ fontSize: 12 }}>{fmtDate(t.due, false)}</span>}
-          <button className="ghost" onClick={() => setTasks(tasks.filter((x) => x.id !== t.id))} aria-label="Supprimer">✕</button>
+          <button className="ghost" onClick={() => setTasks(tasks.filter((x) => x.id !== t.id))} aria-label="Supprimer"><Icon name="x" /></button>
         </div>
       ))}
       <form className="toolbar" style={{ marginTop: 8, marginBottom: 0 }} onSubmit={(e) => {
@@ -363,7 +380,7 @@ function Files({ projectId }: { projectId: string }) {
         <div key={f.id} className="task">
           <a href="#" onClick={(e) => { e.preventDefault(); open(f); }} style={{ flex: 1 }}>{f.name}</a>
           <span className="muted" style={{ fontSize: 12 }}>{Math.max(1, Math.round(f.size / 1024))} Ko</span>
-          <button className="ghost" onClick={() => confirm(`Supprimer ${f.name} ?`) && db.files.delete(f.id)} aria-label="Supprimer">✕</button>
+          <button className="ghost" onClick={() => confirm(`Supprimer ${f.name} ?`) && db.files.delete(f.id)} aria-label="Supprimer"><Icon name="x" /></button>
         </div>
       ))}
       <label className="btn secondary" style={{ background: 'var(--soft)', color: 'var(--text)', border: '1px solid var(--border)', marginTop: 8 }}>
@@ -382,13 +399,13 @@ function Files({ projectId }: { projectId: string }) {
 }
 
 /** Distance dépôt → lieu : calcul automatique (OpenStreetMap) ou saisie manuelle ; elle chiffre le transport. */
-function Distance({ d, from, to }: { d: ProjectData; from: string; to: string }) {
+function Distance({ d, from, to, fromLabel }: { d: ProjectData; from: string; to: string; fromLabel: string }) {
   const { project, settings } = d;
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const transport = d.projectVas.reduce((a, v) => a + (v.billable ? v.price : 0), 0);
   const compute = async () => {
-    if (!from) return setMsg('Renseigne l\'adresse de ton dépôt dans Paramètres → Ma société.');
+    if (!from) return setMsg('Renseigne l\'adresse de ton dépôt dans Paramètres → Dépôts.');
     if (!to) return setMsg('Choisis un lieu avec une adresse, ou saisis le nom du lieu.');
     setBusy(true); setMsg('');
     try {
@@ -409,6 +426,7 @@ function Distance({ d, from, to }: { d: ProjectData; from: string; to: string })
         <button type="button" className="secondary small" disabled={busy} onClick={compute}>{busy ? 'Calcul…' : 'Calculer'}</button>
       </div>
       {msg && <p className="avail ko" style={{ margin: '4px 0' }}>{msg}</p>}
+      <p className="muted" style={{ margin: '0 0 2px', fontSize: 12 }}>Départ : {fromLabel || <span className="avail ko">aucune adresse de dépôt (Paramètres → Dépôts)</span>}</p>
       <p className="muted" style={{ margin: 0, fontSize: 12 }}>
         Transport facturé : {money(transport)} HT — forfait du véhicule + km × {money(settings.pricePerKm ?? 0)}/km,
         sur {settings.defaultTrips ?? 2} aller(s)-retour(s) par défaut (réglable par véhicule dans « Équipe & transport »).

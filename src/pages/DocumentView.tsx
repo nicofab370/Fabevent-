@@ -12,7 +12,8 @@ import { createDocument } from '../documents';
 import type { DocStatus } from '../types';
 import { DOC_LABELS, DOC_STATUS_LABELS, INVOICE_TYPES } from '../types';
 import { buildUbl, peppolProblems } from '../ubl';
-import { download, fmtDate, parseNumber, save } from '../utils';
+import { download, fmtDate, fmtRange, money, parseNumber, save } from '../utils';
+import { Icon } from '../components/Icon';
 
 export default function DocumentView() {
   const { id } = useParams();
@@ -63,12 +64,22 @@ export default function DocumentView() {
     body: `Bonjour${doc.contactPerson ? ' ' + doc.contactPerson.split(' ')[0] : ''},\n\nVeuillez trouver ci-joint notre ${DOC_LABELS[doc.type].toLowerCase()} ${doc.number} pour « ${doc.snapshot.project.name} ».\n\nCordialement,\n${doc.snapshot.company.name}`,
   });
 
+  /** variables des modèles de mail */
+  const mailVars = () => {
+    const sn = doc.snapshot;
+    return {
+      prenom: doc.contactPerson?.split(' ')[0] || '', client: sn.client?.company, projet: sn.project.name, numero: doc.number, lieu: sn.project.venue,
+      dates: sn.project.start ? fmtRange(sn.project.start, sn.project.end) : '', montant: money(sn.totalTTC), echeance: sn.dueDate ? fmtDate(sn.dueDate, false) : '',
+      societe: sn.company.name, contact: sn.contacts?.map((c) => `${c.name}${c.phone ? ' ' + c.phone : ''}`).join(', '),
+    };
+  };
+
   return (
     <>
       <style>{DOC_CSS}</style>
       <div className="no-print">
         <PageHead title={title}>
-          <Link to={'/projets/' + doc.projectId}><button className="secondary">← Projet</button></Link>
+          <Link to={'/projets/' + doc.projectId}><button className="secondary"><Icon name="arrow-left" />Projet</button></Link>
           <select value={doc.status} style={{ width: 'auto' }} onChange={async (e) => {
             const status = e.target.value as DocStatus;
             await save(db.docs, { ...doc, status });
@@ -101,7 +112,7 @@ export default function DocumentView() {
       </div>
       <div className="doc-wrap" ref={ref}><DocRender doc={doc} /></div>
       {mailing && (
-        <EmailModal initial={mailDraft()} prepare={attachments} onClose={() => setMailing(false)}
+        <EmailModal initial={mailDraft()} prepare={attachments} onClose={() => setMailing(false)} kind={doc.type} vars={mailVars()}
           onSent={() => { if (doc.status === 'brouillon') save(db.docs, { ...doc, status: 'envoye' }); }} />
       )}
       <div className="no-print" style={{ marginTop: 12 }}>

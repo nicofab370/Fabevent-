@@ -8,6 +8,7 @@ import type { Contact, Project, VenueComment, VenueInfo, VenueSpot } from '../ty
 import { VENUE_INFO_LABELS } from '../types';
 import { fmtDate, fmtRange, nowIso, patch, uid } from '../utils';
 import { ContactForm } from './Contacts';
+import { Icon } from '../components/Icon';
 
 /** Projets tenus dans un lieu (lieu enregistré, ou même nom affiché). */
 export function venueProjects(venue: Contact, projects: Project[]): Project[] {
@@ -65,7 +66,7 @@ export default function Venues() {
                   const alerts = (v.comments || []).filter((c) => c.important).length;
                   return (
                     <tr key={v.id} className="click" onClick={() => nav('/lieux/' + v.id)}>
-                      <td><strong>{v.company}</strong>{alerts > 0 && <span className="badge st-annule" style={{ marginLeft: 6 }}>⚠ {alerts}</span>}</td>
+                      <td><strong>{v.company}</strong>{alerts > 0 && <span className="badge st-annule" style={{ marginLeft: 6 }}><Icon name="warning" />{alerts}</span>}</td>
                       <td>{v.city}{v.spots?.length ? <div className="muted" style={{ fontSize: 12 }}>{v.spots.length} endroit(s) : {v.spots.map((x) => x.name).join(', ')}</div> : null}</td>
                       <td className="n">{ps.length}</td>
                       <td>{ps[0] ? `${ps[0].name} · ${fmtDate(ps[0].start)}` : <span className="muted">—</span>}</td>
@@ -102,14 +103,14 @@ export function VenueDetail() {
   return (
     <>
       <PageHead title={venue.company}>
-        <Link to="/lieux"><button className="secondary">← Lieux</button></Link>
+        <Link to="/lieux"><button className="secondary"><Icon name="arrow-left" />Lieux</button></Link>
         <button className="secondary" onClick={() => setEditing(true)}>Modifier les coordonnées</button>
       </PageHead>
       <div className="grid">
         <div className="card">
           <h2>Coordonnées</h2>
           <dl className="kv">
-            {addr && <><dt>Adresse</dt><dd>{addr}<br /><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}`} target="_blank" rel="noreferrer">Voir sur la carte ↗</a></dd></>}
+            {addr && <><dt>Adresse</dt><dd>{addr}<br /><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}`} target="_blank" rel="noreferrer">Voir sur la carte  <Icon name="external" /></a></dd></>}
             {venue.phone && <><dt>Téléphone</dt><dd><a href={`tel:${venue.phone}`}>{venue.phone}</a></dd></>}
             {venue.email && <><dt>Email</dt><dd><a href={`mailto:${venue.email}`}>{venue.email}</a></dd></>}
             {(venue.persons || []).map((p, i) => <Fragmentless key={i} dt={p.name} dd={[p.role, p.phone, p.email].filter(Boolean).join(' · ')} />)}
@@ -198,12 +199,12 @@ export function VenueComments({ venue, projects, projectId }: { venue: Contact; 
         <div key={c.id} className="comment" style={{ borderTop: '1px solid var(--border)', padding: '8px 0' }}>
           <div className="muted" style={{ fontSize: 12, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             {fmtDate(c.at)}{c.projectId && pName.get(c.projectId) && <> · <Link to={'/projets/' + c.projectId}>{pName.get(c.projectId)}</Link></>}
-            {c.important && <span className="badge st-annule">⚠ important</span>}
+            {c.important && <span className="badge st-annule"><Icon name="warning" />important</span>}
             {c.onRoadmap && <span className="badge">feuille de route</span>}
             <span style={{ flex: 1 }} />
             <button className="ghost small" onClick={() => upd(c.id, { important: !c.important || undefined })}>{c.important ? 'Retirer l\'alerte' : 'Alerte'}</button>
             <button className="ghost small" onClick={() => upd(c.id, { onRoadmap: !c.onRoadmap || undefined })}>{c.onRoadmap ? 'Ne plus imprimer' : 'Imprimer'}</button>
-            <button className="ghost small" aria-label="Supprimer le commentaire" onClick={() => confirm('Supprimer ce commentaire ?') && patch(db.contacts, venue.id, { comments: comments.filter((x) => x.id !== c.id) })}>✕</button>
+            <button className="ghost small" aria-label="Supprimer le commentaire" onClick={() => confirm('Supprimer ce commentaire ?') && patch(db.contacts, venue.id, { comments: comments.filter((x) => x.id !== c.id) })}><Icon name="x" /></button>
           </div>
           <div style={{ whiteSpace: 'pre-wrap' }}>{c.text}</div>
         </div>
@@ -254,8 +255,8 @@ function SpotsEditor({ venue }: { venue: Contact }) {
                     <td><Lazy value={sp.postalCode} onSave={(postalCode) => upd(sp.id, { postalCode: postalCode || undefined })} placeholder={venue.postalCode} style={{ width: 90 }} /></td>
                     <td><Lazy value={sp.city} onSave={(city) => upd(sp.id, { city: city || undefined })} placeholder={venue.city} /></td>
                     <td className="nowrap">
-                      <button className="ghost small" onClick={() => setOpen(open === sp.id ? null : sp.id)}>Infos pratiques{sp.info && Object.keys(sp.info).length ? ' ●' : ''}</button>
-                      <button className="ghost small" aria-label="Supprimer l'endroit" onClick={() => confirm(`Supprimer l'endroit « ${sp.name} » ?`) && set((xs) => xs.filter((x) => x.id !== sp.id))}>✕</button>
+                      <button className="ghost small" onClick={() => setOpen(open === sp.id ? null : sp.id)}>Infos pratiques{sp.info && Object.keys(sp.info).length ? <Icon name="dot" size="0.6em" /> : null}</button>
+                      <button className="ghost small" aria-label="Supprimer l'endroit" onClick={() => confirm(`Supprimer l'endroit « ${sp.name} » ?`) && set((xs) => xs.filter((x) => x.id !== sp.id))}><Icon name="x" /></button>
                     </td>
                   </tr>
                   {open === sp.id && (

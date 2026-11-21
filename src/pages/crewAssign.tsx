@@ -7,6 +7,9 @@ import type { CrewAssignment, CrewFunction, Person, Project, Subproject, Unavail
 import { RESERVING } from '../types';
 import { crewAmount, crewCostRate, fmtRange, functionRate, money, patch, round2, toLocalInput } from '../utils';
 import { personIssue } from './project/shared';
+import { PostRequests, closeFilledRequests, requestsFor, useCrewDialogs } from './crewRequests';
+import type { CrewRequest } from '../types';
+import { Icon } from '../components/Icon';
 
 /** Tout ce qu'il faut pour proposer des techniciens sur un poste. */
 export interface CrewContext {
@@ -15,13 +18,18 @@ export interface CrewContext {
   subs: Subproject[];
   unav: Unavailability[];
   catalogue: CrewFunction[];
+  /** demandes de disponibilité (réponses ✓ ✗ ⏳ affichées dans le choix du technicien) */
+  requests?: CrewRequest[];
 }
 
-/** Candidats d'un poste : disponibles d'abord, puis du moins cher au plus cher. */
+/** Candidats d'un poste : ceux qui ont répondu « dispo », puis les disponibles, du moins cher au plus cher ; les « pas dispo » à la fin. */
 export function candidates(c: CrewAssignment, ctx: CrewContext) {
+  const answers = new Map(requestsFor(c.id, ctx.requests || []).map((x) => [x.r.personId, x.state]));
+  const rank = (id: string) => (answers.get(id) === 'oui' ? 0 : answers.get(id) === 'non' ? 2 : 1);
   return ctx.people
-    .map((p) => ({ p, issue: personIssue(p.id, c.start, c.end, c.id, ctx.allCrew, ctx.subs, ctx.unav), cost: crewCostRate({ rateUnit: c.rateUnit }, p) }))
-    .sort((a, b) => (a.issue ? 1 : 0) - (b.issue ? 1 : 0) || a.cost - b.cost || a.p.name.localeCompare(b.p.name));
+    .filter((p) => !p.pending || p.id === c.personId)
+    .map((p) => ({ p, issue: personIssue(p.id, c.start, c.end, c.id, ctx.allCrew, ctx.subs, ctx.unav), cost: crewCostRate({ rateUnit: c.rateUnit }, p), answer: answers.get(p.id) }))
+    .sort((a, b) => rank(a.p.id) - rank(b.p.id) || (a.issue ? 1 : 0) - (b.issue ? 1 : 0) || a.cost - b.cost || a.p.name.localeCompare(b.p.name));
 }
 
 /** Choix du technicien d'un poste. Le tarif client ne bouge pas ; le coût suit la personne. */
@@ -32,11 +40,12 @@ export function PersonSelect({ c, ctx }: { c: CrewAssignment; ctx: CrewContext }
     <>
       <select aria-label="Technicien" value={c.personId || ''} onChange={(e) => {
         const p = ctx.people.find((x) => x.id === e.target.value);
-        patch(db.crew, c.id, { personId: e.target.value || undefined, cost: undefined, rate: c.rate || functionRate(c.function, c.rateUnit, ctx.catalogue, p) || 0 });
+        patch(db.crew, c.id, { personId: e.target.value || undefined, cost: undefined, detailsSentAt: undefined, rate: c.rate || functionRate(c.function, c.rateUnit, ctx.catalogue, p) || 0 })
+          .then(() => closeFilledRequests(c.projectId));
       }}>
         <option value="">— à pourvoir —</option>
-        {candidates(c, ctx).map(({ p, issue: why, cost }) => (
-          <option key={p.id} value={p.id}>{p.name}{p.external ? ' (ext.)' : ''} — {cost ? `${money(cost)}${unit}` : 'coût ?'}{why ? ` — ${why}` : ''}</option>
+        {candidates(c, ctx).map(({ p, issue: why, cost, answer }) => (
+          <option key={p.id} value={p.id}>{p.name}{p.external ? ' (ext.)' : ''} — {cost ? `${money(cost)}${unit}` : 'coût ?'}{why ? ` — ${why}` : ''}{answer === 'oui' ? ' — dispo' : answer === 'non' ? ' — pas dispo' : ''}</option>
         ))}
       </select>
       {issue && <div className="avail ko">{issue === 'indisponible' ? 'Indisponible' : 'Déjà planifié ailleurs'}</div>}
@@ -52,7 +61,7 @@ export function CostCell({ c, person }: { c: CrewAssignment; person?: Person }) 
     <>
       <NumInput className="w-price" value={c.cost ?? personCost} onChange={(n) => patch(db.crew, c.id, { cost: n })} aria-label="Coût" />
       {c.cost != null && c.cost !== personCost && (
-        <button className="ghost small" title={`Revenir au coût de la personne (${money(personCost)}${unit})`} onClick={() => patch(db.crew, c.id, { cost: undefined })}>↺</button>
+        <button className="ghost small" title={`Revenir au coût de la personne (${money(personCost)}${unit})`} onClick={() => patch(db.crew, c.id, { cost: undefined })} aria-label="Revenir au coût de la personne"><Icon name="reset" /></button>
       )}
     </>
   );
@@ -66,8 +75,9 @@ export function useCrewContext(): CrewContext {
   const subs = useLiveQuery(() => db.subprojects.toArray(), []) || [];
   const unavailability = useLiveQuery(() => db.unavailability.toArray(), []) || [];
   const appointments = useLiveQuery(() => db.appointments.toArray(), []) || [];
+  const requests = useLiveQuery(() => db.crewRequests.toArray(), []) || [];
   const unav = [...unavailability, ...appointments.flatMap((a) => (a.personIds || []).map((personId) => ({ ...a, personId, reason: a.title })))];
-  return { people, allCrew, subs, unav, catalogue: settings.crewFunctions || [] };
+  return { people, allCrew, subs, unav, catalogue: settings.crewFunctions || [], requests };
 }
 
 /**
@@ -81,6 +91,7 @@ export default function CrewAssignmentPage() {
   const [weeks, setWeeks] = useState(6);
   const [onlyOpen, setOnlyOpen] = useState(true);
   const [fn, setFn] = useState('');
+  const cd = useCrewDialogs();
   const pMap = new Map(projects.map((p) => [p.id, p]));
   const sMap = new Map(ctx.subs.map((s) => [s.id, s]));
   const people = new Map(ctx.people.map((p) => [p.id, p]));
@@ -110,13 +121,13 @@ export default function CrewAssignmentPage() {
         les disponibles d'abord, du moins cher au plus cher. {openCount} poste(s) à pourvoir au total.
       </div>
       <div className="toolbar">
-        <label className="check-row"><input type="checkbox" checked={onlyOpen} onChange={(e) => setOnlyOpen(e.target.checked)} /> Seulement les postes à pourvoir</label>
+        <label className="check-row"><input type="checkbox" checked={onlyOpen} onChange={(e) => setOnlyOpen(e.target.checked)} /> Seulement les postes à pourvoir <span className="muted">(décoche pour voir les postes pourvus et remplacer quelqu'un)</span></label>
         <select value={fn} onChange={(e) => setFn(e.target.value)} style={{ width: 'auto' }}>
           <option value="">Toutes les fonctions</option>
           {functions.map((f) => <option key={f}>{f}</option>)}
         </select>
       </div>
-      {posts.length === 0 ? <div className="card"><Empty>{onlyOpen ? 'Tous les postes sont pourvus. 👍' : 'Aucun poste sur la période.'}</Empty></div> : (
+      {posts.length === 0 ? <div className="card"><Empty>{onlyOpen ? 'Tous les postes sont pourvus.' : 'Aucun poste sur la période.'}</Empty></div> : (
         [...days.entries()].map(([day, list]) => (
           <div key={day} className="card">
             <h2 style={{ marginTop: 0 }}>{new Date(day + 'T12:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</h2>
@@ -124,18 +135,19 @@ export default function CrewAssignmentPage() {
               <table className="list">
                 <thead><tr><th>Projet</th><th>Fonction</th><th>Horaires</th><th>Technicien</th><th>Coût</th><th title="Final : visible du technicien">Final</th><th className="n">Marge</th></tr></thead>
                 <tbody>
-                  {list.map((c) => <AssignRow key={c.id} c={c} project={pMap.get(c.projectId)!} sp={sMap.get(c.subprojectId)!} person={c.personId ? people.get(c.personId) : undefined} ctx={ctx} travelMinutes={pMap.get(c.projectId)?.travelMinutes} settings={settings} />)}
+                  {list.map((c) => <AssignRow key={c.id} c={c} project={pMap.get(c.projectId)!} sp={sMap.get(c.subprojectId)!} person={c.personId ? people.get(c.personId) : undefined} ctx={ctx} travelMinutes={pMap.get(c.projectId)?.travelMinutes} settings={settings} actions={cd.forPost(c)} />)}
                 </tbody>
               </table>
             </div>
           </div>
         ))
       )}
+      {cd.dialogs}
     </>
   );
 }
 
-function AssignRow({ c, project, sp, person, ctx, travelMinutes, settings }: { c: CrewAssignment; project: Project; sp: Subproject; person?: Person; ctx: CrewContext; travelMinutes?: number; settings: ReturnType<typeof useSettings> }) {
+function AssignRow({ c, project, sp, person, ctx, travelMinutes, settings, actions }: { c: CrewAssignment; project: Project; sp: Subproject; person?: Person; ctx: CrewContext; travelMinutes?: number; settings: ReturnType<typeof useSettings>; actions: { onAsk: () => void; onReplace: () => void; onDetails: () => void } }) {
   const a = crewAmount(c, settings, travelMinutes, crewCostRate(c, person));
   const margin = (c.billable ? a.billed : 0) - a.cost;
   const pe = sp.periods?.find((x) => x.id === c.periodId);
@@ -144,7 +156,7 @@ function AssignRow({ c, project, sp, person, ctx, travelMinutes, settings }: { c
       <td><Link to={`/projets/${project.id}?onglet=equipe`}><strong>{project.name}</strong></Link> <StatusBadge status={sp.status} /><div className="muted">{sp.name}{pe ? ` · ${pe.name}` : ''}</div></td>
       <td>{c.function}</td>
       <td className="nowrap">{fmtRange(c.start, c.end)}</td>
-      <td><PersonSelect c={c} ctx={ctx} /></td>
+      <td><PersonSelect c={c} ctx={ctx} /><PostRequests c={c} people={ctx.people} requests={ctx.requests || []} {...actions} /></td>
       <td className="nowrap"><CostCell c={c} person={person} /></td>
       <td><input type="checkbox" aria-label="Planification finale" checked={c.final !== false} onChange={(e) => patch(db.crew, c.id, { final: e.target.checked })} /></td>
       <td className="n">{!c.personId && c.cost == null ? <span className="muted">—</span> : <span className={'avail ' + (margin < 0 ? 'ko' : 'ok')}>{money(round2(margin))}</span>}</td>

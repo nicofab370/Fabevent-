@@ -419,6 +419,8 @@ export interface Subproject extends Base {
   reserve?: boolean;
   /** manquants du retour déjà déclarés perdus */
   missingSent?: boolean;
+  /** ce qui a déjà été déclaré perdu au retour (« u<id d'unité> » ou « b<id de ligne> ») : jamais deux fois */
+  lostSent?: string[];
 }
 
 export interface EquipmentLine extends Base {
@@ -475,6 +477,16 @@ export interface Person extends Base {
   /** société de sous-traitance (contact) qui facture ses prestations */
   contactId?: ID;
   notes?: string;
+  /** fonctions qu'il sait occuper (formulaire d'inscription) */
+  skills?: string[];
+  city?: string;
+  vatNumber?: string;
+  /** indépendant, société, salarié… */
+  status?: string;
+  /** inscrit via le formulaire, pas encore validé */
+  pending?: boolean;
+  source?: 'formulaire';
+  signedUpAt?: string;
 }
 
 export interface CrewAssignment extends Base {
@@ -497,6 +509,45 @@ export interface CrewAssignment extends Base {
   cost?: number;
   billable: boolean;
   notes?: string;
+  /** détails du poste envoyés au technicien confirmé */
+  detailsSentAt?: string;
+}
+
+/**
+ * Demande de disponibilité envoyée à un technicien pour un ou plusieurs postes d'un projet.
+ * Il répond en cliquant sur le lien (page publique du serveur) ; on peut aussi noter sa réponse à la main.
+ * Les infos affichées sur la page publique sont recopiées ici (le serveur ne lit rien d'autre).
+ */
+export interface CrewRequest extends Base {
+  token: string;
+  personId: ID;
+  personName: string;
+  projectId: ID;
+  projectName: string;
+  company: string;
+  venue?: string;
+  message?: string;
+  posts: { crewId: ID; function: string; start: string; end: string; place?: string }[];
+  sentAt?: string;
+  /** réponse : oui (tous les postes), partiel, non */
+  answer?: 'oui' | 'partiel' | 'non';
+  /** réponse poste par poste */
+  answers?: Record<ID, boolean>;
+  note?: string;
+  answeredAt?: string;
+  /** noté à la main (téléphone, SMS…) */
+  manual?: boolean;
+  /** postes pourvus : le lien affiche « plus besoin de répondre » */
+  closed?: boolean;
+}
+
+export type MailKind = 'devis' | 'facture' | 'acompte' | 'avoir' | 'rappel' | 'bon_sortie' | 'feuille_route' | 'planning' | 'dispo' | 'confirmation' | 'annulation' | 'sous_location' | 'autre';
+export interface MailTemplate {
+  id: ID;
+  kind: MailKind;
+  name: string;
+  subject: string;
+  body: string;
 }
 
 export interface Unavailability extends Base {
@@ -745,6 +796,8 @@ export interface DocSnapshot {
   reminder?: { level: number; invoiceNumber: string; invoiceDate: string; invoiceDue?: string; amount: number };
   /** lieu : informations pratiques et commentaires à imprimer (feuille de route, bon de sortie) */
   venueNotes?: { label: string; text: string }[];
+  /** feuille de route / bon de sortie : contacts du client et du lieu */
+  contacts?: { role: string; name: string; detail?: string; phone?: string; email?: string }[];
   /** notes du projet prévues pour ce type de document */
   notes?: { title: string; text: string }[];
   /** caution à verser (hors TVA) */
@@ -830,6 +883,10 @@ export interface Settings {
   customFields?: CustomField[];
   /** nouveaux postes en planification finale par défaut */
   crewFinalByDefault?: boolean;
+  /** clé du formulaire d'inscription des techniciens (lien public) ; vide = formulaire fermé */
+  signupKey?: string;
+  /** modèles de mail par type d'envoi */
+  mailTemplates?: MailTemplate[];
   templates?: DocTemplates;
 }
 
@@ -858,4 +915,7 @@ export interface FreeChecklist extends Base {
   lines: FreeLine[];
   phase: 'sortie' | 'retour';
   missingSent?: boolean;
+  lostSent?: string[];
+  /** projet FabEvent créé à partir de cette liste */
+  projectId?: ID;
 }

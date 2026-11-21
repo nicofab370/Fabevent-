@@ -3,7 +3,7 @@
  * Lancement : npm run test:e2e  (construit l'application, la sert, puis déroule les scénarios).
  */
 import { spawn, spawnSync } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createRequire } from 'node:module';
@@ -404,23 +404,33 @@ await step('Inventaire : scan inconnu refusé, écart appliqué au stock', async
   await page.fill('.scan-input', 'CODE-INCONNU');
   await page.press('.scan-input', 'Enter');
   expect((await page.locator('.flash').innerText()).includes('inconnu'), 'code inconnu signalé');
-  const row = page.locator('table.list tr', { hasText: 'Pied de micro perche' });
-  await row.locator('input').fill('18');
-  await page.click('button:has-text("Appliquer 1 écart")');
+  await page.locator('.inv-row', { hasText: 'Pied de micro perche' }).click();
+  await page.fill('.modal input[aria-label="Quantité comptée"]', '18');
+  await page.press('.modal input[aria-label="Quantité comptée"]', 'Enter');
+  await page.click('.inv-dock button:has-text("Appliquer 1 écart")');
   await page.click('.modal button:text-is("Appliquer")');
   await page.waitForSelector('text=Inventaire appliqué');
   await go('materiel');
   expect((await page.locator('table.list tr', { hasText: 'Pied de micro perche' }).innerText()).includes('18'), 'stock mis à 18');
 });
 
+const tickAll = async (except) => {
+  for (let i = 0; i < 40; i++) {
+    let b = page.locator('.cl-line:not(.done):not(.kit)');
+    if (except) b = b.filter({ hasNotText: except });
+    b = b.locator('.cl-check:not([disabled])');
+    if (!(await b.count())) break;
+    await b.first().click(); await page.waitForTimeout(150);
+  }
+};
 await step('Entrepôt : sortie de tout le matériel d’une ligne', async () => {
   await go('entrepot');
   await page.locator('table.list tr.click').first().click();
   await page.waitForSelector('.scan-input');
-  const before = await page.locator('.card p.muted').first().innerText();
-  await page.locator('button:text-is("Tout")').first().click();
+  const before = await page.locator('.cl-prog').innerText();
+  await page.locator('.cl-line:not(.done) .cl-check:not([disabled])').first().click();
   await page.waitForTimeout(300);
-  expect((await page.locator('.card p.muted').first().innerText()) !== before, 'progression mise à jour');
+  expect((await page.locator('.cl-prog').innerText()) !== before, 'progression mise à jour');
 });
 
 await step('Sauvegarde puis restauration (fichiers joints compris)', async () => {
@@ -652,6 +662,9 @@ await step('Entrepôt : scan d’un code-barres en sortie', async () => {
   await page.waitForSelector('.scan-input');
   await page.fill('.scan-input', 'DEMO-SUB');
   await page.press('.scan-input', 'Enter');
+  // article en vrac : « combien ? » (le reste par défaut), Entrée valide
+  await page.press('.cl-askq', 'Enter');
+  await page.waitForTimeout(300);
   expect((await page.locator('.flash').innerText()).startsWith('Sortie'), 'sortie enregistrée au scan');
 });
 
@@ -908,13 +921,13 @@ await step('Entrepôt : 1re sortie → En cours, tout rentré → Exécution ter
   await go('entrepot');
   await page.locator('table.list tr.click', { hasText: 'Beurs Maastricht' }).click();
   await page.waitForSelector('.scan-input');
-  for (let i = 0; i < 10 && await page.locator('button:text-is("Tout")').count(); i++) { await page.locator('button:text-is("Tout")').first().click(); await page.waitForTimeout(250); }
+  await tickAll();
   expect(await statusOf('Beurs Maastricht') === 'en_cours', 'en cours après la sortie');
   await go('entrepot');
   await page.locator('table.list tr.click', { hasText: 'Beurs Maastricht' }).click();
   await page.waitForSelector('.scan-input');
-  await page.click('.tabs button:has-text("Retour")');
-  for (let i = 0; i < 10 && await page.locator('button:text-is("Tout")').count(); i++) { await page.locator('button:text-is("Tout")').first().click(); await page.waitForTimeout(250); }
+  await page.click('.cl-phase button:has-text("Retour")');
+  await tickAll();
   expect(await statusOf('Beurs Maastricht') === 'execute', 'exécution terminée au retour complet');
 });
 
@@ -1160,7 +1173,7 @@ await step('Email : brouillon .eml avec le PDF joint, statut « Envoyé »', asy
   await page.waitForSelector('.modal .attachments li', { timeout: 30000 });
   const att = await page.locator('.modal .attachments').innerText();
   expect(att.includes('.pdf'), 'PDF prêt en pièce jointe');
-  expect((await page.locator('.modal .field', { hasText: 'À' }).first().locator('input').inputValue()).includes('@'), 'destinataire prérempli');
+  expect(((await page.locator('.modal .rcpt').first().getAttribute('title')) || '').includes('@'), 'destinataire prérempli');
   const [dl] = await Promise.all([page.waitForEvent('download'), page.click('.modal button:has-text("Brouillon prêt à envoyer")')]);
   const eml = readFileSync(await dl.path(), 'utf8');
   expect(dl.suggestedFilename().endsWith('.eml'), 'fichier .eml');
@@ -1201,7 +1214,13 @@ await step('Email : bon de commande RH et planning du technicien (.ics) joints',
 });
 
 console.log('\n  — checklist et inventaire (FABRI.live intégré) —');
-const scan = async (c) => { await page.fill('.checklist-scan .scan-input', c); await page.press('.checklist-scan .scan-input', 'Enter'); await page.waitForTimeout(350); return page.locator('.checklist-scan .flash').innerText(); };
+const scan = async (c) => {
+  await page.fill('.checklist-scan .scan-input', c); await page.press('.checklist-scan .scan-input', 'Enter'); await page.waitForTimeout(350);
+  // article en vrac : on valide la quantité proposée (le reste)
+  if (await page.locator('.cl-ask .cl-askq').count()) { await page.press('.cl-askq', 'Enter'); await page.waitForTimeout(300); }
+  return page.locator('.checklist-scan .flash').innerText();
+};
+const scanRaw = async (c) => { await page.fill('.checklist-scan .scan-input', c); await page.press('.checklist-scan .scan-input', 'Enter'); await page.waitForTimeout(350); };
 const openChecklist = async (name) => { await go('entrepot'); await page.locator('table.list tr.click', { hasText: name }).click(); await page.waitForSelector('.checklist-scan'); };
 
 await step('Checklist : unité scannée, doublon refusé, « ajouter en plus », code inconnu associé', async () => {
@@ -1209,10 +1228,13 @@ await step('Checklist : unité scannée, doublon refusé, « ajouter en plus »,
   await openChecklist('Mariage Dupont-Lemaire');
   expect((await scan('SN-LA4X-1001')).includes('Sortie : Amplificateur LA4X n° LA4X-1001'), 'unité sortie');
   expect((await scan('SN-LA4X-1001')).includes('déjà sorti'), 'doublon refusé');
-  expect((await scan('DEMO-SM58')).includes('pas prévu'), 'article hors liste signalé');
-  await page.locator('.checklist-scan .flash button:has-text("Ajouter en plus")').click();
+  await scanRaw('DEMO-SM58');
+  expect((await page.locator('.cl-ask').innerText()).includes('pas prévu'), 'article hors liste signalé');
+  await page.fill('.cl-askq', '2');
+  await page.locator('.cl-ask button:has-text("Ajouter en plus")').click();
   await page.waitForTimeout(400);
-  expect((await scan('DEMO-SM58')).includes('Sortie : Micro Shure SM58'), 'ajouté en plus puis sorti');
+  expect((await page.locator('.checklist-scan .flash').innerText()).includes('ajouté en plus (2)'), 'ajouté en plus et déjà sorti');
+  expect((await page.locator('.cl-line', { hasText: 'Micro Shure SM58' }).getAttribute('class')).includes('done'), 'ligne en plus cochée');
   expect((await scan('FAB-77777')).includes('Code inconnu'), 'code inconnu');
   await page.locator('.checklist-scan .flash button:has-text("Associer")').click();
   await page.fill('.modal input', 'Caisson');
@@ -1224,16 +1246,14 @@ await step('Checklist : unité scannée, doublon refusé, « ajouter en plus »,
 
 await step('Checklist : retour, unité abîmée, bilan, déclarer perdu puis retrouver', async () => {
   for (const sn of ['SN-ULXD-1001', 'SN-ULXD-1002', 'SN-QU16-1001']) await scan(sn);
-  for (let i = 0; i < 12 && await page.locator('.cl-line button:text-is("Tout")').count(); i++) { await page.locator('.cl-line button:text-is("Tout")').first().click(); await page.waitForTimeout(150); }
-  await page.click('.tabs button:has-text("Retour")');
+  await tickAll();
+  await page.click('.cl-phase button:has-text("Retour")');
   await page.waitForTimeout(300);
   for (const sn of ['SN-LA4X-1001', 'SN-ULXD-1001']) await scan(sn);
+  // une unité qui n'est pas sortie avec ce projet est refusée au retour
+  expect((await scan('SN-ULXD-1004')).includes('pas sorti'), 'unité non sortie refusée au retour');
   // tout le vrac rentre, sauf les enceintes X12
-  for (let i = 0; i < 12; i++) {
-    const b = page.locator('.cl-line', { hasNotText: 'L-Acoustics X12' }).locator('button:text-is("Tout")');
-    if (!(await b.count())) break;
-    await b.first().click(); await page.waitForTimeout(150);
-  }
+  await tickAll('L-Acoustics X12');
   await page.locator('.cl-line', { hasText: 'Micro HF' }).locator('button:text-is("Cassé")').click();
   await page.fill('.modal .field input', 'Antenne tordue');
   await page.click('.modal button[type=submit]');
@@ -1241,12 +1261,16 @@ await step('Checklist : retour, unité abîmée, bilan, déclarer perdu puis ret
   await page.click('button:text-is("Bilan du retour")');
   const bilan = await page.locator('.modal').innerText();
   expect(bilan.includes('L-Acoustics X12') && bilan.includes('ULXD-1002') && bilan.includes('QU16-1001'), `manquants listés : ${bilan.slice(0, 200)}`);
-  await page.click('.modal button:text-is("Déclarer perdu")');
+  // l'unité ULXD-1002 reviendra plus tard : décochée
+  await page.locator('.modal input[aria-label*="ULXD-1002"]').uncheck();
+  await page.click('.modal button:has-text("Déclarer perdu")');
   await page.waitForTimeout(600);
   expect((await page.locator('.modal').innerText()).includes('déclaré(s) perdu(s)'), 'pertes déclarées');
+  expect((await page.locator('.modal tr', { hasText: 'QU16-1001' }).innerText()).includes('déjà déclaré perdu'), 'pas déclarable deux fois');
+  expect(await page.locator('.modal input[aria-label*="ULXD-1002"]').isEnabled(), 'unité décochée encore déclarable plus tard');
   await page.click('.modal button:text-is("Fermer")');
   // l'unité perdue, rescannée, est proposée à la remise en stock
-  await page.click('.tabs button:has-text("Sortie")');
+  await page.click('.cl-phase button:has-text("Sortie")');
   expect((await scan('SN-QU16-1001')).includes('déclarée perdue'), 'unité perdue reconnue');
   await page.locator('.checklist-scan .flash button:has-text("Retrouvée")').click();
   await page.waitForTimeout(400);
@@ -1260,10 +1284,46 @@ await step('Checklist libre : bon collé, articles reconnus et scannés', async 
   await page.click('.modal button:text-is("Créer la checklist")');
   await page.waitForSelector('.checklist-scan');
   expect((await page.locator('.checklist-cat').count()) === 2, 'deux catégories');
-  expect((await scan('DEMO-X12')).includes('Sortie : Enceinte L-Acoustics X12 — 1/2'), 'article du catalogue scanné');
+  expect((await scan('DEMO-X12')).includes('Sortie : Enceinte L-Acoustics X12 — 2/2'), 'article du catalogue scanné (quantité demandée)');
   await page.locator('.cl-line', { hasText: 'Rouleau de scotch' }).locator('.cl-check').click();
   await page.waitForTimeout(300);
   expect((await page.locator('.cl-line', { hasText: 'Rouleau de scotch' }).getAttribute('class')).includes('done'), 'ligne libre cochée');
+});
+
+await step('Checklist libre : mode édition, kit, filtres, menu (dupliquer, tout décocher)', async () => {
+  await page.click('button[aria-label="Menu de la checklist"]');
+  await page.click('.modal button:has-text("Modifier les lignes")');
+  await page.locator('.cl-line', { hasText: 'Rouleau de scotch' }).click();
+  await page.locator('.modal .field', { hasText: 'Quantité' }).locator('input').fill('3');
+  await page.click('.modal button:text-is("Enregistrer")');
+  await page.waitForTimeout(300);
+  expect((await page.locator('.cl-line', { hasText: 'Rouleau de scotch' }).innerText()).includes('3×'), 'quantité corrigée');
+  // un flight case et son contenu
+  await page.locator('.checklist-cat', { hasText: 'Son' }).locator('button:has-text("+ Ajouter une ligne")').click();
+  await page.locator('.modal .field', { hasText: 'Nom' }).locator('input').fill('Flight case son');
+  await page.click('.modal button:text-is("Enregistrer")');
+  await page.waitForTimeout(300);
+  await page.locator('.checklist-cat', { hasText: 'Son' }).locator('button:has-text("+ Ajouter une ligne")').click();
+  await page.locator('.modal .field', { hasText: 'Nom' }).locator('input').fill('Câble XLR 10 m');
+  await page.locator('.modal .field', { hasText: 'Quantité' }).locator('input').fill('4');
+  await page.locator('.modal .field', { hasText: 'Dans le kit' }).locator('select').selectOption({ label: 'Flight case son' });
+  await page.click('.modal button:text-is("Enregistrer")');
+  await page.waitForTimeout(300);
+  await page.click('.cl-banner button:text-is("Terminer")');
+  const kit = page.locator('.cl-line.kit', { hasText: 'Flight case son' });
+  expect((await kit.innerText()).includes('KIT · 0/1'), 'kit avec son contenu');
+  await kit.click();
+  await page.waitForTimeout(300);
+  expect((await kit.innerText()).includes('KIT · 1/1') && (await page.locator('.cl-line.kid', { hasText: 'Câble XLR 10 m' }).getAttribute('class')).includes('done'), 'kit coché d’un coup');
+  await page.click('.cl-filters button:text-is("Restant")');
+  await page.waitForTimeout(200);
+  expect(await page.locator('.cl-line', { hasText: 'Enceinte L-Acoustics X12' }).count() === 0, 'filtre « Restant » : lignes faites masquées');
+  expect(await page.locator('.cl-line', { hasText: 'Rouleau de scotch' }).count() === 1, 'ligne partielle (1/3) toujours visible');
+  await page.click('.cl-filters button:text-is("Toutes")');
+  await page.click('button[aria-label="Menu de la checklist"]');
+  await page.click('.modal button:has-text("Dupliquer")');
+  await page.waitForTimeout(500);
+  expect((await page.locator('h1').innerText()).includes('(copie)') && (await page.locator('.cl-prog').innerText()).startsWith('0 /'), 'copie à zéro');
 });
 
 await step('Checklist libre : import d’un bon PDF', async () => {
@@ -1286,46 +1346,113 @@ await step('Checklist libre : import d’un bon PDF', async () => {
 
 const invScan = async (c) => { await page.fill('.scan-input', c); await page.press('.scan-input', 'Enter'); await page.waitForTimeout(300); return page.locator('.flash').first().innerText(); };
 
+const badge = (name) => page.locator('.inv-row', { hasText: name }).first().locator('.inv-badge').innerText();
 await step('Inventaire : kit compté d’un coup, annulation, comptage gardé au rechargement', async () => {
   await resetDemo();
   await go('inventaire');
   expect((await invScan('DEMO-KITPAR')).includes('Kit Pack ambiance 8 PAR LED'), 'kit reconnu');
-  const par = page.locator('table.list tr', { hasText: 'Projecteur PAR LED' });
-  expect(await par.locator('input').inputValue() === '8', 'contenu du kit compté (8 PAR)');
-  await page.click('button:text-is("Annuler le dernier kit")');
+  expect((await badge('Projecteur PAR LED')).startsWith('8'), 'contenu du kit compté (8 PAR)');
+  await page.click('.inv-dock button:text-is("Annuler le dernier kit")');
   await page.waitForTimeout(300);
-  const after = await par.locator('input').inputValue();
-  expect(after === '0' || after === '', `kit annulé (${after})`);
+  expect((await badge('Projecteur PAR LED')).startsWith('—'), 'kit annulé');
   await invScan('DEMO-PIED'); await invScan('DEMO-PIED');
   await page.reload(); await page.waitForTimeout(800);
-  expect(await page.locator('table.list tr', { hasText: 'Pied de micro perche' }).locator('input').inputValue() === '2', 'comptage gardé après rechargement');
+  expect((await badge('Pied de micro perche')).startsWith('2'), 'comptage gardé après rechargement');
+});
+
+await step('Inventaire : compté en plusieurs endroits (dépôt + camion), corriger, annuler le dernier', async () => {
+  await page.locator('.inv-row', { hasText: 'Pied de micro perche' }).click();
+  const m = page.locator('.modal');
+  expect((await m.innerText()).includes('Trouvés ici (en plus)'), 'déjà compté : on ajoute');
+  await m.locator('input[aria-label="Quantité comptée"]').fill('3');
+  expect((await m.locator('.inv-diff').innerText()).includes('Total 2 + 3 = 5'), 'total affiché');
+  await m.locator('button:text-is("Ajouter au comptage")').click();
+  await page.waitForTimeout(200);
+  expect((await badge('Pied de micro perche')).startsWith('5'), 'total 5');
+  await page.locator('.inv-row', { hasText: 'Pied de micro perche' }).click();
+  expect((await m.innerText()).includes('Déjà compté (1 + 1 + 3)'), 'les comptages par endroit sont gardés');
+  await m.locator('button:has-text("Annuler le dernier (−3)")').click();
+  await page.waitForTimeout(200);
+  expect((await m.innerText()).includes('Déjà compté (1 + 1)'), 'dernier comptage annulé');
+  await m.locator('button:text-is("Corriger le total")').click();
+  await m.locator('input[aria-label="Quantité comptée"]').fill('4');
+  await m.locator('button:text-is("Enregistrer")').click();
+  await page.waitForTimeout(200);
+  expect((await badge('Pied de micro perche')).startsWith('4'), 'total corrigé à 4');
+});
+
+await step('Inventaire : kit compté kit par kit (contenu coché, kit complet tout seul)', async () => {
+  await page.locator('.inv-seg, .seg').first().locator('button:text-is("Tout")').click();
+  await page.locator('.inv-row.st-kit', { hasText: 'Pack ambiance 8 PAR LED' }).click();
+  const m = page.locator('.modal');
+  await m.locator('button:text-is("Kit complet")').click();
+  await page.waitForTimeout(200);
+  expect((await m.innerText()).includes('Kit n° 1 complet'), 'kit n° 1 compté');
+  // 2e kit : on coche chaque ligne, il se valide tout seul
+  for (const r of await m.locator('.inv-kitrow').all()) await r.click();
+  await page.waitForTimeout(200);
+  expect((await m.innerText()).includes('Kit n° 2 complet'), 'kit n° 2 validé automatiquement');
+  await m.locator('button:text-is("Annuler le dernier kit")').click();
+  await page.waitForTimeout(200);
+  await m.locator('button:text-is("Fermer")').click();
+  expect((await badge('Projecteur PAR LED')).startsWith('8'), '1 kit = 8 PAR comptés');
+});
+
+await step('Inventaire : unités en pastilles, scan limité à l’article, scan qui ouvre l’article', async () => {
+  // scan qui ouvre l'article (décoché « scan en continu »)
+  await page.locator('.inv-tools label', { hasText: 'Scan en continu' }).locator('input').uncheck();
+  await invScan('SN-ULXD-1001');
+  const m = page.locator('.modal');
+  await m.waitFor();
+  expect((await m.locator('.uchip.on').count()) === 1, 'unité scannée cochée');
+  await m.locator('input[aria-label="Scanner une unité"]').fill('DEMO-PIED');
+  await m.locator('input[aria-label="Scanner une unité"]').press('Enter');
+  expect((await m.locator('.flash').innerText()).includes('pas de cet article'), 'code d’un autre article refusé');
+  await m.locator('input[aria-label="Scanner une unité"]').fill('SN-ULXD-1001');
+  await m.locator('input[aria-label="Scanner une unité"]').press('Enter');
+  expect((await m.locator('.flash').innerText()).includes('pas comptée deux fois'), 'double scan ignoré');
+  await m.locator('button:text-is("Terminé")').click();
+  await page.locator('.inv-tools label', { hasText: 'Scan en continu' }).locator('input').check();
+  await page.locator('.inv-row', { hasText: 'Micro HF Shure' }).click();
+  await m.locator('.uchip').nth(1).click(); await m.locator('.uchip').nth(2).click();
+  await page.waitForTimeout(200);
+  expect((await m.innerText()).includes('3 / 6'), '3 unités vues sur 6');
+  await m.locator('button:text-is("Terminé")').click();
 });
 
 await step('Inventaire : fiche (ajout de stock, état d’une unité, où est-il ?), unité perdue retrouvée au scan', async () => {
-  await page.locator('table.list tr', { hasText: 'Amplificateur LA4X' }).locator('button:text-is("Fiche")').click();
+  // « Infos » : scanner pour tout voir, sans compter
+  await page.click('button:has-text("Infos")');
+  await invScan('SN-LA4X-1001');
   await page.waitForSelector('.modal');
-  expect((await page.locator('.modal').innerText()).includes('Où est cet article ?'), 'fiche ouverte');
+  expect((await page.locator('.modal').innerText()).includes('Où est cet article ?'), 'fiche ouverte par le scan Infos');
   await page.locator('.modal tr', { hasText: 'LA4X-1002' }).locator('button:has-text("Changer l")').click();
   await page.locator('.modal label', { hasText: 'Perdue' }).last().locator('input').check();
   await page.locator('.modal form button[type=submit]').last().click();
   await page.waitForTimeout(400);
   expect((await page.locator('.modal tr', { hasText: 'LA4X-1002' }).innerText()).includes('Perdue'), 'unité marquée perdue');
   await page.keyboard.press('Escape');
-  await go('inventaire');
+  await page.click('button:has-text("Infos")');
   expect((await invScan('SN-LA4X-1002')).includes('retrouvée et remise en stock'), 'unité perdue retrouvée au scan');
-  await page.locator('table.list tr', { hasText: 'Pied de micro perche' }).locator('button:text-is("Fiche")').click();
+  await page.locator('.inv-row', { hasText: 'Pied de micro perche' }).click();
+  await page.click('.modal button:text-is("+ Ajouter du stock")');
   await page.locator('.modal input[aria-label="Quantité à ajouter"]').fill('5');
-  await page.fill('.modal input[placeholder^="Note"]', 'achat Thomann');
+  await page.fill('.modal input[placeholder^="ex. achat"]', 'achat Thomann');
   await page.click('.modal button:text-is("Ajouter")');
   await page.waitForTimeout(400);
+  expect((await page.locator('.flash').first().innerText()).includes('+5 au stock'), 'stock ajouté');
+  await page.click('button:has-text("Infos")');
+  await invScan('DEMO-PIED');
+  await page.waitForSelector('.modal');
   expect((await page.locator('.modal').innerText()).includes('Ajout au stock — achat Thomann (+5)'), 'mouvement de stock daté');
   await page.keyboard.press('Escape');
+  await page.click('button:has-text("Infos")');
 });
 
 await step('Inventaire : unités non vues → en réparation, visibles en maintenance', async () => {
   await go('inventaire');
   await invScan('SN-ULXD-1001'); await invScan('SN-ULXD-1002'); await invScan('SN-ULXD-1003');
-  await page.click('button:has-text("écart")');
+  await page.click('.inv-dock button:has-text("Appliquer")');
   await page.waitForSelector('.modal');
   const sel = page.locator('.modal select[aria-label="Unité ULXD-1004"]');
   await sel.selectOption('repair');
@@ -1336,6 +1463,33 @@ await step('Inventaire : unités non vues → en réparation, visibles en mainte
   await go('maintenance');
   const flagged = await page.locator('.card', { hasText: 'Unités signalées' }).innerText();
   expect(flagged.includes('ULXD-1004') && flagged.includes('En réparation'), 'unité en réparation listée');
+});
+
+await step('Inventaire : écarts envoyés article par article, nouvel article créé sur place', async () => {
+  await go('inventaire');
+  await page.locator('.inv-row', { hasText: 'Pied de micro perche' }).click();
+  await page.fill('.modal input[aria-label="Quantité comptée"]', '40');
+  await page.press('.modal input[aria-label="Quantité comptée"]', 'Enter');
+  await page.locator('.inv-row', { hasText: 'Projecteur PAR LED' }).click();
+  if (await page.locator('.modal button:text-is("Corriger le total")').count()) await page.click('.modal button:text-is("Corriger le total")');
+  await page.fill('.modal input[aria-label="Quantité comptée"]', '1');
+  await page.press('.modal input[aria-label="Quantité comptée"]', 'Enter');
+  await page.click('.inv-dock button:has-text("Appliquer")');
+  await page.locator('.modal input[aria-label^="Corriger Projecteur PAR LED"]').uncheck();
+  await page.click('.modal button:text-is("Appliquer")');
+  await page.waitForSelector('text=Inventaire appliqué');
+  expect((await badge('Pied de micro perche')).startsWith('—'), 'article envoyé : sorti du comptage');
+  expect((await badge('Projecteur PAR LED')).startsWith('1'), 'article décoché : reste à recompter');
+  // nouvel article : « déjà au parc ? » puis création avec code automatique
+  await page.click('.inv-dock button:text-is("+ Nouvel article")');
+  await page.fill('.modal input[placeholder^="ex. Shure"]', 'Pied de micro');
+  expect((await page.locator('.modal .inv-dupes').innerText()).includes('ajouter du stock'), 'doublon possible proposé');
+  await page.fill('.modal input[placeholder^="ex. Shure"]', 'Enrouleur 25 m');
+  await page.locator('.modal .field', { hasText: 'Quantité trouvée' }).locator('input').fill('6');
+  await page.click('.modal button:text-is("Créer")');
+  await page.waitForTimeout(300);
+  expect(/créé \([A-Z]+-[A-Z]+-\d{4}\)/.test(await page.locator('.inv-tools .flash').innerText()), 'code automatique attribué');
+  expect((await badge('Enrouleur 25 m')).startsWith('6'), 'compté à sa quantité');
 });
 
 await ctx.close();
@@ -1470,7 +1624,7 @@ await step('Contenu fourni : affiché à la checklist, au scan et sur le bon de 
   await tab('Finances & documents');
   await page.click('button:text-is("+ Bon de sortie")');
   await page.waitForSelector('.doc');
-  expect((await page.locator('.doc').innerText()).includes('avec : Télécommande, Câble HDMI 5 m, Câble secteur'), 'contenu sur le bon de sortie');
+  expect((await page.locator('.doc').innerText()).toLowerCase().includes('avec : télécommande, câble hdmi 5 m, câble secteur'), 'contenu sur le bon de sortie');
   await go('entrepot');
   await page.locator('table.list tr.click', { hasText: 'Conférence annuelle' }).filter({ hasText: 'Salle plénière' }).click();
   await page.waitForSelector('.checklist-scan');
@@ -1483,7 +1637,7 @@ await step('Contenu fourni : affiché à la checklist, au scan et sur le bon de 
   const card = await page.locator('.qr-card').innerText();
   expect(card.includes('Vidéoprojecteur') && card.includes('Câble HDMI 5 m') && card.includes('VP10K-1001'), `fiche ouverte par le QR (${card.slice(0, 120)})`);
   for (const c of await page.locator('.qr-content input').all()) await c.check();
-  expect((await page.locator('.qr-card').innerText()).includes('Contenu complet ✓'), 'contenu coché');
+  expect((await page.locator('.qr-card').innerText()).includes('Contenu complet'), 'contenu coché');
   // le scanner FabEvent lit aussi un QR-lien
   await go('inventaire');
   await page.fill('.scan-input', `https://fabri.live/fabevent/#/q/${vpCode}-02`);
@@ -1513,7 +1667,7 @@ await step('Élément hors inventaire : créé depuis un article, ajouté avec l
   await page.waitForTimeout(200);
   expect((await page.locator('table.list').innerText()).includes('Dock USB-C'), 'visible avec le filtre');
   await go('inventaire');
-  expect(await page.locator('table.list tr', { hasText: 'Chargeur 65 W' }).count() === 0, 'absent de l’inventaire');
+  expect(await page.locator('.inv-row', { hasText: 'Chargeur 65 W' }).count() === 0, 'absent de l’inventaire');
   // ajouté à un projet : ses éléments suivent, sans dispo ni manque
   await openProject('Mariage Dupont-Lemaire');
   await tab('Équipement');
@@ -1536,6 +1690,154 @@ await step('Élément hors inventaire : créé depuis un article, ajouté avec l
   await ctx.close();
 });
 
+/* ---------- Lot : mails, équipe, devis, feuille de route, sous-projets ---------- */
+console.log('\n  — mails, équipe, devis, feuille de route, sous-projets —');
+ctx = await newContext();
+
+await step('Devis : les options dans une section à part, avec leur total', async () => {
+  await openDemo();
+  await openProject('Mariage Dupont-Lemaire');
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Devis")');
+  await page.waitForSelector('.doc');
+  const opt = await page.locator('.doc .doc-options').innerText();
+  expect(opt.includes('Options proposées') && opt.includes('Lyre') && opt.includes('Total des options'), `section options (${opt.slice(0, 120)})`);
+  const main = await page.locator('.doc section').first().innerText();
+  expect(!main.split('Options proposées')[0].includes('en option'), 'les options ne sont plus mêlées au matériel');
+});
+
+await step('Mails : modèle enregistré proposé d’office, destinataire depuis le carnet d’adresses', async () => {
+  const docUrl = page.url();
+  await go('modeles?onglet=mails');
+  await page.click('.mail-kinds button:has-text("Devis")');
+  await page.click('button:text-is("+ Nouveau modèle")');
+  await page.fill('input[aria-label="Nom du modèle"]', 'Devis chaleureux');
+  await page.fill('input[aria-label="Objet du modèle"]', 'Notre proposition {numero} pour {projet}');
+  await page.click('button:text-is("Enregistrer le modèle")');
+  await page.waitForTimeout(300);
+  expect((await page.locator('.tpl-mail').innerText()).includes('Devis chaleureux'), 'modèle listé');
+  await page.goto(docUrl); await page.waitForSelector('.doc');
+  await page.click('button:has-text("Envoyer par email")');
+  await page.waitForSelector('.modal .attachments li', { timeout: 30000 });
+  const subject = await page.locator('.modal .field', { hasText: 'Objet' }).locator('input').inputValue();
+  expect(subject.startsWith('Notre proposition D-') && subject.includes('Mariage Dupont-Lemaire'), `modèle appliqué (${subject})`);
+  const before = await page.locator('.modal .recipients').first().locator('.rcpt').count();
+  await page.locator('.modal input[aria-label="À : ajouter une adresse"]').fill('Namur');
+  await page.waitForSelector('.rcpt-hits button');
+  await page.locator('.rcpt-hits button', { hasText: 'Ville de Namur' }).first().dispatchEvent('mousedown');
+  await page.waitForTimeout(200);
+  expect(await page.locator('.modal .recipients').first().locator('.rcpt').count() === before + 1, 'destinataire ajouté depuis le carnet');
+  expect((await page.locator('.modal').innerText()).includes('Envoi direct indisponible'), 'sans serveur : les autres façons d’envoyer restent proposées');
+  await page.click('.modal button:text-is("Fermer")');
+});
+
+await step('Feuille de route : contacts du client et du lieu', async () => {
+  await openProject('Festival des Lumières');
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Feuille de route")');
+  await page.waitForSelector('.doc');
+  const c = await page.locator('.doc .doc-contacts').innerText();
+  expect(c.includes('Client') && c.includes('Sophie Renard') && c.includes('prod@exemple.be'), `contact client (${c.slice(0, 160)})`);
+});
+
+await step('Projet : client et lieu modifiables depuis leur champ ; départ de la distance = dépôt', async () => {
+  await openProject('Mariage Dupont-Lemaire');
+  await page.click('button[aria-label="Modifier le client"]');
+  await page.locator('.modal .field', { hasText: 'Téléphone' }).locator('input').fill('+32 470 11 22 33');
+  await page.click('.modal button[type=submit]');
+  await page.waitForTimeout(300);
+  expect((await page.locator('.card', { has: page.locator('h2:text-is("Client")') }).innerText()).includes('+32 470 11 22 33'), 'client modifié sans quitter le projet');
+  expect((await page.locator('.distance').innerText()).includes('Départ : Dépôt'), 'distance calculée depuis le dépôt');
+});
+
+await step('Sous-projet : suppression visible, avec confirmation', async () => {
+  await tab('Planning');
+  await page.click('button:text-is("+ Ajouter un sous-projet")');
+  await page.locator('.modal .field', { hasText: 'Nom' }).first().locator('input').fill('Afterparty');
+  await page.click('.modal button[type=submit]');
+  await page.waitForTimeout(400);
+  expect(await page.locator('h2', { hasText: 'Afterparty' }).count() === 1, 'sous-projet ajouté');
+  await page.click('button[aria-label="Supprimer le sous-projet Afterparty"]');
+  await page.waitForTimeout(400);
+  expect(await page.locator('h2', { hasText: 'Afterparty' }).count() === 0, 'sous-projet supprimé');
+});
+
+await step('Équipe : remplacer un technicien confirmé (noté pas dispo), détails envoyés au remplaçant', async () => {
+  await openProject('Conférence annuelle');
+  await tab('Équipe & transport');
+  await page.click('.crew-modes button:has-text("2. Attribution")');
+  const row = page.locator('table.crew-assign tr', { hasText: 'Montage' }).first();
+  await row.locator('button:has-text("Remplacer")').click();
+  await page.waitForSelector('.modal');
+  expect((await page.locator('.modal').innerText()).includes('Tom Simon'), 'personne à remplacer');
+  for (const cb of await page.locator('.modal label', { hasText: 'prévenir' }).locator('input').all()) await cb.uncheck();
+  await page.click('.modal button:has-text("Retirer")');
+  await page.waitForSelector('.modal .replace-row');
+  await page.locator('.modal .replace-row', { hasText: 'Karim' }).locator('button:text-is("Attribuer")').click();
+  await page.waitForSelector('.modal .attachments li');
+  expect((await page.locator('.modal .field', { hasText: 'Objet' }).locator('input').inputValue()).startsWith('Confirmé'), 'mail de confirmation avec les détails');
+  expect((await page.locator('.modal .attachments').innerText()).includes('.ics'), 'agenda joint');
+  await page.click('.modal button:text-is("Fermer")');
+  await page.waitForTimeout(300);
+  const r2 = page.locator('table.crew-assign tr', { hasText: 'Montage' }).first();
+  expect((await r2.locator('select[aria-label="Technicien"] option:checked').innerText()).includes('Karim'), 'remplaçant attribué');
+  expect(await r2.locator('.req-chip.ans-non', { hasText: 'Tom' }).count() === 1, 'l’ancien noté « pas dispo »');
+});
+
+await step('Équipe : demander les dispos, réponse notée, attribution depuis la réponse', async () => {
+  await page.click('.crew-modes button:has-text("1. Postes")');
+  await page.locator('input[aria-label="Fonction à ajouter"]').first().fill('Rigger');
+  await page.locator('.add-posts button[type=submit]').first().click();
+  await page.waitForTimeout(300);
+  await page.click('.crew-modes button:has-text("2. Attribution")');
+  await page.click('button:has-text("Demander les dispos pour les")');
+  await page.waitForSelector('.modal .ask-people');
+  await page.locator('.modal input[aria-label^="Demander à Emma"]').check();
+  await page.locator('.modal input[aria-label^="Demander à Lucas"]').check();
+  await page.click('.modal button:has-text("Demander à 2 personne(s)")');
+  await page.waitForSelector('.modal:has-text("Demandes envoyées")');
+  await page.click('.modal button:text-is("Terminé")');
+  const row = page.locator('table.crew-assign tr', { hasText: 'Rigger' }).first();
+  expect(await row.locator('.req-chip.ans-attente', { hasText: 'Emma' }).count() === 1, 'demande en attente affichée');
+  await row.locator('.req-chip', { hasText: 'Lucas' }).click();
+  await row.locator('button:text-is("Noter : pas disponible")').click();
+  await page.waitForTimeout(300);
+  await row.locator('.req-chip', { hasText: 'Emma' }).click();
+  await row.locator('button:text-is("Noter : disponible")').click();
+  await page.waitForTimeout(300);
+  expect(await row.locator('.req-chip.ans-oui', { hasText: 'Emma' }).count() === 1 && await row.locator('.req-chip.ans-non', { hasText: 'Lucas' }).count() === 1, 'réponses notées');
+  expect((await row.locator('select[aria-label="Technicien"] option').nth(1).innerText()).includes('Emma'), 'la personne disponible proposée en premier');
+  await row.locator('.req-chip', { hasText: 'Emma' }).click();
+  await row.locator('button:has-text("Attribuer Emma")').click();
+  await page.waitForSelector('.modal .attachments li');
+  await page.click('.modal button:text-is("Fermer")');
+  await page.waitForTimeout(300);
+  expect((await row.locator('select[aria-label="Technicien"] option:checked').innerText()).includes('Emma'), 'attribuée depuis sa réponse');
+});
+
+await step('Équipe : formulaire d’inscription (sans serveur : expliqué)', async () => {
+  await go('equipe');
+  expect((await page.locator('.signup-link').innerText()).includes('hébergement'), 'formulaire expliqué sans serveur');
+});
+
+await step('Liste de sortie : créer un projet avec ses articles', async () => {
+  await go('checklists');
+  await page.click('button:text-is("Coller du texte")');
+  await page.fill('.modal textarea', 'Son\n2   Enceinte L-Acoustics X12   SON-12   2\n4   Micro Shure SM58   MIC-58   4\nDivers\n1   Rouleau de scotch   AB-99   1');
+  await page.click('.modal button:text-is("Créer la checklist")');
+  await page.waitForSelector('.checklist-scan');
+  await page.click('button[aria-label="Menu de la checklist"]');
+  await page.click('.modal button:has-text("Créer un projet avec cette liste")');
+  await page.locator('.modal .field', { hasText: 'Nom du projet' }).locator('input').fill('Projet depuis liste');
+  await page.click('.modal button:text-is("Créer le projet")');
+  await page.waitForSelector('.project-tabs');
+  expect((await page.locator('h1').innerText()).includes('Projet depuis liste'), 'projet créé');
+  await tab('Équipement');
+  const eq = await page.locator('.sub').first().innerText();
+  expect(eq.includes('Enceinte L-Acoustics X12') && eq.includes('Micro Shure SM58'), 'articles reconnus en matériel du projet');
+  await tab('Général').catch(() => {});
+});
+
 /* ---------- Synchronisation : deux appareils, le vrai serveur PHP ---------- */
 const hasPhp = spawnSync('php', ['-v']).status === 0;
 if (hasPhp) {
@@ -1544,9 +1846,12 @@ if (hasPhp) {
   cpSync('dist', root, { recursive: true });
   mkdirSync(join(root, 'api'));
   cpSync('server/sync.php', join(root, 'api/sync.php'));
+  cpSync('server/mail.php', join(root, 'api/mail.php'));
+  cpSync('server/public.php', join(root, 'api/public.php'));
+  const OUTBOX = mkdtempSync(join(tmpdir(), 'fabmail-'));
   const SPORT = PORT + 700;
   const php = spawn('php', ['-S', `127.0.0.1:${SPORT}`, '-t', root], {
-    env: { ...process.env, FABEVENT_AUTH: resolve('tests/server/auth-stub.php'), FABEVENT_DATA: mkdtempSync(join(tmpdir(), 'fabdata-')) }, stdio: 'ignore',
+    env: { ...process.env, FABEVENT_AUTH: resolve('tests/server/auth-stub.php'), FABEVENT_DATA: mkdtempSync(join(tmpdir(), 'fabdata-')), FABEVENT_MAIL_OUTBOX: OUTBOX }, stdio: 'ignore',
   });
   await new Promise((r) => setTimeout(r, 1200));
   const SU = `http://127.0.0.1:${SPORT}/`;
@@ -1592,6 +1897,86 @@ if (hasPhp) {
     const n1 = await newProject(A.p, 'Projet A');
     const n2 = await newProject(B.p, 'Projet B'); // B n'a pas encore reçu le projet de A
     expect(n1 !== n2, `numéros distincts (${n1} / ${n2})`);
+  });
+  const mails = () => readdirSync(OUTBOX).sort().map((f) => readFileSync(join(OUTBOX, f), 'utf8'));
+  const textOf = (eml) => { const part = eml.split('Content-Type: text/plain; charset=UTF-8')[1].split('\r\n\r\n')[1].split('--')[0]; return Buffer.from(part.replace(/\s+/g, ''), 'base64').toString('utf8'); };
+  await step('Mail : envoyé directement depuis FabEvent, PDF joint', async () => {
+    await A.p.goto(SU + '#/projets'); await A.p.waitForTimeout(400);
+    await A.p.click('text=Projet A'); await A.p.waitForSelector('.project-tabs');
+    await A.p.click('.project-tabs button:text-is("Finances & documents")');
+    await A.p.click('button:text-is("+ Devis")');
+    await A.p.waitForSelector('.doc');
+    await A.p.click('button:has-text("Envoyer par email")');
+    await A.p.waitForSelector('.send-direct button', { timeout: 30000 });
+    await A.p.locator('.modal input[aria-label="À : ajouter une adresse"]').fill('client@exemple.org');
+    await A.p.keyboard.press('Enter');
+    await A.p.waitForSelector('.modal .attachments li', { timeout: 30000 });
+    await A.p.click('.send-direct button');
+    await A.p.waitForSelector('.modal .flash.ok:has-text("Envoyé à client@exemple.org")', { timeout: 15000 });
+    const m = mails().slice(-1)[0] || '';
+    expect(m.includes('To: client@exemple.org') && m.includes('Content-Type: application/pdf'), 'mail parti avec le PDF');
+    await A.p.click('.modal button:text-is("Fermer")');
+  });
+  await step('Équipe : demande de dispo par lien, le technicien répond, la réponse revient dans FabEvent', async () => {
+    await A.p.goto(SU + '#/equipe'); await A.p.waitForTimeout(400);
+    await A.p.click('button:text-is("+ Nouvelle personne")');
+    await A.p.locator('.modal .field', { hasText: 'Nom' }).first().locator('input').fill('Sam Lien');
+    await A.p.locator('.modal .field', { hasText: 'Email' }).locator('input').fill('sam@exemple.org');
+    await A.p.click('.modal button[type=submit]');
+    await A.p.goto(SU + '#/projets'); await A.p.waitForTimeout(400);
+    await A.p.click('text=Projet A'); await A.p.waitForSelector('.project-tabs');
+    await A.p.click('.project-tabs button:text-is("Équipe & transport")');
+    await A.p.click('.crew-modes button:has-text("1. Postes")');
+    await A.p.locator('input[aria-label="Fonction à ajouter"]').first().fill('Régisseur');
+    await A.p.locator('.add-posts button[type=submit]').first().click();
+    await A.p.click('.crew-modes button:has-text("2. Attribution")');
+    await A.p.click('button:has-text("Demander les dispos pour les")');
+    await A.p.locator('.modal input[aria-label^="Demander à Sam"]').check();
+    await A.p.waitForSelector('.modal p:has-text("Chacun reçoit son propre lien")');
+    await A.p.click('.modal button:has-text("Demander à 1 personne(s)")');
+    await A.p.waitForSelector('.modal:has-text("mail envoyé avec le lien")', { timeout: 15000 });
+    await A.p.click('.modal button:text-is("Terminé")');
+    await A.p.waitForTimeout(3500); // la demande part au serveur
+    const body = textOf(mails().slice(-1)[0]);
+    const link = (body.match(/https?:\/\/\S+public\.php\?r=\w+/) || [])[0];
+    expect(!!link && body.includes('Bonjour Sam'), `lien de réponse dans le mail (${body.slice(0, 200)})`);
+    const T = await browser.newContext(); const tp = await T.newPage();
+    await tp.goto(link);
+    expect((await tp.locator('body').innerText()).includes('Régisseur'), 'page publique : le poste est affiché');
+    await tp.fill('textarea[name=note]', 'Je peux aussi conduire le camion');
+    await tp.click('button:has-text("Je suis disponible")');
+    expect((await tp.locator('.msg').innerText()).includes('disponibilité est enregistrée'), 'réponse enregistrée');
+    await T.close();
+    await syncOn(A.p);
+    await A.p.goto(SU + '#/projets'); await A.p.waitForTimeout(400);
+    await A.p.click('text=Projet A'); await A.p.waitForSelector('.project-tabs');
+    await A.p.click('.project-tabs button:text-is("Équipe & transport")');
+    await A.p.click('.crew-modes button:has-text("2. Attribution")');
+    const chip = A.p.locator('table.crew-assign tr', { hasText: 'Régisseur' }).locator('.req-chip.ans-oui', { hasText: 'Sam' });
+    expect(await chip.count() === 1 && await chip.locator('svg title').count() === 1, 'réponse « disponible » reçue dans FabEvent, avec son mot');
+  });
+  await step('Équipe : formulaire d’inscription public, fiche à valider', async () => {
+    await A.p.goto(SU + '#/equipe'); await A.p.waitForTimeout(400);
+    await A.p.click('button:text-is("Ouvrir le formulaire d\'inscription")');
+    await A.p.waitForSelector('input[aria-label="Lien du formulaire d\'inscription"]');
+    const link = await A.p.locator('input[aria-label="Lien du formulaire d\'inscription"]').inputValue();
+    await A.p.waitForTimeout(3500);
+    const T = await browser.newContext(); const tp = await T.newPage();
+    await tp.goto(link);
+    await tp.fill('#name', 'Alex Candidat'); await tp.fill('#email', 'alex@exemple.org'); await tp.fill('#city', 'Namur');
+    await tp.fill('#other', 'Technicien vidéo');
+    await tp.check('input[name=consent]');
+    await tp.waitForTimeout(3200); // anti-robot : formulaire rempli en plus de 3 s
+    await tp.click('button:has-text("Envoyer ma fiche")');
+    expect((await tp.locator('.msg').innerText()).includes('ta fiche est envoyée'), 'fiche envoyée');
+    await T.close();
+    await syncOn(A.p);
+    await A.p.goto(SU + '#/equipe'); await A.p.waitForTimeout(500);
+    const pend = await A.p.locator('.signup-pending').innerText();
+    expect(pend.includes('Alex Candidat') && pend.includes('Technicien vidéo'), 'inscription à valider');
+    await A.p.locator('.signup-pending tr', { hasText: 'Alex Candidat' }).locator('button:text-is("Valider")').click();
+    await A.p.waitForTimeout(300);
+    expect(await A.p.locator('table.list tr', { hasText: 'Alex Candidat' }).count() === 1, 'technicien ajouté à l’équipe');
   });
   await A.c.close(); await B.c.close();
   php.kill();

@@ -9,6 +9,7 @@ import type { Transfer, TransferStatus } from '../types';
 import { TRANSFER_LABELS } from '../types';
 import { availableQty, fmtDate, fmtRange, save, toLocalInput } from '../utils';
 import { printHtml } from './project/shared';
+import { Icon } from '../components/Icon';
 
 const esc = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -140,7 +141,7 @@ function TransferModal({ initial, onClose }: { initial: Partial<Transfer>; onClo
                       <td><NumInput className="w-qty" step="1" min={1} value={l.qty} onChange={(n) => set({ lines: lines.map((x, j) => (j === i ? { ...x, qty: n } : x)) })} /></td>
                       <td>{av.equipment.find((e) => e.id === l.equipmentId)?.name}</td>
                       <td className="n"><span className={'avail ' + (a >= l.qty ? 'ok' : 'ko')}>{a} dispo</span></td>
-                      <td><button type="button" className="ghost" onClick={() => set({ lines: lines.filter((_, j) => j !== i) })} aria-label="Retirer">✕</button></td>
+                      <td><button type="button" className="ghost" onClick={() => set({ lines: lines.filter((_, j) => j !== i) })} aria-label="Retirer"><Icon name="x" /></button></td>
                     </tr>
                   );
                 })}

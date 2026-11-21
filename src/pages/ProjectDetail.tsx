@@ -18,6 +18,7 @@ import PlanningTab, { SubprojectModal } from './project/PlanningTab';
 import { useProjectData, type ProjectData } from './project/shared';
 import { setProjectStatus } from './project/status';
 import SubrentTab from './project/SubrentTab';
+import { Icon } from '../components/Icon';
 
 const TABS = [
   ['general', 'Général'],
@@ -90,7 +91,7 @@ function ProjectPage({ d }: { d: ProjectData }) {
 
       {venueAlerts.length > 0 && (
         <div className="alert venue-alert">
-          {venueAlerts.map((c) => <div key={c.id}><strong>⚠ Lieu :</strong> {c.text}</div>)}
+          {venueAlerts.map((c) => <div key={c.id}><strong><Icon name="warning" />Lieu :</strong> {c.text}</div>)}
         </div>
       )}
       {(conflicts.length > 0 || open > 0) && (

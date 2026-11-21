@@ -10,6 +10,7 @@ import { cleanLetter, depotLetter } from '../codegen';
 import { settingsMoments } from '../invoicing';
 import { DEFAULT_VAT_MENTIONS } from '../payment';
 import { download, uid } from '../utils';
+import { Icon } from '../components/Icon';
 
 export default function SettingsPage() {
   const current = useSettings();
@@ -101,11 +102,13 @@ export default function SettingsPage() {
 
         <h2 style={{ marginTop: 20 }}>Dépôts</h2>
         <p className="muted" style={{ marginTop: 0 }}>
-          Avec un seul dépôt, rien à faire. Avec plusieurs, le stock se répartit par dépôt, chaque projet part d'un dépôt
+          L'adresse du dépôt sert à calculer la distance jusqu'au lieu de chaque projet (et donc le transport).
+          Avec plusieurs dépôts, le stock se répartit par dépôt, chaque projet part d'un dépôt
           et tu peux transférer du matériel de l'un à l'autre. Le premier est le dépôt principal.
         </p>
-        {(s.depots || []).map((dp, i, all) => {
-          const upd = (patch: Partial<typeof dp>) => setS({ ...s, depots: all.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
+        {/* le dépôt principal est toujours affiché : son adresse sert au calcul des distances */}
+        {(s.depots?.length ? s.depots : [{ id: 'main', name: 'Dépôt principal', letter: s.codeLetter || 'F', street: s.company.street, postalCode: s.company.postalCode, city: s.company.city, country: s.company.country }]).map((dp, i, all) => {
+          const upd = (patch: Partial<typeof dp>) => setS({ ...s, depots: all.map((x, j) => (j === i ? { ...x, ...patch, id: x.id === 'main' ? uid() : x.id } : x)) });
           return (
             <div key={dp.id} className="depot-row">
               <input value={dp.name} onChange={(e) => upd({ name: e.target.value })} placeholder="Nom" />
@@ -115,7 +118,7 @@ export default function SettingsPage() {
               <input value={dp.city || ''} onChange={(e) => upd({ city: e.target.value })} placeholder="Ville" />
               <span className="muted" style={{ fontSize: 12, alignSelf: 'center' }}>{i === 0 ? 'principal' : ''}</span>
               <button type="button" className="ghost" disabled={i === 0} title={i === 0 ? 'Le dépôt principal ne peut pas être supprimé' : 'Supprimer'}
-                onClick={() => confirm(`Supprimer le dépôt « ${dp.name} » ? Son matériel sera compté dans le dépôt principal.`) && setS({ ...s, depots: all.filter((_, j) => j !== i) })}>✕</button>
+                onClick={() => confirm(`Supprimer le dépôt « ${dp.name} » ? Son matériel sera compté dans le dépôt principal.`) && setS({ ...s, depots: all.filter((_, j) => j !== i) })}><Icon name="x" /></button>
             </div>
           );
         })}
@@ -157,7 +160,7 @@ export default function SettingsPage() {
               </select>
               {f.type === 'liste' && <input defaultValue={(f.choices || []).join(', ')} onBlur={(e) => upd({ choices: e.target.value.split(',').map((x) => x.trim()).filter(Boolean) })} placeholder="Valeurs séparées par des virgules" style={{ flex: 3, minWidth: 200 }} />}
               {f.entity === 'projet' && <label className="check-row" title="Colonne et filtre dans la liste des projets"><input type="checkbox" checked={!!f.inList} onChange={(e) => upd({ inList: e.target.checked })} /> En liste</label>}
-              <button type="button" className="ghost" onClick={() => setS({ ...s, customFields: all.filter((_, j) => j !== i) })} aria-label="Retirer">✕</button>
+              <button type="button" className="ghost" onClick={() => setS({ ...s, customFields: all.filter((_, j) => j !== i) })} aria-label="Retirer"><Icon name="x" /></button>
             </div>
           );
         })}
@@ -176,7 +179,7 @@ export default function SettingsPage() {
               <input value={f.name} onChange={(e) => upd({ name: e.target.value })} placeholder="Fonction" style={{ flex: 2, minWidth: 160 }} />
               <label className="check-row">€/jour <NumInput step="any" value={f.dayRate} onChange={(n) => upd({ dayRate: n })} style={{ width: 90 }} /></label>
               <label className="check-row">€/heure <input type="number" step="any" value={f.hourRate ?? ''} onChange={(e) => upd({ hourRate: e.target.value === '' ? undefined : parseFloat(e.target.value) })} style={{ width: 90 }} /></label>
-              <button type="button" className="ghost" onClick={() => setS({ ...s, crewFunctions: all.filter((_, j) => j !== i) })} aria-label="Retirer">✕</button>
+              <button type="button" className="ghost" onClick={() => setS({ ...s, crewFunctions: all.filter((_, j) => j !== i) })} aria-label="Retirer"><Icon name="x" /></button>
             </div>
           );
         })}
@@ -192,7 +195,7 @@ export default function SettingsPage() {
               onChange={(e) => setS({ ...s, projectTypes: all.map((x, j) => (j === i ? { ...x, moments: [...e.target.selectedOptions].map((o) => o.value).slice(0, 3) } : x)) })}>
               {moments.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
-            <button type="button" className="ghost" onClick={() => setS({ ...s, projectTypes: all.filter((_, j) => j !== i) })} aria-label="Retirer">✕</button>
+            <button type="button" className="ghost" onClick={() => setS({ ...s, projectTypes: all.filter((_, j) => j !== i) })} aria-label="Retirer"><Icon name="x" /></button>
           </div>
         ))}
         <button type="button" className="secondary small" onClick={() => setS({ ...s, projectTypes: [...(s.projectTypes?.length ? s.projectTypes : DEFAULT_PROJECT_TYPES), { name: 'Nouveau type', color: '#64748b' }] })}>+ Type</button>
@@ -212,7 +215,7 @@ export default function SettingsPage() {
                 {Object.entries(MOMENT_TRIGGERS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
               {m.trigger !== 'accord' && <><NumInput value={m.days || 0} onChange={(n) => upd({ days: n })} style={{ width: 70 }} title="Décalage en jours" /> j {m.trigger === 'avant' ? 'avant' : 'après'}</>}
-              <button type="button" className="ghost" onClick={() => setS({ ...s, invoiceMoments: moments.filter((_, j) => j !== i) })} aria-label="Retirer">✕</button>
+              <button type="button" className="ghost" onClick={() => setS({ ...s, invoiceMoments: moments.filter((_, j) => j !== i) })} aria-label="Retirer"><Icon name="x" /></button>
             </div>
           );
         })}

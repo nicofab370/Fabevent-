@@ -4,9 +4,10 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Empty, Field, Modal, NumInput, StatusBadge } from '../../components/ui';
 import { db } from '../../db';
 import type { EquipGroup, Equipment, EquipmentLine, Subproject } from '../../types';
-import { availableQty, blockPeriod, factorFor, fmtRange, lineBlock, lineDays, lineTotal, money, nowIso, round2, save, sortPeriods, uid, type Reservation, patch } from '../../utils';
+import { availableQty, blockPeriod, confirmDeleteSubproject, factorFor, fmtRange, lineBlock, lineDays, lineTotal, money, nowIso, round2, save, sortPeriods, uid, type Reservation, patch } from '../../utils';
 import { isPerPiece, type ProjectData } from './shared';
 import { codeFromScan, findByCode } from '../../codes';
+import { Icon } from '../../components/Icon';
 
 const EQ_MIME = 'application/x-fabevent-equipment';
 const LINE_MIME = 'application/x-fabevent-line';
@@ -159,6 +160,7 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
           <strong>{money(total)} HT</strong>
           <button className="secondary small" onClick={() => setEditGroup({ name: '', periodIds: [] })}>+ Groupe</button>
           <button className="secondary small" onClick={() => nav('/entrepot/' + sp.id)}>Préparer / scanner</button>
+          <button className="ghost small" title="Supprimer ce sous-projet" aria-label={`Supprimer le sous-projet ${sp.name}`} onClick={() => confirmDeleteSubproject(sp)}><Icon name="trash" /></button>
         </div>
       </div>
       <div className="sub-body">
@@ -198,12 +200,12 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
                             <td className="drag-handle" title={l.parentLineId ? 'Accessoire : suit son article' : 'Glisser vers un autre groupe ou sous-projet'}>{l.parentLineId ? '' : '⠿'}</td>
                             <td><NumInput className="w-qty" step="1" min={0} value={l.qty} onChange={(n) => updLine(l, { qty: n })} /></td>
                             <td style={l.parentLineId ? { paddingLeft: 24 } : undefined}>
-                              {l.parentLineId && <span className="muted">↳ </span>}
+                              {l.parentLineId && <Icon name="corner" className="muted" />}
                               {eq ? <Link to={'/materiel/' + eq.id}>{l.name}</Link> : <input value={l.name} onChange={(e) => updLine(l, { name: e.target.value })} />}
                               {eq?.code && <span className="muted eq-code"> {eq.code}</span>}
                               {perPiece && <span className="badge" style={{ marginLeft: 6 }}>vente</span>}
                               {l.optional && <span className="badge st-option" style={{ marginLeft: 6 }}>option</span>}
-                              {l.periodIds?.length ? <div className="muted eq-sub" style={{ fontSize: 11 }}>🕑 {periods.filter((p) => l.periodIds!.includes(p.id)).map((p) => p.name).join(', ')} · {fmtRange(b0, b1)}</div> : null}
+                              {l.periodIds?.length ? <div className="muted eq-sub" style={{ fontSize: 11 }}><Icon name="clock" />{periods.filter((p) => l.periodIds!.includes(p.id)).map((p) => p.name).join(', ')} · {fmtRange(b0, b1)}</div> : null}
                               {l.remark && <div className="muted eq-sub" style={{ fontSize: 11 }}>Devis : {l.remark}</div>}
                               {l.internalRemark && <div className="muted eq-sub" style={{ fontSize: 11 }}>Entrepôt : {l.internalRemark}</div>}
                             {eq && avail !== null && avail < l.qty && !l.optional && (eq.alternatives || []).map((altId) => {
@@ -216,7 +218,7 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
                                   <button className="secondary small alt-btn" title={`${altAvail} disponible(s)`} onClick={async () => {
                                     await updLine(l, { qty: l.qty - n });
                                     await addEquipmentToSub(sp, av.equipment, lines, { [altId]: n }, l.groupId, l.discount);
-                                  }}>↔ Remplacer {n} par {alt.name}</button>
+                                  }}><Icon name="swap" />Remplacer {n} par {alt.name}</button>
                                 </div>
                               ) : null;
                             })}
@@ -226,8 +228,8 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
                             <td className="hide-sm"><NumInput className="w-qty" value={l.discount} onChange={(n) => updLine(l, { discount: n })} aria-label="Remise" /></td>
                             <td className="n">{money(lineTotal(l, lineDays(l, sp), settings, perPiece))}</td>
                             <td className="nowrap">
-                              <button className="ghost" onClick={() => setEditLine(l)} title="Prix, option, groupe, horaire propre et remarques" aria-label="Détails de la ligne">⋯</button>
-                              <button className="ghost" onClick={() => removeLine(l)} aria-label="Retirer">✕</button>
+                              <button className="ghost" onClick={() => setEditLine(l)} title="Prix, option, groupe, horaire propre et remarques" aria-label="Détails de la ligne"><Icon name="more" /></button>
+                              <button className="ghost" onClick={() => removeLine(l)} aria-label="Retirer"><Icon name="x" /></button>
                             </td>
                           </tr>
                         );
@@ -481,7 +483,7 @@ function EquipmentPicker({ sp, groupId, depot, discount, equipment, res, existin
         {selected.length > 0 && (
           <div className="picker-selection">
             <strong>Sélection :</strong> {selected.map((e) => (
-              <span key={e.id} className="tag small">{qty[e.id]} × {e.name} <button className="ghost small" aria-label={`Retirer ${e.name}`} onClick={() => setQty((x) => ({ ...x, [e.id]: 0 }))}>✕</button></span>
+              <span key={e.id} className="tag small">{qty[e.id]} × {e.name} <button className="ghost small" aria-label={`Retirer ${e.name}`} onClick={() => setQty((x) => ({ ...x, [e.id]: 0 }))}><Icon name="x" /></button></span>
             ))}
           </div>
         )}

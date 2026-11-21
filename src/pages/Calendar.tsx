@@ -6,6 +6,7 @@ import { appBaseUrl, db } from '../db';
 import type { Appointment, Person, ProjectStatus } from '../types';
 import { STATUS_LABELS } from '../types';
 import { buildIcs, download, save, toLocalInput } from '../utils';
+import { Icon } from '../components/Icon';
 
 const COLORS: Record<ProjectStatus, string> = {
   demande: '#c7d2fe', brouillon: '#e9d5ff', option: '#fde68a', confirme: '#86efac', en_cours: '#67e8f9', execute: '#a5b4fc', termine: '#d1d5db', annule: '#fecaca',
@@ -51,9 +52,9 @@ export default function Calendar() {
   return (
     <>
       <PageHead title="Planning">
-        <button className="secondary" onClick={() => { const d = new Date(cursor); d.setMonth(d.getMonth() - 1); setCursor(d); }}>←</button>
+        <button className="secondary" onClick={() => { const d = new Date(cursor); d.setMonth(d.getMonth() - 1); setCursor(d); }} aria-label="Précédent"><Icon name="chevron-left" /></button>
         <strong style={{ minWidth: 140, textAlign: 'center' }}>{cursor.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}</strong>
-        <button className="secondary" onClick={() => { const d = new Date(cursor); d.setMonth(d.getMonth() + 1); setCursor(d); }}>→</button>
+        <button className="secondary" onClick={() => { const d = new Date(cursor); d.setMonth(d.getMonth() + 1); setCursor(d); }} aria-label="Suivant"><Icon name="chevron-right" /></button>
         <button className="secondary" onClick={() => { const d = new Date(); d.setDate(1); setCursor(d); }}>Aujourd'hui</button>
         <label className="check-row"><input type="checkbox" checked={hideCancelled} onChange={(e) => setHideCancelled(e.target.checked)} /> Masquer annulés</label>
         <button className="secondary" onClick={() => { const d = new Date(); d.setHours(9, 0, 0, 0); const e = new Date(d); e.setHours(11); setAppt({ title: '', start: toLocalInput(d), end: toLocalInput(e), personIds: [] }); }}>+ Rendez-vous</button>

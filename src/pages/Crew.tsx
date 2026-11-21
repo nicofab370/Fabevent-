@@ -5,12 +5,18 @@ import { appBaseUrl, db } from '../db';
 import type { Person, ProjectFile, Unavailability } from '../types';
 import { buildIcs, crewWindow, download, fmtRange, money, save, toLocalInput, uid } from '../utils';
 import { CsvButton, exportCsv } from '../components/extra';
+import { newToken, signupLink } from '../mailer';
+import { Icon } from '../components/Icon';
 
 type Draft = Partial<Person> & { name: string; dailyRate: number; external: boolean };
 
 export default function Crew() {
   const settings = useSettings();
-  const people = useLiveQuery(() => db.people.orderBy('name').toArray(), []) || [];
+  const everyone = useLiveQuery(() => db.people.orderBy('name').toArray(), []) || [];
+  // inscrits via le formulaire, pas encore validés : à part
+  const people = everyone.filter((p) => !p.pending);
+  const pending = everyone.filter((p) => p.pending);
+  const [linkMsg, setLinkMsg] = useState('');
   const crew = useLiveQuery(() => db.crew.toArray(), []) || [];
   const projects = useLiveQuery(() => db.projects.toArray(), []) || [];
   const subs = useLiveQuery(() => db.subprojects.toArray(), []) || [];
@@ -47,6 +53,40 @@ export default function Crew() {
           people.map((p) => [p.name, p.role, p.external ? 'Sous-traitant' : 'Interne', companies.find((c) => c.id === p.contactId)?.company, p.phone, p.email, p.costRate, p.hourlyCost]))} />
         <button onClick={() => setEdit({ name: '', dailyRate: 0, external: false })}>+ Nouvelle personne</button>
       </PageHead>
+      {pending.length > 0 && (
+        <div className="card signup-pending">
+          <h2 style={{ marginTop: 0 }}>Inscriptions à valider ({pending.length})</h2>
+          <p className="muted" style={{ marginTop: 0 }}>Reçues par le formulaire d'inscription. Valide pour les ajouter à ton équipe (complète le coût si besoin), ou refuse.</p>
+          <table className="list"><tbody>{pending.map((p) => (
+            <tr key={p.id}>
+              <td><strong>{p.name}</strong>{p.city && <span className="muted"> · {p.city}</span>}<div className="muted">{[p.email, p.phone].filter(Boolean).join(' · ')}</div></td>
+              <td>{(p.skills || []).join(', ') || p.role}<div className="muted">{[p.status, p.vatNumber && `TVA ${p.vatNumber}`, p.costRate ? `${money(p.costRate)}/j souhaité` : ''].filter(Boolean).join(' · ')}</div>
+                {p.notes && <div className="muted" style={{ fontSize: 12, whiteSpace: 'pre-wrap' }}>{p.notes}</div>}</td>
+              <td className="nowrap">
+                <button className="small" onClick={() => save(db.people, { ...p, pending: false, external: true })}>Valider</button>{' '}
+                <button className="secondary small" onClick={() => setEdit({ ...p, pending: false })}>Valider et compléter…</button>{' '}
+                <button className="ghost small" onClick={() => confirm(`Refuser et supprimer l'inscription de ${p.name} ?`) && db.people.delete(p.id)}>Refuser</button>
+              </td>
+            </tr>
+          ))}</tbody></table>
+        </div>
+      )}
+      <div className="card signup-link">
+        <h2 style={{ marginTop: 0 }}>Formulaire d'inscription des techniciens</h2>
+        {!signupLink('x') ? <p className="muted">Il fonctionne avec FabEvent installé sur ton hébergement (serveur de synchronisation) : les fiches remplies arrivent ici toutes seules.</p>
+          : settings.signupKey ? (
+            <>
+              <p className="muted" style={{ marginTop: 0 }}>Envoie ce lien (ou mets-le sur ton site) : chaque technicien remplit sa fiche (coordonnées, fonctions, statut, tarif), elle arrive dans « Inscriptions à valider ».</p>
+              <div className="toolbar">
+                <input readOnly value={signupLink(settings.signupKey)} aria-label="Lien du formulaire d'inscription" onFocus={(e) => e.currentTarget.select()} style={{ flex: 1, maxWidth: 'none' }} />
+                <button className="secondary small" onClick={() => navigator.clipboard?.writeText(signupLink(settings.signupKey!)).then(() => setLinkMsg('Lien copié.'), () => setLinkMsg('Sélectionne le lien et copie-le.'))}>Copier</button>
+                <button className="ghost small" onClick={async () => { if (confirm('Fermer le formulaire ? L\'ancien lien ne fonctionnera plus.')) { const s2 = await db.settings.get('main'); if (s2) await db.settings.put({ ...s2, signupKey: undefined }); } }}>Fermer le formulaire</button>
+              </div>
+              {linkMsg && <span className="avail ok">{linkMsg}</span>}
+              <p className="muted" style={{ fontSize: 12 }}>Les fonctions proposées sont celles du catalogue (Paramètres → Fonctions et tarifs).</p>
+            </>
+          ) : <button className="small" onClick={async () => { const s2 = await db.settings.get('main'); if (s2) await db.settings.put({ ...s2, signupKey: newToken(24) }); }}>Ouvrir le formulaire d'inscription</button>}
+      </div>
       <div className="card">
         {people.length === 0 ? <Empty>Ajoute tes techniciens (salariés, intermittents, sous-traitants).</Empty> : (
           <div className="table-wrap">
@@ -58,7 +98,7 @@ export default function Crew() {
                   return (
                     <tr key={p.id}>
                       <td><a href="#" onClick={(e) => { e.preventDefault(); setEdit(p); }}><strong>{p.name}</strong></a></td>
-                      <td>{p.role}</td>
+                      <td>{p.role}{p.skills?.filter((x) => x !== p.role).length ? <div className="muted" style={{ fontSize: 11 }}>{p.skills.filter((x) => x !== p.role).join(', ')}</div> : null}</td>
                       <td><span className="badge">{p.external ? 'Sous-traitant' : 'Interne'}</span>{p.contactId && <div className="muted" style={{ fontSize: 11 }}>{companies.find((c) => c.id === p.contactId)?.company}</div>}</td>
                       <td>{p.phone}</td>
                       <td className="n">{p.costRate ? money(p.costRate) : <span className="muted">—</span>}</td>
@@ -91,6 +131,8 @@ export default function Crew() {
           <form className="form" onSubmit={async (e) => { e.preventDefault(); await save(db.people, edit as Person); setEdit(null); }}>
             <Field label="Nom *" full><input required autoFocus value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></Field>
             <Field label="Fonction principale"><input value={edit.role || ''} onChange={(e) => setEdit({ ...edit, role: e.target.value })} placeholder="ex. Régisseur son" /></Field>
+            <Field label="Sait aussi faire (fonctions, séparées par des virgules)"><input value={(edit.skills || []).join(', ')} onChange={(e) => setEdit({ ...edit, skills: e.target.value.split(',').map((x) => x.trim()).filter(Boolean) })} placeholder="ex. Technicien lumière, Rigger" aria-label="Compétences" /></Field>
+            <Field label="Ville"><input value={edit.city || ''} onChange={(e) => setEdit({ ...edit, city: e.target.value })} /></Field>
             <Field label="Ce qu'il te coûte / jour (€ HT)"><NumInput value={edit.costRate || 0} onChange={(n) => setEdit({ ...edit, costRate: n })} /></Field>
             <Field label="Ce qu'il te coûte / heure (€ HT)"><NumInput value={edit.hourlyCost || 0} onChange={(n) => setEdit({ ...edit, hourlyCost: n || undefined })} /></Field>
             <p className="muted field full" style={{ margin: 0 }}>Le prix facturé au client vient de la fonction (Paramètres → Fonctions et tarifs clients). Ci-dessous, un tarif de secours si la fonction n'est pas au catalogue :</p>
@@ -135,7 +177,7 @@ function UnavailabilityModal({ person, list, onClose }: { person: Person; list: 
         <table className="list">
           <tbody>
             {list.sort((a, b) => a.start.localeCompare(b.start)).map((u) => (
-              <tr key={u.id}><td>{fmtRange(u.start, u.end)}</td><td>{u.reason}</td><td><button className="ghost" onClick={() => db.unavailability.delete(u.id)} aria-label="Retirer">✕</button></td></tr>
+              <tr key={u.id}><td>{fmtRange(u.start, u.end)}</td><td>{u.reason}</td><td><button className="ghost" onClick={() => db.unavailability.delete(u.id)} aria-label="Retirer"><Icon name="x" /></button></td></tr>
             ))}
           </tbody>
         </table>
@@ -179,7 +221,7 @@ function PersonDocs({ person, files, onClose }: { person: Person; files: Project
                   {f.expires && f.expires < today && <span className="avail ko"> expiré</span>}
                   {f.expires && f.expires >= today && f.expires <= soon && <span className="avail ko"> expire bientôt</span>}
                 </td>
-                <td><button className="ghost" onClick={() => confirm(`Supprimer ${f.name} ?`) && db.files.delete(f.id)} aria-label="Supprimer">✕</button></td>
+                <td><button className="ghost" onClick={() => confirm(`Supprimer ${f.name} ?`) && db.files.delete(f.id)} aria-label="Supprimer"><Icon name="x" /></button></td>
               </tr>
             ))}
           </tbody>

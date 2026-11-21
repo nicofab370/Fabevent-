@@ -5,9 +5,10 @@ import { db } from '../../db';
 import type { Period, PeriodKind, Project, ProjectStatus, Subproject } from '../../types';
 import { FIRM, PERIOD_LABELS, STATUS_LABELS } from '../../types';
 import { shiftBetween, shiftDate, shiftProject, type Shift } from '../../projectOps';
-import { blockPeriod, deleteSubproject, fmtDate, fmtRange, nowIso, patch, save, sortPeriods, syncPeriods, toLocalInput, uid, usageDays } from '../../utils';
+import { blockPeriod, confirmDeleteSubproject, deleteSubproject, fmtDate, fmtRange, nowIso, patch, save, sortPeriods, syncPeriods, toLocalInput, uid, usageDays } from '../../utils';
 import type { ProjectData } from './shared';
 import { ownAddress, placeAddress, placeName, spotOf } from '../../places';
+import { Icon } from '../../components/Icon';
 
 /** Onglet Planning : toutes les salles et tous leurs créneaux. */
 export default function PlanningTab({ d, onEditSub }: { d: ProjectData; onEditSub: (sp: Partial<Subproject>) => void }) {
@@ -44,6 +45,7 @@ export default function PlanningTab({ d, onEditSub }: { d: ProjectData; onEditSu
                   </label>
                 )}
                 <button className="secondary small" onClick={() => duplicateSub(d, sp, onEditSub)}>Dupliquer</button>
+                <button className="danger small" onClick={() => confirmDeleteSubproject(sp)} aria-label={`Supprimer le sous-projet ${sp.name}`}>Supprimer</button>
                 <button className="small" onClick={() => onEditSub(sp)}>Modifier les horaires</button>
               </div>
             </div>
@@ -196,7 +198,7 @@ export function SubprojectModal({ sp, project, onClose }: { sp: Partial<Subproje
                 <input value={pe.name} onChange={(e) => upd({ name: e.target.value })} />
                 <input type="datetime-local" value={pe.start} onChange={(e) => upd({ start: e.target.value, end: pe.end < e.target.value ? e.target.value : pe.end })} />
                 <input type="datetime-local" value={pe.end} onChange={(e) => upd({ end: e.target.value })} />
-                <button type="button" className="ghost" onClick={() => setPeriods(periods.filter((x) => x.id !== pe.id))} aria-label="Retirer">✕</button>
+                <button type="button" className="ghost" onClick={() => setPeriods(periods.filter((x) => x.id !== pe.id))} aria-label="Retirer"><Icon name="x" /></button>
               </div>
             );
           })}
@@ -234,7 +236,7 @@ export function SubprojectModal({ sp, project, onClose }: { sp: Partial<Subproje
         <Field label="Notes" full><textarea value={d.notes || ''} onChange={(e) => set('notes', e.target.value)} /></Field>
         <div className="form-actions">
           {d.id && <button type="button" className="danger" style={{ marginRight: 'auto' }} onClick={async () => {
-            if (confirm('Supprimer ce sous-projet et son contenu ?')) { await deleteSubproject(d.id!); onClose(); }
+            if (await confirmDeleteSubproject({ id: d.id!, name: d.name || '', projectId: d.projectId! })) onClose();
           }}>Supprimer</button>}
           <button type="button" className="secondary" onClick={onClose}>Annuler</button>
           <button type="submit">Enregistrer</button>

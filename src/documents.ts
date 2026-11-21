@@ -1,5 +1,5 @@
 import { db, DEFAULT_DOC_STYLE, getSettings, nextNumber } from './db';
-import type { Doc, DocSnapshot, DocType, Lang, ProjectStatus, Settings, SnapshotSub, VatRegime } from './types';
+import type { Contact, Doc, DocSnapshot, DocType, Lang, ProjectStatus, Settings, SnapshotSub, VatRegime } from './types';
 import { VAT_MENTIONS_I18N } from './i18n';
 import { DEFAULT_VAT_MENTIONS, structuredCommunication } from './payment';
 import { INVOICE_TYPES, VENUE_INFO_LABELS, type VenueInfo } from './types';
@@ -35,6 +35,28 @@ export interface DocOptions {
   note?: string;
   /** libellé de la ligne d'acompte (ex. moment de facturation) */
   label?: string;
+}
+
+/** Contacts utiles sur place : interlocuteur du client (ou son service) et contacts du lieu. */
+async function contactsFor(client: Contact | undefined, project: { venueId?: string; spotId?: string; contactPersonId?: string; contactPerson?: string; departmentId?: string }) {
+  const out: NonNullable<DocSnapshot['contacts']> = [];
+  if (client) {
+    const person = projectPerson(client, project);
+    const dept = deptOf(client, project.departmentId);
+    out.push({
+      role: 'Client', name: person?.name || dept?.name || [client.firstName, client.lastName].filter(Boolean).join(' ') || client.company,
+      detail: [person?.role, client.company !== person?.name ? client.company : '', dept && person ? dept.name : ''].filter(Boolean).join(' · ') || undefined,
+      phone: person?.phone || dept?.phone || client.phone, email: person?.email || dept?.email || client.email,
+    });
+  }
+  const venue = project.venueId ? await db.contacts.get(project.venueId) : undefined;
+  if (venue) {
+    const spot = spotOf(venue, project.spotId);
+    const persons = (venue.persons || []).filter((p) => p.phone || p.email);
+    if (persons.length) for (const p of persons.slice(0, 3)) out.push({ role: 'Lieu', name: p.name, detail: [p.role, placeName(venue, spot)].filter(Boolean).join(' · '), phone: p.phone, email: p.email });
+    else if (venue.phone || venue.email) out.push({ role: 'Lieu', name: placeName(venue, spot), phone: venue.phone, email: venue.email });
+  }
+  return out.length ? out : undefined;
 }
 
 /** Construit une photo figée du projet à l'instant T. */
@@ -152,6 +174,7 @@ export async function buildSnapshot(projectId: string, type: DocType, only?: { i
     validUntil: isQuote ? new Date(issued.getTime() + s.quoteValidityDays * 86400000).toISOString() : undefined,
     dueDate: INVOICE_TYPES.includes(type) ? new Date(issued.getTime() + (client?.paymentDays ?? s.paymentDays) * 86400000).toISOString() : undefined,
     venueNotes: isPacking ? await venueNotesFor(project.venueId, [project.spotId, ...subs.map((x) => x.spotId)].filter((x): x is string => !!x)) : undefined,
+    contacts: isPacking ? await contactsFor(client, project) : undefined,
     department: deptOf(client, project.departmentId),
     contactEmail: projectPerson(client, project)?.email || deptOf(client, project.departmentId)?.email,
     notes: (() => { const n = (project.noteList || []).filter((x) => x.on.includes(type) && x.text.trim()).map(({ title, text }) => ({ title, text })); return n.length ? n : undefined; })(),
@@ -281,6 +304,6 @@ async function venueNotesFor(venueId: string | undefined, spotIds: string[]): Pr
     if (ownAddress(sp)) out.push({ label: `${sp.name} — adresse`, text: placeAddress(v, sp) });
     for (const k of keys) if (sp.info?.[k]) out.push({ label: `${sp.name} — ${VENUE_INFO_LABELS[k]}`, text: sp.info[k]! });
   }
-  for (const c of v.comments || []) if (c.onRoadmap) out.push({ label: c.important ? '⚠ Remarque' : 'Remarque', text: c.text });
+  for (const c of v.comments || []) if (c.onRoadmap) out.push({ label: c.important ? 'Remarque importante' : 'Remarque', text: c.text });
   return out.length ? out : undefined;
 }

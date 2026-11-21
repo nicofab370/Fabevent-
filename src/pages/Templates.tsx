@@ -1,3 +1,5 @@
+import { useSearchParams } from 'react-router-dom';
+import MailTemplates from './MailTemplates';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useRef, useState } from 'react';
 import { DOC_CSS, DocRender } from '../components/DocRender';
@@ -50,7 +52,22 @@ function sampleDoc(type: DocType, company: Doc['snapshot']['company'], footer: s
   };
 }
 
+/** Modèles : documents (devis, factures…) et mails, en deux onglets. */
 export default function Templates() {
+  const [params, setParams] = useSearchParams();
+  const tab = params.get('onglet') === 'mails' ? 'mails' : 'documents';
+  return (
+    <>
+      <div className="tabs" role="tablist" style={{ marginBottom: 12 }}>
+        <button role="tab" className={tab === 'documents' ? 'on' : ''} onClick={() => setParams({})}>Documents</button>
+        <button role="tab" className={tab === 'mails' ? 'on' : ''} onClick={() => setParams({ onglet: 'mails' })}>Mails</button>
+      </div>
+      {tab === 'mails' ? <MailTemplates /> : <DocTemplates />}
+    </>
+  );
+}
+
+function DocTemplates() {
   const settings = useSettings();
   const [tpl, setTpl] = useState<DocTemplates | null>(null);
   const [type, setType] = useState<DocType>('devis');

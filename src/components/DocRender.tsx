@@ -96,8 +96,17 @@ export function buildDocHtml(doc: Doc): string {
       : isPacking ? r(<div className="sign"><div>{tr(doc, 'preparedBy')}</div><div>{tr(doc, 'checkedBy')}</div></div>) : '',
     'bloc.paiement': paymentBlock(doc),
     'bloc.mention_tva': s.vatMention ? `<p class="mention">${esc(s.vatMention)}</p>` : '',
-    'bloc.notes': s.notes?.length || s.venueNotes?.length ? r(
+    'bloc.notes': s.notes?.length || s.venueNotes?.length || s.contacts?.length ? r(
       <section className="notes">
+        {s.contacts?.length ? (
+          <div className="doc-contacts">
+            <h3>{tr(doc, 'contacts')}</h3>
+            <table><tbody>{s.contacts.map((c, i) => (
+              <tr key={i}><td style={{ width: '14%' }}><strong>{c.role}</strong></td><td>{c.name}{c.detail && <div className="muted">{c.detail}</div>}</td>
+                <td>{c.phone && <a href={`tel:${c.phone.replace(/[^+\d]/g, '')}`}>{c.phone}</a>}</td><td>{c.email && <a href={`mailto:${c.email}`}>{c.email}</a>}</td></tr>
+            ))}</tbody></table>
+          </div>
+        ) : null}
         {s.venueNotes?.length ? (
           <div className="venue-notes">
             <h3>{tr(doc, 'venue')}{s.project.venue ? ` — ${s.project.venue}` : ''}</h3>
@@ -156,9 +165,12 @@ function Rooms({ doc, st }: { doc: Doc; st: DocStyle }) {
             {summaryOnly && sp.equipment.length > 0 && (
               <table><tbody><tr><td>{tr(doc, 'rental')} ({sp.equipment.filter((l) => !l.optional).length} {tr(doc, 'lines')})</td><td className="n">{money(eqTotal)}</td></tr></tbody></table>
             )}
-            {!summaryOnly && eqLines.length > 0 && (
-              <>
-                <h3>{tr(doc, 'equipment')}</h3>
+            {(() => {
+              // devis : les options dans une section à part, non comptées dans le total
+              const splitOpts = !isPacking && !isRoadmap;
+              const mainLines = splitOpts ? eqLines.filter((l) => !l.optional) : eqLines;
+              const optLines = splitOpts ? eqLines.filter((l) => l.optional) : [];
+              const table = (lines: typeof eqLines) => (
                 <table>
                   <thead>
                     <tr>
@@ -175,17 +187,17 @@ function Rooms({ doc, st }: { doc: Doc; st: DocStyle }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {eqLines.map((l, j) => (<Fragment key={j}>
-                      {st.showGroups && l.group && l.group !== eqLines[j - 1]?.group && (
+                    {lines.map((l, j) => (<Fragment key={j}>
+                      {st.showGroups && l.group && l.group !== lines[j - 1]?.group && (
                         <tr><td colSpan={(isPacking ? 4 : 2) + (showPrices ? priceCols : 0)} style={{ fontWeight: 600, background: '#fafafa' }}>{l.group}</td></tr>
                       )}
                       <tr className={l.optional ? 'opt' : ''}>
                         {isPacking && <td><span className="check" /></td>}
                         {isPacking && <td><span className="check" /></td>}
                         <td className="n">{l.qty}</td>
-                        <td>{l.name}{st.showCode && l.code && <span className="muted"> ({l.code})</span>}{l.optional && ` — ${tr(doc, 'option')}`}
+                        <td>{l.name}{st.showCode && l.code && <span className="muted"> ({l.code})</span>}{l.optional && !splitOpts && ` — ${tr(doc, 'option')}`}
                           {l.periods && <div className="muted" style={{ fontSize: '0.85em' }}>{l.periods}</div>}
-                          {l.contents && <div className="muted" style={{ fontSize: '0.85em' }}>↳ avec : {l.contents}</div>}
+                          {l.contents && <div className="muted" style={{ fontSize: '0.85em' }}>Avec : {l.contents}</div>}
                           {l.remark && <div className="muted" style={{ fontSize: '0.85em' }}>{l.remark}</div>}</td>
                         {showPrices && <>
                           <td className="n">{money(l.unitPrice)}</td>
@@ -197,8 +209,18 @@ function Rooms({ doc, st }: { doc: Doc; st: DocStyle }) {
                     </Fragment>))}
                   </tbody>
                 </table>
-              </>
-            )}
+              );
+              return <>
+                {!summaryOnly && mainLines.length > 0 && <><h3>{tr(doc, 'equipment')}</h3>{table(mainLines)}</>}
+                {optLines.length > 0 && (
+                  <div className="doc-options">
+                    <h3>{tr(doc, 'options')}</h3>
+                    {table(optLines)}
+                    {showPrices && <div className="right muted">{tr(doc, 'optionsTotal')} : <strong>{money(optLines.reduce((a, l) => a + l.total, 0))}</strong> HT</div>}
+                  </div>
+                )}
+              </>;
+            })()}
             {(sp.crew.length > 0 && (isRoadmap || sp.crew.some((x) => x.billable))) && (
               <>
                 <h3>{tr(doc, 'crew')}</h3>

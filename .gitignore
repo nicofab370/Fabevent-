@@ -2,3 +2,5 @@ node_modules
 dist
 tests/e2e/echec-*.png
 tests/e2e/bon-test.pdf
+server/mail-config.php
+tsconfig.tsbuildinfo

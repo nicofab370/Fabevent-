@@ -73,6 +73,25 @@ remises par défaut du client.
 **Matériel** : étiquettes QR imprimables (planches A4, rouleau), articles de remplacement proposés en cas de manque,
 archivage, photos, inventaire par scan avec mise à jour du stock, valeur du parc.
 
+**Icônes** : un seul jeu d'icônes dessinées au trait (SVG, `src/components/Icon.tsx`), à la couleur et à la taille du texte ; aucun emoji dans l'interface.
+
+**Mails depuis la plateforme** : devis, factures, bons, plannings, demandes de dispo partent directement de FabEvent avec leurs
+pièces jointes (serveur `mail.php` sur l'hébergement, SMTP). Destinataires depuis le carnet d'adresses (contacts, interlocuteurs,
+services, techniciens), copie, **modèles de mail par type** (Modèles → Mails, ou « Enregistrer comme modèle » : les noms, dates
+et montants deviennent des variables). Sans serveur : partage, brouillon .eml ou messagerie.
+
+**Équipe** :
+- « Demander les dispos » sur un ou plusieurs postes : chaque technicien reçoit un lien et répond en un clic, poste par poste.
+  La réponse revient sur le poste (en attente, disponible, pas disponible, avec son mot), et on peut aussi la noter à la main.
+- Les personnes disponibles sont proposées en premier.
+- « Attribuer » envoie au technicien les détails du poste par mail : lieu, adresse, horaires, contact sur place, agenda .ics.
+- « Remplacer » : un technicien confirmé qui n'est plus disponible est noté « pas dispo », prévenu, puis remplacé.
+- **Formulaire d'inscription** public pour ajouter des techniciens à la base (fiches à valider).
+
+**Devis** : les options dans une section à part, avec leur total. **Feuille de route** : contacts du client et du lieu.
+**Projet** : client et lieu modifiables depuis leur champ (bouton Modifier), distance calculée depuis l'adresse du dépôt, suppression
+d'un sous-projet (avec avertissements). **Liste de sortie** libre → « Créer un projet avec cette liste ».
+
 **Étiqueteuse Brother PT-P750W** (Matériel › Étiquettes, format « ruban TZe ») : QR du code interne (ex. `F-S-0010-03`
 pour une unité) + code + nom, sur ruban de 6 à 24 mm.
 - *Impression directe en USB* (WebUSB : Chrome / Edge sur macOS, Linux, ChromeOS, Android avec câble OTG) : FabEvent
@@ -87,7 +106,7 @@ pour une unité) + code + nom, sur ruban de 6 à 24 mm.
 
   Le bouton Editor Lite doit être éteint.
   Sous Windows, le pilote Brother garde la machine : installer WinUSB avec Zadig, ou utiliser l'impression via le pilote.
-- *Depuis l'article* : « 🏷 Imprimer l'étiquette » sur la fiche, « 🏷 Étiquette » sur chaque unité, et « Enregistrer et
+- *Depuis l'article* : « Imprimer l'étiquette » sur la fiche, « Étiquette » sur chaque unité, et « Enregistrer et
   imprimer l'étiquette » dans la modification (aussi à la création) : choix des unités et du nombre d'exemplaires.
 - *Image PNG au format exact du ruban* (180 dpi) pour l'app Brother iPrint&Label (iPhone, Wi-Fi Direct) ou P-touch Editor.
 - *Impression via le pilote Brother* (page au format longueur × largeur du ruban).
@@ -152,11 +171,32 @@ téléchargement des fichiers puis l'ouverture de la messagerie (Gmail web). Dev
 factures), bons de commande de sous-location et RH en PDF, planning du technicien en `.ics`. Un devis ou une facture envoyé
 passe au statut « Envoyé ».
 
-**Entrepôt (repris de FABRI.live)** : checklist de sortie puis de retour par sous-projet, scan à la douchette ou à la caméra
-(ZXing intégré, fonctionne sur iPhone et hors ligne), unités sérialisées, « ajouter en plus », codes fabricant associés,
-unités à réparer / en réparation, bilan du retour et déclaration des pertes avec historique daté. **Checklists libres**
-importées d'un bon PDF, Word, HTML (export Rentman) ou de texte collé. **Inventaire** au scan avec kits, unités non vues,
-mouvements de stock datés, fiche article (« où est cet article ? »).
+**Entrepôt (Checklist FABRI.live reprise)** : checklist de sortie puis de retour par sous-projet.
+- Scan à la douchette ou à la caméra (ZXing intégré, fonctionne sur iPhone et hors ligne). Une unité sérialisée ne compte qu'une fois.
+- Article en vrac scanné : « combien ? », le reste par défaut (ou « chaque scan compte 1 »).
+- Kit scanné : tout son contenu d'un coup. Hors liste : « ajouter en plus », déjà compté.
+- Catégories et kits repliables avec leur compteur (« KIT · 3/5 »), filtres Tout / Restant / Fait, recherche.
+- On touche une ligne pour la cocher, − / + pour une partie, pour la fiche.
+- Au retour :
+  - bandeau « N pas encore rentrés » ;
+  - une unité non sortie avec le projet est refusée ;
+  - bilan avec cases à cocher : ce qui revient plus tard reste déclarable, rien n'est déclaré deux fois ;
+  - pertes avec historique daté.
+- Menu : tout replier, tout décocher, imprimer A4 (état actuel ou vierge à remplir).
+
+**Checklists libres** importées d'un bon PDF, Word, HTML (export Rentman) ou de texte collé :
+- accueil en cartes avec la progression ;
+- mode édition (corriger l'import, kits) ;
+- renommer, dupliquer à zéro, exporter, supprimer. **Inventaire** repris de l'Inventaire FABRI.live :
+- liste par catégorie avec la progression, vues Tout / À compter / Écarts ;
+- comptage d'un article en plusieurs endroits (5 au dépôt + 3 dans le camion), « Conforme », « Corriger le total » ;
+- unités à numéro de série en pastilles, avec un scan limité à l'article ;
+- kits comptés kit par kit (le kit se valide tout seul quand tout y est) ;
+- « chaque scan compte 1 » ou bien le scan ouvre l'article pour taper la quantité ;
+- scan « Infos » pour tout voir sans rien compter ;
+- écarts appliqués article par article, unités non vues déclarées perdues ou en réparation ;
+- nouvel article créé sur place, avec les doublons possibles proposés ;
+- mouvements de stock datés et fiche article (« où est cet article ? »).
 
 **Codes du matériel** : chaque nouvel article reçoit un code `F-S-0010` (lettre du dépôt de base, lettre de la catégorie —
 S son, V vidéo, L lumière, IT informatique, R rigging, K kit… —, numéro unique jamais réutilisé). Chaque unité à numéro de série

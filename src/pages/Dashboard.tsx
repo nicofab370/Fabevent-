@@ -8,6 +8,7 @@ import { useAvailability } from '../data';
 import { useOverdue } from './Overdue';
 import { shortageLabel, upcomingShortages } from './Shortages';
 import { fmtDate, fmtRange, inspectionsDue, money, toLocalInput } from '../utils';
+import { Icon } from '../components/Icon';
 
 export default function Dashboard() {
   const nav = useNavigate();
@@ -58,7 +59,7 @@ export default function Dashboard() {
 
       {conflicts.length > 0 && (
         <div className="card">
-          <h2>⚠ Manques de matériel <button className="secondary small" onClick={() => nav('/penuries')}>Tout voir</button></h2>
+          <h2><Icon name="warning" />Manques de matériel <button className="secondary small" onClick={() => nav('/penuries')}>Tout voir</button></h2>
           <table className="list">
             <tbody>
               {conflicts.slice(0, 8).map((c, i) => {

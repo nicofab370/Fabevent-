@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { currentWorkspace } from '../db';
 import { onSync, pushEverything, setSyncUrl, syncNow, syncUrl, type SyncState } from '../sync';
 import { fmtDate } from '../utils';
+import { Icon } from './Icon';
 
 export function useSyncState() {
   const [s, setS] = useState<SyncState>({ status: 'off', pending: 0 });
@@ -17,7 +18,7 @@ export function SyncBadge({ online }: { online: boolean }) {
       : s.status === 'auth' ? 'synchro : connexion requise'
         : s.status === 'error' ? 'synchro en erreur'
           : s.pending ? `${s.pending} modification(s) à envoyer` : 'synchronisé';
-  return <div className={'net ' + (online ? 'on' : 'off')} title={s.message || ''}>{online ? '● En ligne' : '● Hors ligne'} · {label}</div>;
+  return <div className={'net ' + (online ? 'on' : 'off')} title={s.message || ''}><Icon name="dot" size="0.7em" />{online ? 'En ligne' : 'Hors ligne'} · {label}</div>;
 }
 
 /** Réglages de la synchronisation (page Paramètres). */

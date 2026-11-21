@@ -6,6 +6,7 @@ import { Empty, PageHead, useSettings } from '../components/ui';
 import { db } from '../db';
 import { INVOICE_TYPES } from '../types';
 import { lineDays, lineTotal, money, round2 } from '../utils';
+import { Icon } from '../components/Icon';
 
 const MONTHS = ['Janv.', 'Févr.', 'Mars', 'Avr.', 'Mai', 'Juin', 'Juil.', 'Août', 'Sept.', 'Oct.', 'Nov.', 'Déc.'];
 
@@ -59,9 +60,9 @@ export default function Reports() {
   return (
     <>
       <PageHead title="Rapports">
-        <button className="secondary" onClick={() => setYear(year - 1)}>←</button>
+        <button className="secondary" onClick={() => setYear(year - 1)} aria-label="Précédent"><Icon name="chevron-left" /></button>
         <strong>{year}</strong>
-        <button className="secondary" onClick={() => setYear(year + 1)}>→</button>
+        <button className="secondary" onClick={() => setYear(year + 1)} aria-label="Suivant"><Icon name="chevron-right" /></button>
       </PageHead>
       <div className="stats">
         <div className="stat"><b>{money(yearTotal)}</b><span>chiffre d'affaires facturé HT</span></div>
