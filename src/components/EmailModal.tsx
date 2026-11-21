@@ -8,6 +8,7 @@ import { safeFileName } from '../pdf';
 import type { MailKind } from '../types';
 import { download } from '../utils';
 import { Field, Modal, useSettings } from './ui';
+import { FileViewer } from './FileViewer';
 import { Icon } from './Icon';
 
 const size = (b: Blob) => (b.size > 1024 * 1024 ? `${(b.size / 1024 / 1024).toFixed(1)} Mo` : `${Math.max(1, Math.round(b.size / 1024))} Ko`);
@@ -122,6 +123,7 @@ export function EmailModal({ initial, prepare, onSent, onClose, kind, vars }: {
   const [server, setServer] = useState<MailServer | null>(null);
   const [tpl, setTpl] = useState('');
   const applied = useRef(false);
+  const [viewing, setViewing] = useState<Attachment | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -188,7 +190,7 @@ export function EmailModal({ initial, prepare, onSent, onClose, kind, vars }: {
           {error ? <div className="avail ko">{error}</div> : !files ? <p className="muted" style={{ margin: 0 }}>Préparation des pièces jointes…</p> : files.length === 0 ? <p className="muted" style={{ margin: 0 }}>Aucune.</p> : (
             <ul className="attachments" style={{ margin: 0, paddingLeft: 18 }}>
               {files.map((f) => (
-                <li key={f.name}><Icon name="clip" /> <a href="#" onClick={(e) => { e.preventDefault(); download(f.name, f.blob, f.type); }}>{f.name}</a> <span className="muted">({size(f.blob)})</span></li>
+                <li key={f.name}><Icon name="clip" /> <a href="#" onClick={(e) => { e.preventDefault(); setViewing(f); }}>{f.name}</a> <span className="muted">({size(f.blob)})</span></li>
               ))}
             </ul>
           )}
@@ -240,6 +242,7 @@ export function EmailModal({ initial, prepare, onSent, onClose, kind, vars }: {
       </details>
       {error && <div className="flash ko" style={{ marginTop: 10 }}>{error}</div>}
       {done && <div className="flash ok" style={{ marginTop: 10 }}>{done}</div>}
+      {viewing && <FileViewer file={viewing} onClose={() => setViewing(null)} />}
       <div className="form-actions" style={{ display: 'flex', marginTop: 12 }}>
         <button className="secondary" onClick={onClose}>Fermer</button>
       </div>

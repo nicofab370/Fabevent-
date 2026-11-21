@@ -542,10 +542,15 @@ export function crewWindow(c: { start: string; end: string; travel?: boolean }, 
 
 /** Coût d'un poste : saisi à la main, sinon celui de la personne affectée selon l'unité. */
 export function crewCostRate(
-  c: { cost?: number; rateUnit?: 'jour' | 'heure' },
-  person?: { costRate?: number; hourlyCost?: number },
+  c: { cost?: number; rateUnit?: 'jour' | 'heure'; function?: string },
+  person?: { costRate?: number; hourlyCost?: number; rates?: { function: string; cost?: number; hourCost?: number }[] },
 ): number {
   if (c.cost != null) return c.cost;
+  // tarif propre à la fonction du poste (vidéo, son, road…), sinon le coût par défaut de la personne
+  const fn = c.function?.trim().toLowerCase();
+  const r = fn ? person?.rates?.find((x) => x.function.trim().toLowerCase() === fn) : undefined;
+  const own = c.rateUnit === 'heure' ? r?.hourCost : r?.cost;
+  if (own != null && own > 0) return own;
   return (c.rateUnit === 'heure' ? person?.hourlyCost : person?.costRate) ?? 0;
 }
 

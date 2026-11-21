@@ -28,7 +28,7 @@ export function candidates(c: CrewAssignment, ctx: CrewContext) {
   const rank = (id: string) => (answers.get(id) === 'oui' ? 0 : answers.get(id) === 'non' ? 2 : 1);
   return ctx.people
     .filter((p) => !p.pending || p.id === c.personId)
-    .map((p) => ({ p, issue: personIssue(p.id, c.start, c.end, c.id, ctx.allCrew, ctx.subs, ctx.unav), cost: crewCostRate({ rateUnit: c.rateUnit }, p), answer: answers.get(p.id) }))
+    .map((p) => ({ p, issue: personIssue(p.id, c.start, c.end, c.id, ctx.allCrew, ctx.subs, ctx.unav), cost: crewCostRate({ rateUnit: c.rateUnit, function: c.function }, p), answer: answers.get(p.id) }))
     .sort((a, b) => rank(a.p.id) - rank(b.p.id) || (a.issue ? 1 : 0) - (b.issue ? 1 : 0) || a.cost - b.cost || a.p.name.localeCompare(b.p.name));
 }
 
@@ -55,7 +55,7 @@ export function PersonSelect({ c, ctx }: { c: CrewAssignment; ctx: CrewContext }
 
 /** Coût du poste (celui de la personne, modifiable), avec retour au coût de la personne. */
 export function CostCell({ c, person }: { c: CrewAssignment; person?: Person }) {
-  const personCost = crewCostRate({ rateUnit: c.rateUnit }, person);
+  const personCost = crewCostRate({ rateUnit: c.rateUnit, function: c.function }, person);
   const unit = c.rateUnit === 'heure' ? '/h' : '/j';
   return (
     <>
@@ -132,7 +132,7 @@ export default function CrewAssignmentPage() {
           <div key={day} className="card">
             <h2 style={{ marginTop: 0 }}>{new Date(day + 'T12:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</h2>
             <div className="table-wrap">
-              <table className="list">
+              <table className="list cards-sm">
                 <thead><tr><th>Projet</th><th>Fonction</th><th>Horaires</th><th>Technicien</th><th>Coût</th><th title="Final : visible du technicien">Final</th><th className="n">Marge</th></tr></thead>
                 <tbody>
                   {list.map((c) => <AssignRow key={c.id} c={c} project={pMap.get(c.projectId)!} sp={sMap.get(c.subprojectId)!} person={c.personId ? people.get(c.personId) : undefined} ctx={ctx} travelMinutes={pMap.get(c.projectId)?.travelMinutes} settings={settings} actions={cd.forPost(c)} />)}

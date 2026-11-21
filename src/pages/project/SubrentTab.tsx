@@ -52,7 +52,7 @@ export default function SubrentTab({ d }: { d: ProjectData }) {
   const hr = hrOrders(d);
   const orders = [
     ...subrentals.map((s) => ({ key: s.id, kind: 'Sous-location', ref: s.number, supplier: s.supplierId, amount: s.lines.reduce((a, l) => a + l.cost, 0), status: SUBRENT_LABELS[s.status], go: () => nav('/souslocations/' + s.id) })),
-    ...costs.filter((c) => c.supplierId).map((c) => ({ key: c.id, kind: 'Coût supplémentaire', ref: c.label, supplier: c.supplierId, amount: c.amount, status: '—', go: undefined })),
+    ...costs.filter((c) => c.supplierName?.trim() || c.supplierId).map((c) => ({ key: c.id, kind: 'Coût supplémentaire', ref: c.label, supplier: c.supplierId, supplierName: c.supplierName?.trim(), amount: c.amount, status: '—', go: undefined })),
   ];
 
   return (
@@ -127,7 +127,7 @@ export default function SubrentTab({ d }: { d: ProjectData }) {
             <tbody>
               {orders.map((o) => (
                 <tr key={o.key} className={o.go ? 'click' : ''} onClick={o.go}>
-                  <td>{o.kind}</td><td>{o.ref}</td><td>{o.supplier ? cName.get(o.supplier) : '—'}</td><td className="n">{money(o.amount)}</td><td>{o.status}</td>
+                  <td>{o.kind}</td><td>{o.ref}</td><td>{('supplierName' in o && o.supplierName) || (o.supplier ? cName.get(o.supplier) : '—')}</td><td className="n">{money(o.amount)}</td><td>{o.status}</td>
                 </tr>
               ))}
             </tbody>

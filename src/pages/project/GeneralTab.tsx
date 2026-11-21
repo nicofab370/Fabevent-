@@ -11,6 +11,7 @@ import { blockPeriod, fmtDate, fmtRange, patch, save, sortPeriods, uid, usageDay
 import { ContactForm } from '../Contacts';
 import { VenueComments } from '../Venues';
 import { ContactPicker } from '../../components/ContactPicker';
+import { FileViewer, type ViewFile } from '../../components/FileViewer';
 import { deptOf, ownAddress, placeAddress, placeName, projectPerson, spotOf } from '../../places';
 import { setProjectStatus } from './status';
 import { setProjectDistance, type ProjectData } from './shared';
@@ -367,12 +368,9 @@ function Tasks({ project }: { project: Project }) {
 
 function Files({ projectId }: { projectId: string }) {
   const files = useLiveQuery(() => db.files.where({ projectId }).toArray(), [projectId]) || [];
-  const open = (f: { blob: Blob; name: string }) => {
-    const url = URL.createObjectURL(f.blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = f.name; a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 2000);
-  };
+  // ouvert dans FabEvent, sans téléchargement
+  const [viewing, setViewing] = useState<ViewFile | null>(null);
+  const open = (f: ViewFile) => setViewing(f);
   return (
     <div className="card">
       <h2>Fichiers ({files.length})</h2>
@@ -394,6 +392,7 @@ function Files({ projectId }: { projectId: string }) {
         }} />
       </label>
       <p className="muted" style={{ marginBottom: 0, fontSize: 12 }}>Stockés sur cet appareil avec le projet.</p>
+      {viewing && <FileViewer file={viewing} onClose={() => setViewing(null)} />}
     </div>
   );
 }

@@ -15,19 +15,27 @@ export default function CostsTab({ d }: { d: ProjectData }) {
   const { project, costs, contacts, settings } = d;
   const [label, setLabel] = useState('');
   const suppliers = contacts.filter((c) => c.type !== 'client' && c.type !== 'lieu');
+  /** nom du fournisseur : texte libre, sinon le contact relié (anciennes fiches) */
+  const supplierOf = (c: ProjectCost) => c.supplierName ?? contacts.find((x) => x.id === c.supplierId)?.company ?? '';
+  const rateOf = (c: ProjectCost) => c.vatRate ?? settings.vatRate;
+  /** montant affiché selon la saisie choisie (TVAC / HTVA) ; on garde toujours le HT */
+  const shown = (c: ProjectCost, ht: number) => (c.vatIncl ? round2(ht * (1 + rateOf(c) / 100)) : ht);
+  const toHt = (c: ProjectCost, v: number) => (c.vatIncl ? v / (1 + rateOf(c) / 100) : v);
   const upd = (c: ProjectCost, patch: Partial<ProjectCost>) => save(db.costs, { ...c, ...patch });
   const totalCost = round2(costs.reduce((a, c) => a + (c.amount || 0), 0));
   const totalSale = round2(costs.filter((c) => c.billable).reduce((a, c) => a + (c.qty || 1) * (c.price || 0), 0));
 
   const purchaseOrder = (c: ProjectCost) => {
-    const sup = contacts.find((x) => x.id === c.supplierId);
+    const name = supplierOf(c).trim();
+    // fiche du fournisseur si elle existe ; sinon seulement son nom ; rien s'il n'est pas renseigné
+    const sup = name ? contacts.find((x) => x.company.trim().toLowerCase() === name.toLowerCase()) || { company: name, address: '', postalCode: '', city: '' } : undefined;
     const co = settings.company;
     printHtml(`Bon de commande — ${c.label}`, `<div class="doc">
       <div class="head"><div>${co.logo ? `<img src="${co.logo}">` : ''}<div><strong>${esc(co.name)}</strong></div><div style="white-space:pre-line">${esc(co.address)}</div></div>
       <div class="box"><h1>Bon de commande</h1><div>Date : ${fmtDate(new Date().toISOString(), false)}</div><div>Projet : ${esc(project.number)} ${esc(project.name)}</div>
       ${sup ? `<div style="margin-top:8px"><strong>${esc(sup.company)}</strong><div>${esc(sup.address)}</div><div>${esc([sup.postalCode, sup.city].filter(Boolean).join(' '))}</div></div>` : ''}</div></div>
       <table><thead><tr><th class="n">Qté</th><th>Désignation</th><th class="n">Montant HT</th></tr></thead>
-      <tbody><tr><td class="n">${c.qty || 1}</td><td>${esc(c.label)}${c.category ? ` (${esc(c.category)})` : ''}</td><td class="n">${money(c.amount)}</td></tr></tbody></table>
+      <tbody><tr><td class="n">${c.qty || 1}</td><td>${esc(c.label)}${c.category ? ` (${esc(c.category)})` : ''}</td><td class="n">${money(c.amount)}</td></tr></tbody></table>${c.vatIncl ? `<p>Soit ${money(round2(c.amount * (1 + rateOf(c) / 100)))} TVA comprise (${rateOf(c)} %).</p>` : ''}
       <p>Période : ${fmtDate(project.start)} → ${fmtDate(project.end)}${project.venue ? ` · ${esc(project.venue)}` : ''}</p></div>`, DOC_CSS);
   };
 
@@ -39,8 +47,8 @@ export default function CostsTab({ d }: { d: ProjectData }) {
       </p>
       {costs.length === 0 ? <Empty>Aucun coût supplémentaire.</Empty> : (
         <div className="table-wrap">
-          <table className="list">
-            <thead><tr><th>Libellé</th><th>Catégorie</th><th>Fournisseur</th><th>Qté</th><th>Coût total HT</th><th>Refacturé</th><th>P.U. vente HT</th><th className="n">Vente</th><th /></tr></thead>
+          <table className="list cards-sm">
+            <thead><tr><th>Libellé</th><th>Catégorie</th><th>Fournisseur</th><th>Qté</th><th title="Montants saisis hors TVA ou TVA comprise">Saisie</th><th>Coût total</th><th>Refacturé</th><th>P.U. vente</th><th className="n">Vente HT</th><th /></tr></thead>
             <tbody>
               {costs.map((c) => (
                 <tr key={c.id}>
@@ -52,25 +60,31 @@ export default function CostsTab({ d }: { d: ProjectData }) {
                     </select>
                   </td>
                   <td>
-                    <select value={c.supplierId || ''} onChange={(e) => upd(c, { supplierId: e.target.value || undefined })}>
-                      <option value="">—</option>
-                      {suppliers.map((x) => <option key={x.id} value={x.id}>{x.company}</option>)}
-                    </select>
+                    <input list="cost-suppliers" value={supplierOf(c)} placeholder="facultatif" aria-label={`Fournisseur de ${c.label}`}
+                      onChange={(e) => { const v = e.target.value; const m = suppliers.find((x) => x.company.trim().toLowerCase() === v.trim().toLowerCase()); upd(c, { supplierName: v, supplierId: m?.id }); }} />
                   </td>
                   <td><NumInput className="w-qty" value={c.qty || 1} onChange={(n) => upd(c, { qty: n })} /></td>
-                  <td><NumInput className="w-price" value={c.amount} onChange={(n) => upd(c, { amount: n })} /></td>
+                  <td>
+                    <select value={c.vatIncl ? 'ttc' : 'ht'} aria-label={`Saisie des montants de ${c.label}`} onChange={(e) => upd(c, { vatIncl: e.target.value === 'ttc' || undefined })}>
+                      <option value="ht">HTVA</option><option value="ttc">TVAC {rateOf(c)} %</option>
+                    </select>
+                  </td>
+                  <td><NumInput className="w-price" value={shown(c, c.amount)} onChange={(n) => upd(c, { amount: toHt(c, n) })} aria-label={`Coût de ${c.label}`} />
+                    {c.vatIncl && <div className="muted" style={{ fontSize: 11 }}>{money(c.amount)} HT</div>}</td>
                   <td><input type="checkbox" checked={!!c.billable} onChange={(e) => upd(c, { billable: e.target.checked })} /></td>
-                  <td>{c.billable && <NumInput className="w-price" value={c.price || 0} onChange={(n) => upd(c, { price: n })} />}</td>
+                  <td>{c.billable && <><NumInput className="w-price" value={shown(c, c.price || 0)} onChange={(n) => upd(c, { price: toHt(c, n) })} aria-label={`Prix de vente de ${c.label}`} />
+                    {c.vatIncl && <div className="muted" style={{ fontSize: 11 }}>{money(c.price || 0)} HT</div>}</>}</td>
                   <td className="n">{c.billable ? money((c.qty || 1) * (c.price || 0)) : '—'}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
-                    {c.supplierId && <button className="secondary small" onClick={() => purchaseOrder(c)}>Bon de commande</button>}
+                    <button className="secondary small" onClick={() => purchaseOrder(c)}>Bon de commande</button>
                     <button className="ghost" onClick={() => db.costs.delete(c.id)} aria-label="Retirer"><Icon name="x" /></button>
                   </td>
                 </tr>
               ))}
             </tbody>
-            <tfoot><tr><td colSpan={4}><strong>Total</strong></td><td><strong>{money(totalCost)}</strong></td><td /><td /><td className="n"><strong>{money(totalSale)}</strong></td><td /></tr></tfoot>
+            <tfoot><tr><td colSpan={5}><strong>Total HT</strong></td><td><strong>{money(totalCost)}</strong></td><td /><td /><td className="n"><strong>{money(totalSale)}</strong></td><td /></tr></tfoot>
           </table>
+          <datalist id="cost-suppliers">{suppliers.map((x) => <option key={x.id} value={x.company} />)}</datalist>
         </div>
       )}
       <form className="toolbar" style={{ marginTop: 10 }} onSubmit={async (e) => {

@@ -191,7 +191,7 @@ export function AskModal({ projectId, crewIds, onClose }: { projectId: string; c
                     {issue && <span className="tag small warn">{issue}</span>}
                     {a.map((s, i) => <span key={i} className={'tag small ans-' + s}><Icon name={ANSWER_ICON[s]} />déjà {s === 'attente' ? 'demandé' : ANSWER_LABEL[s]}</span>)}
                     {!p.email && <span className="tag small">pas d'email</span>}
-                    <span className="muted">{crewCostRate({ rateUnit: chosen[0]?.rateUnit }, p) ? money(crewCostRate({ rateUnit: chosen[0]?.rateUnit }, p)) : ''}</span>
+                    <span className="muted">{crewCostRate({ rateUnit: chosen[0]?.rateUnit, function: chosen[0]?.function }, p) ? money(crewCostRate({ rateUnit: chosen[0]?.rateUnit, function: chosen[0]?.function }, p)) : ''}</span>
                   </span></span>
               </label>
             ))}
