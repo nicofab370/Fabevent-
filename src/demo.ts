@@ -2,6 +2,7 @@
  * Base de démonstration : données fictives pour tester l'application.
  * Elle vit dans sa propre base « demo », séparée des vraies données.
  */
+import { clearUndo } from './undo';
 import { db, defaultSettings, DEFAULT_PROJECT_TYPES, suppressLog, TABLES } from './db';
 import { createDocument } from './documents';
 import { DEFAULT_MOMENTS } from './invoicing';
@@ -33,6 +34,7 @@ export async function seedDemo() {
     await seedAll();
   } finally {
     suppressLog(false);
+    clearUndo();
   }
 }
 
