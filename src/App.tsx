@@ -30,6 +30,8 @@ import Venues, { VenueDetail } from './pages/Venues';
 import CrewAssignmentPage from './pages/crewAssign';
 import QrCard from './pages/QrCard';
 import { Icon, type IconName } from './components/Icon';
+import { OpenTabs } from './components/OpenTabs';
+import { UndoButton } from './components/UndoButton';
 
 const NAV: [string, string, IconName][] = [
   ['/', 'Tableau de bord', 'grid'],
@@ -78,13 +80,16 @@ export default function App() {
             </NavLink>
           ))}
         </nav>
+        <UndoButton />
         <SyncBadge online={online} />
       </aside>
       <div className="topbar">
         <button className="ghost" onClick={() => setMenu(!menu)} aria-label="Menu"><Icon name="menu" /></button>
         <div className="brand">Fab<span>Event</span></div>
+        <UndoButton compact />
       </div>
       <main className="main">
+        <OpenTabs />
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/projets" element={<Projects />} />

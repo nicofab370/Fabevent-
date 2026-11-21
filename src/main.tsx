@@ -9,6 +9,9 @@ import './styles.css';
 import { serverNumber, startSync } from './sync';
 import { setNumberProvider } from './db';
 import { warmUpScanner } from './components/Scanner';
+import { installUndo } from './undo';
+
+installUndo();
 
 registerSW({ immediate: true });
 

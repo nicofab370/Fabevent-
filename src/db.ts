@@ -195,6 +195,7 @@ export function appBaseUrl(s: Settings): string {
 let logSuppressed = false;
 /** Désactive le registre (ex. pendant la création des données de démo). */
 export function suppressLog(v: boolean) { logSuppressed = v; }
+export const logIsSuppressed = () => logSuppressed;
 
 const LOGGED: Record<string, string> = {
   projects: 'Projet', subprojects: 'Sous-projet', lines: 'Matériel', crew: 'Poste', vehicleAssignments: 'Transport',

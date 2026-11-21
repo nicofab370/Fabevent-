@@ -49,7 +49,9 @@ async function step(name, fn) {
   }
 }
 const go = async (hash) => { await page.goto(U + '#/' + hash); await page.waitForTimeout(400); };
-const openProject = async (name) => { await go('projets'); await page.click(`text=${name}`); await page.waitForSelector('.project-tabs'); await page.waitForTimeout(300); };
+/** dans la page (pas dans la barre des onglets ouverts) */
+const inPage = (sel) => page.locator('main > :not(.open-tabs)').locator(sel).first();
+const openProject = async (name) => { await go('projets'); await inPage(`text=${name}`).click(); await page.waitForSelector('.project-tabs'); await page.waitForTimeout(300); };
 const tab = async (label) => { await page.click(`.project-tabs button:text-is("${label}")`); await page.waitForTimeout(300); };
 /** glisser-déposer HTML5 à la souris (la cible est d'abord ramenée à l'écran) */
 const drag = async (src, target) => {
@@ -2100,6 +2102,56 @@ if (hasPhp) {
   await A.c.close(); await B.c.close();
   php.kill();
 }
+
+/* ---------- Onglets des fiches ouvertes ---------- */
+ctx = await newContext();
+await openDemo();
+await step('Onglets : un projet et un article restent ouverts en revenant aux listes', async () => {
+  await openProject('Festival des Lumières');
+  await tab('Équipement');
+  await go('materiel');
+  await page.locator('table.list tr', { hasText: 'Amplificateur LA4X' }).first().click();
+  await page.waitForTimeout(400);
+  await go('projets');
+  const tabs = page.locator('.open-tabs .otab');
+  expect(await tabs.count() === 2, `2 onglets (${await tabs.count()})`);
+  const txt = await page.locator('.open-tabs').innerText();
+  expect(txt.includes('Festival des Lumières') && txt.includes('Amplificateur LA4X'), `titres (${txt})`);
+  // retour au projet, sur l'onglet Équipement
+  await page.locator('.otab', { hasText: 'Festival des Lumières' }).locator('.otab-open').click();
+  await page.waitForSelector('.project-tabs');
+  expect(page.url().includes('onglet='), 'onglet interne mémorisé');
+  expect(await page.locator('.otab.active', { hasText: 'Festival des Lumières' }).count() === 1, 'onglet actif');
+  // gardés après rechargement
+  await page.reload(); await page.waitForTimeout(800);
+  expect(await page.locator('.open-tabs .otab').count() === 2, 'onglets gardés après rechargement');
+  // fermer l'onglet actif : on passe à l'autre fiche
+  await page.locator('.otab.active .otab-x').click(); await page.waitForTimeout(400);
+  expect(page.url().includes('/materiel/'), `fiche voisine ouverte (${page.url()})`);
+  await page.click('.otab-x'); await page.waitForTimeout(300);
+  expect(await page.locator('.open-tabs').count() === 0, 'plus d’onglets');
+});
+await step('Annuler : un contact supprimé revient (bouton et Ctrl+Z)', async () => {
+  await go('contacts');
+  const rows = page.locator('table.list tbody tr', { has: page.locator('td .badge:not(:text-is("Lieu"))') });
+  const name = (await rows.first().locator('strong').innerText()).trim();
+  const count = async () => page.locator('table.list tbody tr', { hasText: name }).count();
+  expect(await page.locator('.sidebar .undo-btn').isDisabled() || true, 'bouton présent');
+  await rows.first().click();
+  await page.click('.modal button:text-is("Supprimer")'); await page.waitForTimeout(400);
+  expect(await count() === 0, 'contact supprimé');
+  expect((await page.locator('.sidebar .undo-btn').getAttribute('title')).includes('Suppression'), 'libellé de l’étape');
+  await page.click('.sidebar .undo-btn'); await page.waitForTimeout(500);
+  expect(await count() === 1, 'contact revenu');
+  expect((await page.locator('.undo-toast').innerText()).includes('Annulé'), 'message');
+  // Ctrl+Z hors d'un champ
+  await page.locator('table.list tbody tr', { hasText: name }).first().click();
+  await page.click('.modal button:text-is("Supprimer")'); await page.waitForTimeout(400);
+  await page.locator('h1').first().click();
+  await page.keyboard.press('Control+z'); await page.waitForTimeout(500);
+  expect(await count() === 1, 'Ctrl+Z');
+});
+await ctx.close();
 
 await step('Aucune erreur dans la console du navigateur', async () => {
   expect(consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '));
