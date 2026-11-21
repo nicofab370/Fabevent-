@@ -705,3 +705,5 @@ tr.post-open td:first-child { box-shadow: inset 4px 0 0 #d97706; }
 .ai-brief { width: 100%; min-height: 340px; font-size: 11.5px; }
 .file-btn { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; position: relative; overflow: hidden; border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; background: var(--soft); font-weight: 600; }
 .file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.travel-time { align-items: center; gap: 8px; background: var(--soft); border-radius: 8px; padding: 6px 10px; font-size: 13px; }
+.travel-time.warn { outline: 2px solid var(--danger); }

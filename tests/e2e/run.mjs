@@ -74,7 +74,10 @@ async function openDemo() {
 }
 async function resetDemo() {
   await go('parametres');
+  // la réinitialisation recharge la page : on attend ce rechargement avant de continuer
+  const reloaded = page.waitForEvent('load', { timeout: 30000 });
   await page.click('text=Réinitialiser les données de démo');
+  await reloaded;
   await page.waitForSelector('.demo-badge', { timeout: 20000 });
   await page.waitForTimeout(800);
 }
@@ -823,6 +826,33 @@ await step('Modèles : fiche pour une IA, export puis import d’un modèle HTML
   expect((await page.locator('.modal .avail.ko').innerText()).includes('Aucune zone'), 'erreur claire');
   await page.keyboard.press('Escape');
   await page.reload(); await page.waitForTimeout(800); // non enregistré : abandon
+});
+
+await step('Postes : la case Trajet fonctionne même sans distance calculée ; temps de trajet modifiable', async () => {
+  await openProject('Mariage Dupont-Lemaire');
+  await tab('Équipe & transport');
+  await crewMode(1);
+  const tt = page.locator('.travel-time input');
+  await tt.fill('0'); await tt.blur(); await page.waitForTimeout(300);
+  const box = page.locator('table.crew-posts input[aria-label="Trajet"]').first();
+  expect(!(await box.isDisabled()), 'case active');
+  // case pilotée par la base : on clique puis on attend la mise à jour
+  if (await box.isChecked()) { await box.click(); await page.waitForTimeout(300); }
+  await box.click(); await page.waitForTimeout(400);
+  expect(await box.isChecked(), 'case cochée');
+  expect(await page.locator('.travel-time.warn').count() === 1, 'demande le temps de trajet');
+  await tt.fill('45'); await tt.blur(); await page.waitForTimeout(300);
+  expect(await page.locator('.travel-time.warn').count() === 0, 'temps de trajet renseigné');
+  // nouveau poste avec trajet
+  const before = await page.locator('table.crew-posts input[aria-label="Trajet"]:checked').count();
+  const form = page.locator('form', { has: page.locator('button:text-is("+ Ajouter les postes")') }).first();
+  await form.locator('input[aria-label="Fonction à ajouter"]').fill('Roadie trajet');
+  await form.locator('label:has-text("Trajet") input').check();
+  await form.locator('button:text-is("+ Ajouter les postes")').click(); await page.waitForTimeout(400);
+  expect(await page.locator('table.crew-posts input[aria-label="Trajet"]:checked').count() === before + 1, 'poste créé avec trajet');
+  await page.reload(); await page.waitForTimeout(800);
+  await crewMode(1);
+  expect(await page.locator('.travel-time input').inputValue() === '45', 'temps gardé');
 });
 
 await step('Étiquettes : filtres sur les projets et le matériel', async () => {

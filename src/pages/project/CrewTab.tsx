@@ -134,6 +134,7 @@ export default function CrewTab({ d }: { d: ProjectData }) {
       {mode === 'attribution' && open.length > 0 && (
         <div className="toolbar"><button onClick={() => cd.askProject(project.id, open.map((c) => c.id))}><Icon name="send" />Demander les dispos pour les {open.length} poste(s) à pourvoir</button></div>
       )}
+      {mode === 'postes' && <TravelTime d={d} used={d.projectCrew.some((c) => c.travel)} />}
       {d.subs.map((sp) => <RoomCrew key={sp.id} d={d} sp={sp} pMap={pMap} mode={mode} ctx={ctx} actionsFor={cd.forPost} />)}
       {cd.dialogs}
       {sendAll && <SendPlanningAll people={assigned} withProv={withProv} items={toSend} mail={planningMail} ics={(p) => ({ name: icsName(p), text: icsText(p) })} onSent={markSent} onClose={() => setSendAll(false)} />}
@@ -148,10 +149,25 @@ export default function CrewTab({ d }: { d: ProjectData }) {
 
 type CrewMode = 'postes' | 'attribution';
 
+/** Temps de trajet du projet (aller) : ajouté avant et après les postes cochés « Trajet ». */
+function TravelTime({ d, used }: { d: ProjectData; used: boolean }) {
+  const m = d.project.travelMinutes || 0;
+  return (
+    <div className={'toolbar travel-time' + (used && !m ? ' warn' : '')}>
+      <Icon name="truck" />
+      <span>Trajet depuis le dépôt</span>
+      <NumInput className="w-qty" value={m} min={0} aria-label="Temps de trajet en minutes" onChange={(n) => patch(db.projects, d.project.id, { travelMinutes: n || undefined })} />
+      <span>min (aller), ajouté avant et après les postes cochés « Trajet »</span>
+      {used && !m && <span className="avail ko">Indique le temps de trajet, ou calcule la distance dans l'onglet Général.</span>}
+    </div>
+  );
+}
+
 function RoomCrew({ d, sp, pMap, mode, ctx, actionsFor }: { d: ProjectData; sp: Subproject; pMap: Map<string, Person>; mode: CrewMode; ctx: CrewContext; actionsFor: (c: CrewAssignment) => { onAsk: () => void; onReplace: () => void; onDetails: () => void } }) {
   const [addQty, setAddQty] = useState(1);
   const [addFn, setAddFn] = useState('');
   const [addPeriod, setAddPeriod] = useState('');
+  const [addTravel, setAddTravel] = useState(false);
   const periods = sortPeriods(sp.periods || []);
   const [bStart, bEnd] = blockPeriod(sp);
   const crew = d.projectCrew.filter((c) => c.subprojectId === sp.id).sort((a, b) => a.start.localeCompare(b.start));
@@ -223,7 +239,7 @@ function RoomCrew({ d, sp, pMap, mode, ctx, actionsFor }: { d: ProjectData; sp: 
                         </select>
                       </td>
                       <td><NumInput className="w-price" value={c.rate} onChange={(n) => updCrew(c, { rate: n })} aria-label="Tarif client" /></td>
-                      <td><input type="checkbox" checked={!!c.travel} disabled={!d.project.travelMinutes} title={d.project.travelMinutes ? `${d.project.travelMinutes} min avant et après` : 'Calcule d\'abord la distance du projet (onglet Général)'} onChange={(e) => updCrew(c, { travel: e.target.checked })} /></td>
+                      <td><input type="checkbox" checked={!!c.travel} aria-label="Trajet" title={d.project.travelMinutes ? `${d.project.travelMinutes} min avant et après` : 'Indique le temps de trajet au-dessus du tableau'} onChange={(e) => updCrew(c, { travel: e.target.checked })} /></td>
                       <td><input type="checkbox" checked={c.billable} onChange={(e) => updCrew(c, { billable: e.target.checked })} /></td>
                       <td className="n">{money(a.billed)}{a.unit === 'heure' && <div className="muted" style={{ fontSize: 11 }}>{a.hours} h{a.overtime ? ` dont ${a.overtime} h sup.` : ''}</div>}</td>
                       <td>{person ? <span>{person.name}{c.final === false && <span className="badge st-option" style={{ marginLeft: 4 }}>provisoire</span>}</span> : <span className="open-flag"><Icon name="warning" />À pourvoir</span>}</td>
@@ -270,7 +286,7 @@ function RoomCrew({ d, sp, pMap, mode, ctx, actionsFor }: { d: ProjectData; sp: 
             const fn = addFn.trim() || defaultFn;
             const n = Math.max(1, Math.min(50, Math.round(addQty || 1)));
             for (let i = 0; i < n; i++) {
-              await save(db.crew, { projectId: sp.projectId, subprojectId: sp.id, function: fn, ...slot(addPeriod || undefined), rate: functionRate(fn, 'jour', catalogue) || 0, billable: true, final: !!d.settings.crewFinalByDefault });
+              await save(db.crew, { projectId: sp.projectId, subprojectId: sp.id, function: fn, ...slot(addPeriod || undefined), rate: functionRate(fn, 'jour', catalogue) || 0, billable: true, final: !!d.settings.crewFinalByDefault, travel: addTravel || undefined });
             }
           }}>
             <datalist id="fonctions">{catalogue.map((f) => <option key={f.name} value={f.name} />)}</datalist>
@@ -283,6 +299,7 @@ function RoomCrew({ d, sp, pMap, mode, ctx, actionsFor }: { d: ProjectData; sp: 
                 {periods.map((pe) => <option key={pe.id} value={pe.id}>{pe.name}</option>)}
               </select>
             )}
+            <label className="check-row" title="Ajouter le temps de trajet avant et après"><input type="checkbox" checked={addTravel} onChange={(e) => setAddTravel(e.target.checked)} /> Trajet</label>
             <button type="submit" className="small">+ Ajouter les postes</button>
           </form>
         )}

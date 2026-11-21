@@ -397,6 +397,9 @@ function Files({ projectId }: { projectId: string }) {
   );
 }
 
+/** temps de route estimé quand les km sont saisis à la main (75 km/h de moyenne + 10 min) */
+const estimateMinutes = (km: number) => Math.round((km / 75) * 60) + 10;
+
 /** Distance dépôt → lieu : calcul automatique (OpenStreetMap) ou saisie manuelle ; elle chiffre le transport. */
 function Distance({ d, from, to, fromLabel }: { d: ProjectData; from: string; to: string; fromLabel: string }) {
   const { project, settings } = d;
@@ -420,7 +423,7 @@ function Distance({ d, from, to, fromLabel }: { d: ProjectData; from: string; to
     <div className="distance">
       <div className="toolbar" style={{ alignItems: 'center', marginBottom: 4 }}>
         <span>Distance depuis le dépôt</span>
-        <NumInput className="w-qty" value={project.distanceKm || 0} min={0} onChange={(n) => setProjectDistance(d, n || undefined, undefined)} />
+        <NumInput className="w-qty" value={project.distanceKm || 0} min={0} onChange={(n) => setProjectDistance(d, n || undefined, n ? estimateMinutes(n) : undefined)} />
         <span>km{h && ` · ~${h} de route`}</span>
         <button type="button" className="secondary small" disabled={busy} onClick={compute}>{busy ? 'Calcul…' : 'Calculer'}</button>
       </div>
