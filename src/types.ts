@@ -734,6 +734,8 @@ export interface SnapshotSub {
 /** Style commun des documents (éditeur de modèles simplifié). */
 export interface DocStyle {
   color: string;
+  /** moderne : en-têtes de tableaux colorés, cartes ; sobre : noir et blanc, filets fins */
+  theme?: 'moderne' | 'sobre';
   font: 'sans' | 'serif' | 'arrondie';
   logoPosition: 'gauche' | 'droite' | 'centre';
   showCode: boolean;
