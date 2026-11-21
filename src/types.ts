@@ -462,6 +462,9 @@ export interface CrewFunction {
   hourRate?: number;
 }
 
+/** Ce que la personne coûte pour une fonction donnée (ex. Technicien vidéo 300 €/j, Roadie 180 €/j). */
+export interface PersonRate { function: string; cost?: number; hourCost?: number }
+
 export interface Person extends Base {
   name: string;
   role?: string;
@@ -479,6 +482,8 @@ export interface Person extends Base {
   notes?: string;
   /** fonctions qu'il sait occuper (formulaire d'inscription) */
   skills?: string[];
+  /** tarifs propres à certaines fonctions (vidéo, son, road…) ; sinon coût par défaut */
+  rates?: PersonRate[];
   city?: string;
   vatNumber?: string;
   /** indépendant, société, salarié… */
@@ -511,6 +516,8 @@ export interface CrewAssignment extends Base {
   notes?: string;
   /** détails du poste envoyés au technicien confirmé */
   detailsSentAt?: string;
+  /** horaires tels qu'envoyés au technicien dans son planning (pour signaler les changements) */
+  sent?: { at: string; start: string; end: string; final: boolean };
 }
 
 /**
@@ -539,6 +546,13 @@ export interface CrewRequest extends Base {
   manual?: boolean;
   /** postes pourvus : le lien affiche « plus besoin de répondre » */
   closed?: boolean;
+}
+
+/** Liste de postes préétablie : fonctions, nombre, créneau (type), tarif client prévu. */
+export interface CrewPreset {
+  id: ID;
+  name: string;
+  posts: { function: string; qty: number; rate: number; rateUnit?: 'jour' | 'heure'; periodKind?: PeriodKind }[];
 }
 
 export type MailKind = 'devis' | 'facture' | 'acompte' | 'avoir' | 'rappel' | 'bon_sortie' | 'feuille_route' | 'planning' | 'dispo' | 'confirmation' | 'annulation' | 'sous_location' | 'autre';
@@ -625,7 +639,12 @@ export interface ProjectCost extends Base {
   price?: number;
   billable?: boolean;
   supplierId?: ID;
+  /** fournisseur en texte libre (relié à un contact s'il porte le même nom) ; absent des documents s'il est vide */
+  supplierName?: string;
   category?: string;
+  /** les montants se saisissent TVA comprise (stockés hors TVA) */
+  vatIncl?: boolean;
+  vatRate?: number;
 }
 
 export interface Vehicle extends Base {
@@ -883,6 +902,8 @@ export interface Settings {
   customFields?: CustomField[];
   /** nouveaux postes en planification finale par défaut */
   crewFinalByDefault?: boolean;
+  /** listes de postes préétablies (ex. « Équipe son conférence ») avec leur tarif client prévu */
+  crewPresets?: CrewPreset[];
   /** clé du formulaire d'inscription des techniciens (lien public) ; vide = formulaire fermé */
   signupKey?: string;
   /** modèles de mail par type d'envoi */

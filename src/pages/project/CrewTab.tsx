@@ -1,12 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Empty, NumInput, StatusBadge } from '../../components/ui';
+import { Empty, Modal, NumInput, StatusBadge, useSettings } from '../../components/ui';
+import { mailServer, sendMail, type MailServer } from '../../mailer';
+import { mailtoUrl } from '../../email';
 import { CostCell, PersonSelect, type CrewContext } from '../crewAssign';
 import { EmailModal } from '../../components/EmailModal';
 import { appBaseUrl, db } from '../../db';
-import type { CrewAssignment, Person, Subproject, VehicleAssignment } from '../../types';
+import type { CrewAssignment, CrewPreset, Person, Subproject, VehicleAssignment } from '../../types';
 import { RESERVING } from '../../types';
-import { blockPeriod, buildIcs, crewAmount, crewCostRate, crewWindow, functionRate, daysBetween, download, fmtRange, money, overlaps, round2, save, sortPeriods, patch } from '../../utils';
+import { blockPeriod, buildIcs, crewAmount, crewCostRate, crewWindow, functionRate, daysBetween, download, fmtRange, money, overlaps, round2, save, sortPeriods, patch, uid } from '../../utils';
 import { personIssue, type ProjectData } from './shared';
 import { PostRequests, useCrewDialogs } from '../crewRequests';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -17,6 +19,9 @@ import { Icon } from '../../components/Icon';
 export default function CrewTab({ d }: { d: ProjectData }) {
   const { project, projectCrew, people, settings } = d;
   const [mailPerson, setMailPerson] = useState<Person | null>(null);
+  /** inclure les postes provisoires dans le planning envoyé */
+  const [withProv, setWithProv] = useState(false);
+  const [sendAll, setSendAll] = useState(false);
   const [mode, setModeState] = useState<CrewMode>(() => { try { return (localStorage.getItem('fab.crewMode') as CrewMode) || 'postes'; } catch { return 'postes'; } });
   const setMode = (m: CrewMode) => { setModeState(m); try { localStorage.setItem('fab.crewMode', m); } catch { /* sans stockage */ } };
   const requests = useLiveQuery(() => db.crewRequests.where({ projectId: project.id }).toArray(), [project.id]) || [];
@@ -39,18 +44,36 @@ export default function CrewTab({ d }: { d: ProjectData }) {
       return { c, sp, a, b, label: `${fmtRange(a, b)} — ${c.function} · ${sp?.name}${pe ? ` (${pe.name})` : ''}${a !== c.start ? ' (trajet inclus)' : ''}` };
     });
 
+  /** postes envoyés : la planification finale, et les provisoires si demandé */
+  const toSend = (p: Person) => schedule(p, !withProv);
+  /** ligne du planning, avec ce qui a changé depuis le dernier envoi */
+  const lineOf = (i: ReturnType<typeof schedule>[number], wasSent: boolean) => {
+    const ch = changeOf(i.c);
+    const prov = i.c.final === false ? ' (provisoire)' : '';
+    if (ch) return `- MODIFIÉ : ${i.label}${prov} — avant : ${fmtRange(i.c.sent!.start, i.c.sent!.end)}`;
+    if (wasSent && !i.c.sent) return `- NOUVEAU : ${i.label}${prov}`;
+    return `- ${i.label}${prov}`;
+  };
   const planningMail = (p: Person) => {
-    const items = schedule(p, true);
-    const body = `Bonjour ${p.name.split(' ')[0]},\n\nVoici ton planning pour « ${project.name} »${project.venue ? ` (${project.venue})` : ''} :\n\n${items.map((i) => '- ' + i.label).join('\n')}\n\nLe fichier agenda joint (.ics) ajoute ces horaires à ton calendrier.\n\n${project.notes ? project.notes + '\n\n' : ''}Merci de me confirmer ta disponibilité.\n${settings.company.name}`;
-    return { to: p.email || '', subject: `Planning — ${project.name}`, body };
+    const items = toSend(p);
+    const wasSent = items.some((i) => i.c.sent);
+    const changed = items.some((i) => changeOf(i.c)) || (wasSent && items.some((i) => !i.c.sent));
+    const prov = items.some((i) => i.c.final === false);
+    const body = `Bonjour ${p.name.split(' ')[0]},\n\n${changed ? 'Ton planning a changé' : 'Voici ton planning'}${prov ? ' (encore provisoire en partie)' : ''} pour « ${project.name} »${project.venue ? ` (${project.venue})` : ''} :\n\n${items.map((i) => lineOf(i, wasSent)).join('\n')}\n\nLe fichier agenda joint (.ics) ajoute ces horaires à ton calendrier.\n\n${project.notes ? project.notes + '\n\n' : ''}Merci de me confirmer ta disponibilité.\n${settings.company.name}`;
+    return { to: p.email || '', subject: `${changed ? 'Planning modifié' : prov ? 'Planning provisoire' : 'Planning'} — ${project.name}`, body };
+  };
+  /** retient les horaires envoyés, pour signaler ensuite les changements */
+  const markSent = async (p: Person) => {
+    const at = new Date().toISOString();
+    for (const i of toSend(p)) await patch(db.crew, i.c.id, { sent: { at, start: i.c.start, end: i.c.end, final: i.c.final !== false } });
   };
   const sendPlanning = (p: Person) => {
-    if (!schedule(p, true).length) return alert(`Aucun poste final pour ${p.name} : passe ses postes en « final » avant d'envoyer le planning.`);
+    if (!toSend(p).length) return alert(`Aucun poste final pour ${p.name} : coche « inclure les postes provisoires » ou passe ses postes en « final ».`);
     setMailPerson(p);
   };
   const icsText = (p: Person) => {
     const base = appBaseUrl(settings);
-    return buildIcs(`${project.name} — ${p.name}`, schedule(p, true).map(({ c, sp, a, b }) => ({
+    return buildIcs(`${project.name} — ${p.name}`, toSend(p).map(({ c, sp, a, b }) => ({
       uid: c.id, title: `${c.function} — ${project.name}`, start: a, end: b, location: sp?.venue || project.venue, description: sp?.name, url: `${base}#/projets/${project.id}`,
     })));
   };
@@ -77,14 +100,26 @@ export default function CrewTab({ d }: { d: ProjectData }) {
           <div className="stat"><b>{assigned.length}</b><span>personnes affectées</span></div>
           <div className="stat"><b style={{ color: provisional ? 'var(--accent)' : undefined }}>{provisional}</b><span>postes provisoires</span></div>
         </div>
-        {provisional > 0 && <button className="secondary small" style={{ marginBottom: 8 }} onClick={async () => { for (const c of projectCrew.filter((x) => x.final === false)) await save(db.crew, { ...c, final: true }); }}>Rendre toute la planification finale</button>}
+        <div className="toolbar planning-send">
+          {provisional > 0 && <button className="secondary small" onClick={async () => { for (const c of projectCrew.filter((x) => x.final === false)) await save(db.crew, { ...c, final: true }); }}>Rendre toute la planification finale</button>}
+          <label className="check-row"><input type="checkbox" checked={withProv} onChange={(e) => setWithProv(e.target.checked)} /> Inclure les postes provisoires dans le planning envoyé</label>
+          {assigned.length > 0 && <button className="small" onClick={() => setSendAll(true)}><Icon name="send" />Envoyer le planning{withProv ? ' (provisoire)' : ''} à tous ({assigned.length})</button>}
+        </div>
         {assigned.length === 0 ? <Empty>Personne n'est encore affecté. Crée des postes dans les sous-projets ci-dessous, puis choisis qui les occupe.</Empty> : (
-          <table className="list">
+          <table className="list cards-sm">
             <tbody>
               {assigned.map((p) => (
                 <tr key={p.id}>
                   <td style={{ width: 200 }}><strong>{p.name}</strong><div className="muted">{p.role}{p.external ? ' · externe' : ''}</div></td>
-                  <td>{schedule(p).map((i) => <div key={i.c.id} style={{ fontSize: 12 }}>{i.label}{i.c.final === false && <span className="badge st-option" style={{ marginLeft: 4 }}>provisoire</span>}</div>)}</td>
+                  <td>{schedule(p).map((i) => {
+                    const ch = changeOf(i.c);
+                    return (
+                      <div key={i.c.id} style={{ fontSize: 12 }} className={ch ? 'sched-changed' : ''}>{i.label}{i.c.final === false && <span className="badge st-option" style={{ marginLeft: 4 }}>provisoire</span>}
+                        {ch && <div className="sched-diff"><Icon name="warning" />Changé depuis l'envoi du {new Date(i.c.sent!.at).toLocaleDateString('fr-FR')} : {ch}</div>}
+                        {!i.c.sent && schedule(p).some((x) => x.c.sent) && <div className="sched-diff"><Icon name="plus" />Nouveau poste, pas encore envoyé</div>}</div>
+                    );
+                  })}</td>
+                  <td className="sched-state">{sentState(schedule(p))}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <button className="secondary small" onClick={() => sendPlanning(p)}>Envoyer le planning</button>{' '}
                     <button className="secondary small" onClick={() => icsFor(p)}>.ics</button>
@@ -101,9 +136,10 @@ export default function CrewTab({ d }: { d: ProjectData }) {
       )}
       {d.subs.map((sp) => <RoomCrew key={sp.id} d={d} sp={sp} pMap={pMap} mode={mode} ctx={ctx} actionsFor={cd.forPost} />)}
       {cd.dialogs}
+      {sendAll && <SendPlanningAll people={assigned} withProv={withProv} items={toSend} mail={planningMail} ics={(p) => ({ name: icsName(p), text: icsText(p) })} onSent={markSent} onClose={() => setSendAll(false)} />}
       {mailPerson && (
-        <EmailModal initial={planningMail(mailPerson)} onClose={() => setMailPerson(null)} kind="planning"
-          vars={{ prenom: mailPerson.name.split(' ')[0], projet: project.name, lieu: project.venue, societe: settings.company.name, postes: schedule(mailPerson, true).map((i) => '- ' + i.label).join('\n'), dates: fmtRange(project.start, project.end) }}
+        <EmailModal initial={planningMail(mailPerson)} onClose={() => setMailPerson(null)} kind="planning" onSent={() => markSent(mailPerson)}
+          vars={{ prenom: mailPerson.name.split(' ')[0], projet: project.name, lieu: project.venue, societe: settings.company.name, postes: (() => { const it = toSend(mailPerson); const w = it.some((i) => i.c.sent); return it.map((i) => lineOf(i, w)).join('\n'); })(), dates: fmtRange(project.start, project.end) }}
           prepare={async () => [{ name: icsName(mailPerson), type: 'text/calendar', blob: new Blob([icsText(mailPerson)], { type: 'text/calendar;charset=utf-8' }) }]} />
       )}
     </>
@@ -119,6 +155,11 @@ function RoomCrew({ d, sp, pMap, mode, ctx, actionsFor }: { d: ProjectData; sp: 
   const periods = sortPeriods(sp.periods || []);
   const [bStart, bEnd] = blockPeriod(sp);
   const crew = d.projectCrew.filter((c) => c.subprojectId === sp.id).sort((a, b) => a.start.localeCompare(b.start));
+  const openHere = sp.status === 'annule' ? [] : crew.filter((c) => !c.personId);
+  /** coût client prévu des postes du sous-projet (facturés) */
+  const plannedClient = crew.reduce((a, c) => a + (c.billable ? crewAmount(c, d.settings, d.project.travelMinutes, 0).billed : 0), 0);
+  const presets = d.settings.crewPresets || [];
+  const [presetId, setPresetId] = useState('');
   const vas = d.projectVas.filter((v) => v.subprojectId === sp.id);
   const subMap = new Map(d.av.subs.map((s) => [s.id, s]));
   const updCrew = (c: CrewAssignment, changes: Partial<CrewAssignment>) => patch(db.crew, c.id, changes);
@@ -147,7 +188,7 @@ function RoomCrew({ d, sp, pMap, mode, ctx, actionsFor }: { d: ProjectData; sp: 
   return (
     <div className="sub">
       <div className="sub-head">
-        <h3>{sp.name} <StatusBadge status={sp.status} /></h3>
+        <h3>{sp.name} <StatusBadge status={sp.status} />{openHere.length > 0 && <span className="open-badge"><Icon name="warning" />{openHere.length} poste(s) sans technicien</span>}</h3>
         <span className="muted">{fmtRange(bStart, bEnd)}</span>
       </div>
       <div className="sub-body">
@@ -155,14 +196,14 @@ function RoomCrew({ d, sp, pMap, mode, ctx, actionsFor }: { d: ProjectData; sp: 
         {crew.length === 0 && mode === 'attribution' && <Empty>Aucun poste prévu : ajoute-les d'abord dans « 1. Postes à prévoir ».</Empty>}
         {crew.length > 0 && mode === 'postes' && (
           <div className="table-wrap">
-            <table className="list crew-posts">
+            <table className="list crew-posts cards-sm">
               <thead><tr><th>Fonction</th>{periods.length > 0 && <th>Créneau</th>}<th>Début</th><th>Fin</th><th>Unité</th><th title="Prix facturé au client pour la fonction">Tarif client</th><th title="Ajouter le temps de trajet du projet avant et après">Trajet</th><th>Facturé</th><th className="n">Total client</th><th>Technicien</th><th /></tr></thead>
               <tbody>
                 {crew.map((c) => {
                   const person = c.personId ? pMap.get(c.personId) : undefined;
                   const a = crewAmount(c, d.settings, d.project.travelMinutes, crewCostRate(c, person));
                   return (
-                    <tr key={c.id}>
+                    <tr key={c.id} className={c.personId ? '' : 'post-open'}>
                       <td>
                         <input value={c.function} list="fonctions" aria-label="Fonction" onChange={(e) => {
                           const fn = e.target.value;
@@ -185,7 +226,7 @@ function RoomCrew({ d, sp, pMap, mode, ctx, actionsFor }: { d: ProjectData; sp: 
                       <td><input type="checkbox" checked={!!c.travel} disabled={!d.project.travelMinutes} title={d.project.travelMinutes ? `${d.project.travelMinutes} min avant et après` : 'Calcule d\'abord la distance du projet (onglet Général)'} onChange={(e) => updCrew(c, { travel: e.target.checked })} /></td>
                       <td><input type="checkbox" checked={c.billable} onChange={(e) => updCrew(c, { billable: e.target.checked })} /></td>
                       <td className="n">{money(a.billed)}{a.unit === 'heure' && <div className="muted" style={{ fontSize: 11 }}>{a.hours} h{a.overtime ? ` dont ${a.overtime} h sup.` : ''}</div>}</td>
-                      <td>{person ? <span>{person.name}{c.final === false && <span className="badge st-option" style={{ marginLeft: 4 }}>provisoire</span>}</span> : <span className="avail ko">à pourvoir</span>}</td>
+                      <td>{person ? <span>{person.name}{c.final === false && <span className="badge st-option" style={{ marginLeft: 4 }}>provisoire</span>}</span> : <span className="open-flag"><Icon name="warning" />À pourvoir</span>}</td>
                       <td className="nowrap">
                         <button className="ghost small" title="Dupliquer le poste" aria-label="Dupliquer le poste" onClick={() => save(db.crew, { ...c, id: '', createdAt: '', personId: undefined, cost: undefined })}><Icon name="copy" /></button>
                         <button className="ghost" onClick={() => db.crew.delete(c.id)} aria-label="Retirer"><Icon name="x" /></button>
@@ -199,7 +240,7 @@ function RoomCrew({ d, sp, pMap, mode, ctx, actionsFor }: { d: ProjectData; sp: 
         )}
         {crew.length > 0 && mode === 'attribution' && (
           <div className="table-wrap">
-            <table className="list crew-assign">
+            <table className="list crew-assign cards-sm">
               <thead><tr><th>Poste</th><th>Horaires</th><th>Technicien</th><th title="Ce que te coûte la personne affectée">Coût</th><th title="Final : visible du technicien (agenda, planning envoyé). Provisoire : pas encore communiqué.">Final</th><th className="n">Total client</th><th className="n">Marge</th></tr></thead>
               <tbody>
                 {crew.map((c) => {
@@ -208,8 +249,8 @@ function RoomCrew({ d, sp, pMap, mode, ctx, actionsFor }: { d: ProjectData; sp: 
                   const margin = (c.billable ? a.billed : 0) - a.cost;
                   const pe = periods.find((x) => x.id === c.periodId);
                   return (
-                    <tr key={c.id}>
-                      <td><strong>{c.function}</strong>{pe && <div className="muted">{pe.name}</div>}</td>
+                    <tr key={c.id} className={c.personId ? '' : 'post-open'}>
+                      <td>{!c.personId && <span className="open-flag"><Icon name="warning" />À pourvoir</span>}<strong>{c.function}</strong>{pe && <div className="muted">{pe.name}</div>}</td>
                       <td className="nowrap">{fmtRange(c.start, c.end)}</td>
                       <td><PersonSelect c={c} ctx={ctx} /><PostRequests c={c} people={ctx.people} requests={ctx.requests || []} {...actionsFor(c)} /></td>
                       <td className="nowrap"><CostCell c={c} person={person} /></td>
@@ -245,13 +286,48 @@ function RoomCrew({ d, sp, pMap, mode, ctx, actionsFor }: { d: ProjectData; sp: 
             <button type="submit" className="small">+ Ajouter les postes</button>
           </form>
         )}
+        {mode === 'postes' && (
+          <div className="toolbar crew-presets">
+            <select value={presetId} onChange={(e) => setPresetId(e.target.value)} aria-label="Liste de postes préétablie" style={{ width: 'auto' }}>
+              <option value="">{presets.length ? 'Liste de postes préétablie…' : 'Aucune liste de postes enregistrée'}</option>
+              {presets.map((p) => <option key={p.id} value={p.id}>{p.name} — {p.posts.reduce((a, x) => a + x.qty, 0)} poste(s)</option>)}
+            </select>
+            <button type="button" className="secondary small" disabled={!presetId} onClick={async () => {
+              const pr = presets.find((x) => x.id === presetId);
+              if (!pr) return;
+              for (const it of pr.posts) {
+                // créneau : le premier du même type (montage, prestation…), sinon tout le sous-projet
+                const pe = it.periodKind ? periods.find((x) => x.kind === it.periodKind) : undefined;
+                for (let i = 0; i < Math.max(1, it.qty); i++) {
+                  await save(db.crew, { projectId: sp.projectId, subprojectId: sp.id, function: it.function, ...slot(pe?.id), rate: it.rate, rateUnit: it.rateUnit, billable: true, final: !!d.settings.crewFinalByDefault });
+                }
+              }
+              setPresetId('');
+            }}><Icon name="plus" />Ajouter cette liste</button>
+            {crew.length > 0 && <button type="button" className="ghost small" onClick={async () => {
+              const name = prompt('Nom de la liste de postes (ex. Équipe son conférence) :', sp.name)?.trim();
+              if (!name) return;
+              const groups = new Map<string, CrewPreset['posts'][number]>();
+              for (const c of crew) {
+                const kind = periods.find((x) => x.id === c.periodId)?.kind;
+                const k = [c.function, c.rate, c.rateUnit || 'jour', kind || ''].join('|');
+                const g = groups.get(k);
+                if (g) g.qty++; else groups.set(k, { function: c.function, qty: 1, rate: c.rate, rateUnit: c.rateUnit, periodKind: kind });
+              }
+              const s2 = await db.settings.get('main');
+              if (s2) await db.settings.put({ ...s2, crewPresets: [...(s2.crewPresets || []).filter((x) => x.name !== name), { id: uid(), name, posts: [...groups.values()] }] });
+              alert(`Liste « ${name} » enregistrée : ${crew.length} poste(s). Elle est proposée dans chaque projet.`);
+            }}><Icon name="copy" />Enregistrer ces postes comme liste</button>}
+            <span className="muted planned-client">Coût client prévu : <strong>{money(round2(plannedClient))}</strong> HT{openHere.length > 0 && <> · dont {openHere.length} poste(s) à pourvoir</>}</span>
+          </div>
+        )}
 
         {mode === 'postes' && <h3 style={{ margin: '16px 0 6px' }}>Transport</h3>}
         {mode !== 'postes' ? null : d.vehicles.length === 0 ? <Empty>Ajoute d'abord tes véhicules dans le menu Véhicules.</Empty> : (
           <>
             {vas.length > 0 && (
               <div className="table-wrap">
-                <table className="list">
+                <table className="list cards-sm">
                   <thead><tr><th>Véhicule</th>{periods.length > 0 && <th>Créneau</th>}<th>Chauffeur</th><th>Début</th><th>Fin</th><th title="Allers-retours">A/R</th><th>Km</th><th>€/km</th><th>Prix HT</th><th>Facturé</th><th /></tr></thead>
                   <tbody>
                     {vas.map((v) => (
@@ -296,5 +372,76 @@ function RoomCrew({ d, sp, pMap, mode, ctx, actionsFor }: { d: ProjectData; sp: 
         )}
       </div>
     </div>
+  );
+}
+
+const hhmm = (s: string) => s.slice(11, 16);
+const dayOf = (s: string) => s.slice(0, 10);
+/** Ce qui a changé dans les horaires d'un poste depuis l'envoi du planning (vide si rien). */
+export function changeOf(c: CrewAssignment): string {
+  if (!c.sent) return '';
+  const parts: string[] = [];
+  const fmt = (o: string, n: string) => (dayOf(o) === dayOf(n) ? `${hhmm(o)} → ${hhmm(n)}` : `${fmtRange(o, o).split(' → ')[0]} → ${fmtRange(n, n).split(' → ')[0]}`);
+  if (c.sent.start !== c.start) parts.push(`début ${fmt(c.sent.start, c.start)}`);
+  if (c.sent.end !== c.end) parts.push(`fin ${fmt(c.sent.end, c.end)}`);
+  if (!parts.length && c.sent.final !== (c.final !== false)) parts.push(c.final !== false ? 'devenu final' : 'repassé provisoire');
+  return parts.join(' · ');
+}
+
+/** État de l'envoi du planning d'une personne : jamais envoyé, à jour, ou changé depuis. */
+function sentState(items: { c: CrewAssignment }[]) {
+  const sent = items.filter((i) => i.c.sent);
+  if (!sent.length) return <span className="muted">Pas encore envoyé</span>;
+  const changed = items.filter((i) => changeOf(i.c) || (!i.c.sent && i.c.final !== false)).length;
+  const last = sent.map((i) => i.c.sent!.at).sort().slice(-1)[0];
+  return changed
+    ? <span className="sched-warn"><Icon name="warning" />{changed} changement(s) depuis l'envoi — à renvoyer</span>
+    : <span className="avail ok"><Icon name="check" />Envoyé le {new Date(last).toLocaleDateString('fr-FR')}{sent.some((i) => !i.c.sent!.final) ? ' (provisoire)' : ''}</span>;
+}
+
+/** Envoi du planning à toutes les personnes planifiées (direct par le serveur, sinon via la messagerie). */
+function SendPlanningAll({ people, withProv, items, mail, ics, onSent, onClose }: {
+  people: Person[]; withProv: boolean; items: (p: Person) => { c: CrewAssignment }[];
+  mail: (p: Person) => { to: string; subject: string; body: string }; ics: (p: Person) => { name: string; text: string };
+  onSent: (p: Person) => Promise<void>; onClose: () => void;
+}) {
+  const settings = useSettings();
+  const [server, setServer] = useState<MailServer | null>(null);
+  const [pick, setPick] = useState<Set<string>>(() => new Set(people.filter((p) => p.email && items(p).length).map((p) => p.id)));
+  const [res, setRes] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { mailServer().then(setServer); }, []);
+  return (
+    <Modal title={`Envoyer le planning${withProv ? ' (postes provisoires compris)' : ''}`} onClose={onClose}>
+      <p className="muted" style={{ marginTop: 0 }}>Chacun reçoit ses horaires et son agenda (.ics). Les horaires changés depuis le dernier envoi sont signalés « MODIFIÉ ».</p>
+      <table className="list"><tbody>{people.map((p) => {
+        const n = items(p).length, ch = items(p).filter((i) => changeOf(i.c) || !i.c.sent).length;
+        return (
+          <tr key={p.id}>
+            <td><label className="check-row"><input type="checkbox" disabled={!p.email || !n} checked={pick.has(p.id)} aria-label={`Envoyer à ${p.name}`}
+              onChange={(e) => { const x = new Set(pick); if (e.target.checked) x.add(p.id); else x.delete(p.id); setPick(x); }} /> <b>{p.name}</b></label></td>
+            <td className="muted">{!p.email ? 'pas d\'email' : !n ? 'aucun poste final' : `${n} poste(s)${ch ? ` · ${ch} changement(s)` : ''}`}</td>
+            <td>{res[p.id] ? <span className={res[p.id].startsWith('Envoy') ? 'avail ok' : 'muted'}>{res[p.id]}</span>
+              : server && !server.ok && pick.has(p.id) ? <a className="button-link" href={mailtoUrl(mail(p))} onClick={() => { onSent(p); setRes((r) => ({ ...r, [p.id]: 'Ouvert dans ta messagerie' })); }}><Icon name="mail" />Ouvrir</a> : null}</td>
+          </tr>
+        );
+      })}</tbody></table>
+      {server && !server.ok && <p className="muted">Envoi direct indisponible ({server.error}) : ouvre chaque mail dans ta messagerie (l'agenda .ics n'est pas joint).</p>}
+      <div className="form-actions">
+        <button type="button" className="secondary" onClick={onClose}>Fermer</button>
+        {server?.ok && <button type="button" disabled={busy || !pick.size} onClick={async () => {
+          setBusy(true);
+          for (const p of people.filter((x) => pick.has(x.id))) {
+            try {
+              const f = ics(p);
+              await sendMail({ ...mail(p), replyTo: settings.company.email }, [{ name: f.name, type: 'text/calendar', blob: new Blob([f.text], { type: 'text/calendar;charset=utf-8' }) }]);
+              await onSent(p);
+              setRes((r) => ({ ...r, [p.id]: 'Envoyé' }));
+            } catch (e) { setRes((r) => ({ ...r, [p.id]: (e as Error).message })); }
+          }
+          setBusy(false);
+        }}>{busy ? 'Envoi…' : `Envoyer à ${pick.size} personne(s)`}</button>}
+      </div>
+    </Modal>
   );
 }

@@ -9,7 +9,7 @@ import { CodesPanel } from '../components/CodesPanel';
 import { cleanLetter, depotLetter } from '../codegen';
 import { settingsMoments } from '../invoicing';
 import { DEFAULT_VAT_MENTIONS } from '../payment';
-import { download, uid } from '../utils';
+import { download, uid, money } from '../utils';
 import { Icon } from '../components/Icon';
 
 export default function SettingsPage() {
@@ -185,10 +185,22 @@ export default function SettingsPage() {
         })}
         <button type="button" className="secondary small" onClick={() => setS({ ...s, crewFunctions: [...(s.crewFunctions || []), { name: '', dayRate: 0 }] })}>+ Fonction</button>
 
+        <h2 style={{ marginTop: 20 }}>Listes de postes</h2>
+        <p className="muted" style={{ marginTop: 0 }}>Équipes types avec leur tarif client prévu (ex. « Équipe son conférence » : 1 régisseur son, 2 techniciens). Elles s'ajoutent d'un coup dans un projet
+          (Équipe & transport → Postes à prévoir) et se créent avec « Enregistrer ces postes comme liste ».</p>
+        {(s.crewPresets || []).length === 0 && <p className="muted">Aucune liste pour l'instant.</p>}
+        {(s.crewPresets || []).map((pr, i, all) => (
+          <div key={pr.id} className="preset-row">
+            <input value={pr.name} onChange={(e) => setS({ ...s, crewPresets: all.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} aria-label="Nom de la liste de postes" />
+            <span className="muted">{pr.posts.map((x) => `${x.qty} × ${x.function} (${money(x.rate)}${x.rateUnit === 'heure' ? '/h' : '/j'})`).join(', ')}</span>
+            <button type="button" className="ghost" aria-label={`Supprimer la liste ${pr.name}`} onClick={() => confirm(`Supprimer la liste « ${pr.name} » ?`) && setS({ ...s, crewPresets: all.filter((_, j) => j !== i) })}><Icon name="x" /></button>
+          </div>
+        ))}
+
         <h2 style={{ marginTop: 20 }}>Types de projet</h2>
         <p className="muted" style={{ marginTop: 0 }}>Chaque type a une couleur, reprise dans la liste des projets, et ses moments de facturation par défaut.</p>
         {(s.projectTypes?.length ? s.projectTypes : DEFAULT_PROJECT_TYPES).map((t, i, all) => (
-          <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6, maxWidth: 680 }}>
+          <div key={i} className="type-row" style={{ display: 'flex', gap: 8, marginBottom: 6, maxWidth: 680 }}>
             <input type="color" value={t.color} style={{ width: 48, padding: 2 }} onChange={(e) => setS({ ...s, projectTypes: all.map((x, j) => (j === i ? { ...x, color: e.target.value } : x)) })} />
             <input value={t.name} onChange={(e) => setS({ ...s, projectTypes: all.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} />
             <select multiple title="Moments de facturation par défaut (Ctrl + clic pour en choisir plusieurs)" value={t.moments || []} style={{ minWidth: 200, height: 'auto' }} size={Math.min(3, moments.length)}

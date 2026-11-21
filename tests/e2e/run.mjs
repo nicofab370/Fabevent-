@@ -1207,7 +1207,7 @@ await step('Email : bon de commande RH et planning du technicien (.ics) joints',
   await openProject('Conférence annuelle');
   await tab('Équipe & transport');
   await crewMode(2);
-  await page.locator('button:has-text("Envoyer le planning")').first().click();
+  await page.locator('table.list button:text-is("Envoyer le planning")').first().click();
   await page.waitForSelector('.modal .attachments li', { timeout: 10000 });
   expect((await page.locator('.modal .attachments').innerText()).includes('.ics'), 'agenda .ics joint');
   await page.click('.modal button:text-is("Fermer")');
@@ -1836,6 +1836,125 @@ await step('Liste de sortie : créer un projet avec ses articles', async () => {
   const eq = await page.locator('.sub').first().innerText();
   expect(eq.includes('Enceinte L-Acoustics X12') && eq.includes('Micro Shure SM58'), 'articles reconnus en matériel du projet');
   await tab('Général').catch(() => {});
+});
+
+console.log('\n  — fichiers, équipe, planning, coûts, documents —');
+ctx = await newContext();
+
+await step('Fichiers : un PDF joint s’ouvre dans FabEvent, sans téléchargement', async () => {
+  await openDemo();
+  await openProject('Mariage Dupont-Lemaire');
+  const { jsPDF } = require('jspdf');
+  const pdf = new jsPDF(); pdf.text('Plan de scène — page 1', 10, 20); pdf.addPage(); pdf.text('Page 2', 10, 20);
+  writeFileSync('tests/e2e/plan-test.pdf', Buffer.from(pdf.output('arraybuffer')));
+  await page.setInputFiles('.card:has(h2:has-text("Fichiers")) input[type=file]', 'tests/e2e/plan-test.pdf');
+  await page.waitForTimeout(400);
+  let downloaded = false;
+  page.once('download', () => { downloaded = true; });
+  await page.click('.card:has(h2:has-text("Fichiers")) a:has-text("plan-test.pdf")');
+  await page.waitForSelector('.fv-bg canvas.fv-page', { timeout: 20000 });
+  await page.waitForTimeout(500);
+  expect(await page.locator('.fv-bg canvas.fv-page').count() === 2 && (await page.locator('.fv-count').innerText()).includes('2 page'), 'les 2 pages affichées');
+  expect(!downloaded, 'aucun téléchargement');
+  await page.click('button[aria-label="Fermer l\'aperçu"]');
+});
+
+await step('Équipe : liste de postes préétablie, coût client prévu, postes sans technicien bien visibles', async () => {
+  await tab('Équipe & transport');
+  await crewMode(1);
+  const sub = page.locator('.sub').first();
+  await sub.locator('input[aria-label="Fonction à ajouter"]').fill('Rigger');
+  await sub.locator('.add-posts button[type=submit]').click();
+  await page.waitForTimeout(300);
+  expect(await sub.locator('tr.post-open').count() >= 1, 'poste à pourvoir mis en évidence');
+  expect((await sub.locator('.open-badge').innerText()).includes('sans technicien'), 'compteur des postes sans technicien');
+  expect((await sub.locator('.planned-client').innerText()).includes('Coût client prévu'), 'coût client prévu affiché');
+  await sub.locator('button:has-text("Enregistrer ces postes comme liste")').click(); // nom proposé accepté
+  await page.waitForTimeout(400);
+  await openProject('Marché de Noël');
+  await tab('Équipe & transport');
+  await crewMode(1);
+  const s2 = page.locator('.sub').first();
+  const before = await s2.locator('table.crew-posts tbody tr').count();
+  await s2.locator('select[aria-label="Liste de postes préétablie"]').selectOption({ index: 1 });
+  await s2.locator('button:has-text("Ajouter cette liste")').click();
+  await page.waitForTimeout(600);
+  expect(await s2.locator('table.crew-posts tbody tr').count() > before, 'liste de postes appliquée à un autre projet');
+});
+
+await step('Techniciens : tarif propre à une fonction', async () => {
+  await go('equipe');
+  await page.locator('table.list tr', { hasText: 'Karim Haddad' }).locator('a').first().click();
+  await page.click('.modal button:has-text("Tarif pour une fonction")');
+  await page.fill('.modal input[aria-label="Fonction du tarif"]', 'Rigger');
+  await page.locator('.modal input[aria-label="Coût par jour Rigger"]').fill('333');
+  await page.click('.modal button[type=submit]');
+  await page.waitForTimeout(300);
+  await openProject('Marché de Noël');
+  await tab('Équipe & transport');
+  await crewMode(2);
+  const row = page.locator('table.crew-assign tr', { hasText: 'Rigger' }).first();
+  expect((await row.locator('select[aria-label="Technicien"] option', { hasText: 'Karim' }).innerText()).includes('333'), 'tarif Rigger de Karim proposé');
+});
+
+await step('Planning : envoyé (provisoire compris), puis horaires changés signalés', async () => {
+  await openProject('Conférence annuelle');
+  await tab('Équipe & transport');
+  await crewMode(2);
+  await page.locator('label', { hasText: 'Inclure les postes provisoires' }).locator('input').check();
+  const row = page.locator('.card:has(h2:has-text("Planification du personnel")) tr', { hasText: 'Hugo Laurent' });
+  await row.locator('button:text-is("Envoyer le planning")').click();
+  await page.waitForSelector('.modal .attachments li');
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('.modal button:has-text("Brouillon prêt à envoyer")')]);
+  await page.click('.modal button:text-is("Fermer")');
+  await page.waitForTimeout(400);
+  expect((await row.locator('.sched-state').innerText()).includes('Envoyé le'), 'envoi mémorisé');
+  // on décale le début d'un poste de Hugo
+  await crewMode(1);
+  const post = page.locator('table.crew-posts tr', { has: page.locator('td:has-text("Hugo")') }).first();
+  const start = post.locator('input[type=datetime-local]').first();
+  const v = await start.inputValue();
+  await start.fill(v.slice(0, 11) + '06:30');
+  await page.waitForTimeout(400);
+  await crewMode(2);
+  const txt = await row.innerText();
+  expect(txt.includes('Changé depuis l’envoi') || txt.includes("Changé depuis l'envoi"), 'changement signalé');
+  expect(txt.includes('06:30') && (await row.locator('.sched-state').innerText()).includes('à renvoyer'), `heures avant/après affichées (${txt.slice(0, 200)})`);
+  await row.locator('button:text-is("Envoyer le planning")').click();
+  await page.waitForSelector('.modal .attachments li');
+  expect((await page.locator('.modal textarea').first().inputValue()).includes('MODIFIÉ'), 'mail : horaires modifiés signalés');
+  await page.click('.modal button:text-is("Fermer")');
+  await page.click('button:has-text("Envoyer le planning (provisoire) à tous")');
+  await page.waitForSelector('.modal:has-text("changement")');
+  await page.click('.modal button:text-is("Fermer")');
+});
+
+await step('Coûts supplémentaires : fournisseur libre, saisie TVA comprise', async () => {
+  await openProject('Festival des Lumières');
+  await tab('Coûts supplémentaires').catch(async () => { await page.click('.project-tabs button:has-text("Coûts")'); });
+  await page.fill('input[placeholder^="Nouveau coût"]', 'Repas équipe');
+  await page.click('button:text-is("+ Ajouter")');
+  await page.waitForTimeout(300);
+  await page.fill('input[aria-label="Fournisseur de Repas équipe"]', 'Friterie du coin');
+  await page.selectOption('select[aria-label="Saisie des montants de Repas équipe"]', 'ttc');
+  await page.fill('input[aria-label="Coût de Repas équipe"]', '121');
+  await page.waitForTimeout(400);
+  const r = await page.locator('tr', { hasText: 'Friterie' }).innerText().catch(() => '');
+  const html = await page.locator('table.list').first().innerText();
+  expect(html.includes('100,00') , `121 TVAC = 100 HT (${html.slice(0, 300)})`);
+});
+
+await step('Documents : le plus récent de chaque type, les anciens sur demande', async () => {
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Devis")'); await page.waitForSelector('.doc');
+  await page.goBack(); await page.waitForTimeout(500);
+  await page.click('button:text-is("+ Devis")'); await page.waitForSelector('.doc');
+  await page.goBack(); await page.waitForTimeout(500);
+  const list = page.locator('table.docs-list');
+  const devisRows = await list.locator('tbody tr.click', { hasText: 'Devis' }).count();
+  expect(devisRows === 1, `un seul devis affiché (${devisRows})`);
+  await list.locator('button:has-text("Plus anciens")').first().click();
+  expect(await list.locator('tr.doc-older').count() >= 1, 'les anciens s’affichent');
 });
 
 /* ---------- Synchronisation : deux appareils, le vrai serveur PHP ---------- */

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Icon } from '../../components/Icon';
 import { Empty, Field, Modal, NumInput } from '../../components/ui';
 import { invoiceSchedule, MOMENT_STATE_LABELS, projectMoments, settingsMoments, type ScheduleRow } from '../../invoicing';
 import { db } from '../../db';
@@ -15,6 +16,7 @@ export default function FinanceTab({ d }: { d: ProjectData }) {
   const nav = useNavigate();
   const { project, finance: f, docs, settings } = d;
   const [busy, setBusy] = useState(false);
+  const [olderOpen, setOlderOpen] = useState<Set<DocType>>(new Set());
   const [roomInvoice, setRoomInvoice] = useState(false);
   const invoicedRooms = new Set(docs.filter((x) => x.type === 'facture' && x.subprojectIds).flatMap((x) => x.subprojectIds || []));
   const invoiced = invoicedHT(docs);
@@ -98,7 +100,7 @@ export default function FinanceTab({ d }: { d: ProjectData }) {
           const k = sr.supplierId ? cName.get(sr.supplierId) || '?' : 'Sous-location sans fournisseur';
           rows.set(k, (rows.get(k) || 0) + sr.lines.reduce((x, l) => x + l.cost, 0));
         }
-        for (const c of d.costs.filter((x) => x.supplierId)) { const k = cName.get(c.supplierId!) || '?'; rows.set(k, (rows.get(k) || 0) + c.amount); }
+        for (const c of d.costs.filter((x) => x.supplierName?.trim() || x.supplierId)) { const k = c.supplierName?.trim() || cName.get(c.supplierId!) || '?'; rows.set(k, (rows.get(k) || 0) + c.amount); }
         const list = [...rows.entries()].filter(([, v]) => v).sort((x, y) => y[1] - x[1]);
         return list.length ? (
           <div className="card">
@@ -120,21 +122,43 @@ export default function FinanceTab({ d }: { d: ProjectData }) {
           Chaque génération crée un nouveau document figé : rien n'est jamais écrasé. La facture finale déduit automatiquement les acomptes ;
           les avoirs se créent depuis la facture concernée.
         </p>
-        {docs.length === 0 ? <Empty>Aucun document pour l'instant.</Empty> : (
-          <table className="list">
-            <thead><tr><th>Type</th><th>Numéro</th><th>Version</th><th>Date</th><th className="n">Total HT</th><th>Statut</th></tr></thead>
-            <tbody>
-              {docs.map((x) => (
-                <tr key={x.id} className="click" onClick={() => nav('/documents/' + x.id)}>
-                  <td>{DOC_LABELS[x.type]}</td><td><strong>{x.number}</strong></td><td>{INVOICE_TYPES.includes(x.type) ? '' : `v${x.version}`}</td>
-                  <td>{fmtDate(x.createdAt)}</td>
-                  <td className="n">{x.snapshot.hidePrices ? '—' : money(x.snapshot.totalHT)}</td>
-                  <td><span className="badge">{DOC_STATUS_LABELS[x.status]}</span></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        {docs.length === 0 ? <Empty>Aucun document pour l'instant.</Empty> : (() => {
+          // le plus récent de chaque type ; les plus anciens sur demande
+          const byType = new Map<DocType, typeof docs>();
+          for (const x of [...docs].sort((a, b) => b.createdAt.localeCompare(a.createdAt))) byType.set(x.type, [...(byType.get(x.type) || []), x]);
+          const order: DocType[] = ['devis', 'acompte', 'facture', 'avoir', 'rappel', 'bon_sortie', 'feuille_route'];
+          const types = [...byType.keys()].sort((a, b) => order.indexOf(a) - order.indexOf(b));
+          const row = (x: (typeof docs)[number], older = false) => (
+            <tr key={x.id} className={'click' + (older ? ' doc-older' : '')} onClick={() => nav('/documents/' + x.id)}>
+              <td>{older ? <span className="muted">{DOC_LABELS[x.type]}</span> : DOC_LABELS[x.type]}</td><td><strong>{x.number}</strong></td><td>{INVOICE_TYPES.includes(x.type) ? '' : `v${x.version}`}</td>
+              <td>{fmtDate(x.createdAt)}</td>
+              <td className="n">{x.snapshot.hidePrices ? '—' : money(x.snapshot.totalHT)}</td>
+              <td><span className="badge">{DOC_STATUS_LABELS[x.status]}</span></td>
+            </tr>
+          );
+          return (
+            <table className="list docs-list">
+              <thead><tr><th>Type</th><th>Numéro</th><th>Version</th><th>Date</th><th className="n">Total HT</th><th>Statut</th></tr></thead>
+              {types.map((t) => {
+                const list = byType.get(t)!;
+                const open = olderOpen.has(t);
+                return (
+                  <tbody key={t}>
+                    {row(list[0])}
+                    {list.length > 1 && (
+                      <tr className="doc-more"><td colSpan={6}>
+                        <button type="button" className="ghost small" aria-expanded={open} onClick={() => { const n = new Set(olderOpen); if (open) n.delete(t); else n.add(t); setOlderOpen(n); }}>
+                          <Icon name={open ? 'chevron-down' : 'chevron-right'} />{open ? 'Masquer' : 'Plus anciens'} ({list.length - 1} {DOC_LABELS[t].toLowerCase()}{list.length > 2 ? 's' : ''})
+                        </button>
+                      </td></tr>
+                    )}
+                    {open && list.slice(1).map((x) => row(x, true))}
+                  </tbody>
+                );
+              })}
+            </table>
+          );
+        })()}
       </div>
       {roomInvoice && (
         <Modal title="Facturer un ou plusieurs sous-projets" onClose={() => setRoomInvoice(false)}>

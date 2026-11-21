@@ -25,6 +25,27 @@ setNumberProvider(serverNumber);
 startSync();
 (window.requestIdleCallback || ((f: () => void) => setTimeout(f, 1500)))(() => warmUpScanner());
 
+// Téléphone : les tableaux « cards-sm » deviennent des fiches ; chaque case reçoit le titre de sa colonne
+let labelling = 0;
+new MutationObserver(() => {
+  if (labelling) return;
+  labelling = requestAnimationFrame(() => {
+    labelling = 0;
+    for (const t of document.querySelectorAll<HTMLTableElement>('table.cards-sm')) {
+      const heads = Array.from(t.querySelectorAll('thead th')).map((th) => th.textContent?.trim() || '');
+      if (!heads.length) continue;
+      for (const tr of t.querySelectorAll('tbody tr')) {
+        let i = 0;
+        for (const td of Array.from(tr.children) as HTMLElement[]) {
+          const label = heads[i] || '';
+          if (td.dataset.label !== label) td.dataset.label = label;
+          i += (td as HTMLTableCellElement).colSpan || 1;
+        }
+      }
+    }
+  });
+}).observe(document.body, { childList: true, subtree: true });
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <HashRouter>

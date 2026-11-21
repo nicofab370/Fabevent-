@@ -73,6 +73,20 @@ remises par défaut du client.
 **Matériel** : étiquettes QR imprimables (planches A4, rouleau), articles de remplacement proposés en cas de manque,
 archivage, photos, inventaire par scan avec mise à jour du stock, valeur du parc.
 
+**Fichiers** : PDF, images et textes joints s'ouvrent dans FabEvent (aperçu page par page, aussi sur iPhone), sans téléchargement.
+
+**Postes et techniciens** :
+- **Listes de postes préétablies** avec leur tarif client prévu (« Enregistrer ces postes comme liste », puis « Ajouter cette liste » dans un autre projet). Le coût client prévu s'affiche par sous-projet.
+- Les postes sans technicien sont mis en évidence (bandeau, compteur).
+- **Tarifs d'un technicien selon la fonction** (vidéo, son, road…).
+- **Envoi du planning à tous**, provisoire compris si souhaité. FabEvent retient ce qui a été envoyé, signale les horaires de début et de fin changés depuis (« à renvoyer »), et le mail les marque « MODIFIÉ ».
+
+**Coûts supplémentaires** : fournisseur en texte libre (absent des documents s'il est vide), montants saisis HTVA ou TVAC.
+**Documents du projet** : le plus récent de chaque type, les anciens avec « Plus anciens ».
+
+**Téléphone** : boutons et champs à la taille du doigt, textes sur plusieurs lignes, grands tableaux en fiches.
+Audit automatique de chaque page à 390 px : `npm run test:mobile`.
+
 **Icônes** : un seul jeu d'icônes dessinées au trait (SVG, `src/components/Icon.tsx`), à la couleur et à la taille du texte ; aucun emoji dans l'interface.
 
 **Mails depuis la plateforme** : devis, factures, bons, plannings, demandes de dispo partent directement de FabEvent avec leurs
