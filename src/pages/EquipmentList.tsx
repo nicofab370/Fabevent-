@@ -10,6 +10,7 @@ import { resizeImage } from '../image';
 import { CsvButton, CustomFieldsEditor, exportCsv, TagInput, Tags } from '../components/extra';
 import { availableQty, money, save, stockIn, toLocalInput } from '../utils';
 import PrintLabelModal from '../components/PrintLabelModal';
+import { Icon } from '../components/Icon';
 
 type Draft = Omit<Equipment, 'id' | 'createdAt' | 'updatedAt'> & Partial<Equipment>;
 const blank = (): Draft => ({ name: '', quantity: 1, dailyPrice: 0, isKit: false, kitItems: [] });
@@ -123,7 +124,7 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
               <select value={k.equipmentId} onChange={(x) => set('kitItems', e.kitItems.map((y, j) => (j === i ? { ...y, equipmentId: x.target.value } : y)))}>
                 {all.filter((a) => a.id !== e.id).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
-              <button type="button" className="ghost" onClick={() => set('kitItems', e.kitItems.filter((_, j) => j !== i))}>✕</button>
+              <button type="button" className="ghost" onClick={() => set('kitItems', e.kitItems.filter((_, j) => j !== i))}><Icon name="x" /></button>
             </div>
           ))}
           <div>
@@ -140,7 +141,7 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
             <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6, alignItems: 'center' }}>
               <NumInput className="w-qty" value={c.qty} onChange={(n) => upd({ qty: n || 1 })} aria-label="Quantité du contenu" />
               <input value={c.name} onChange={(x) => upd({ name: x.target.value })} placeholder="ex. Chargeur 65 W" aria-label="Élément du contenu" />
-              <button type="button" className="ghost" onClick={() => set('contents', (e.contents || []).filter((_, j) => j !== i))} aria-label="Retirer">✕</button>
+              <button type="button" className="ghost" onClick={() => set('contents', (e.contents || []).filter((_, j) => j !== i))} aria-label="Retirer"><Icon name="x" /></button>
             </div>
           );
         })}
@@ -158,7 +159,7 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
                 {all.filter((o) => o.id !== e.id).map((o) => <option key={o.id} value={o.id}>{o.name}{o.accessoryOnly ? ' (hors inventaire)' : ''}</option>)}
               </select>
               <label className="check-row" style={{ whiteSpace: 'nowrap' }}><input type="checkbox" checked={a.free} onChange={(x) => upd({ free: x.target.checked })} /> gratuit</label>
-              <button type="button" className="ghost" onClick={() => set('accessories', (e.accessories || []).filter((_, j) => j !== i))}>✕</button>
+              <button type="button" className="ghost" onClick={() => set('accessories', (e.accessories || []).filter((_, j) => j !== i))}><Icon name="x" /></button>
             </div>
           );
         })}
@@ -179,7 +180,7 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
         <span>Articles de remplacement (proposés en cas de manque)</span>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
           {(e.alternatives || []).map((id) => (
-            <span key={id} className="badge">{all.find((a) => a.id === id)?.name || '?'} <button type="button" className="ghost small" onClick={() => set('alternatives', (e.alternatives || []).filter((x) => x !== id))}>✕</button></span>
+            <span key={id} className="badge">{all.find((a) => a.id === id)?.name || '?'} <button type="button" className="ghost small" onClick={() => set('alternatives', (e.alternatives || []).filter((x) => x !== id))}><Icon name="x" /></button></span>
           ))}
           <select value="" style={{ width: 'auto' }} onChange={(x) => x.target.value && set('alternatives', [...(e.alternatives || []), x.target.value])}>
             <option value="">+ Ajouter…</option>
@@ -203,7 +204,7 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
         <button type="submit">Enregistrer</button>
         {/* après « Enregistrer » dans le code (Entrée enregistre sans imprimer), affiché à gauche */}
         {onPrint && !e.isKit && !e.accessoryOnly && (
-          <button type="submit" className="secondary" data-print="1" style={{ order: -1, marginRight: 'auto' }} title="Enregistre l'article puis ouvre l'impression de son étiquette (Brother PT-P750W)">🏷 Enregistrer et imprimer l'étiquette</button>
+          <button type="submit" className="secondary" data-print="1" style={{ order: -1, marginRight: 'auto' }} title="Enregistre l'article puis ouvre l'impression de son étiquette (Brother PT-P750W)"><Icon name="tag" />Enregistrer et imprimer l'étiquette</button>
         )}
       </div>
     </form>

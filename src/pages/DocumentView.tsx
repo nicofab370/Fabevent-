@@ -13,6 +13,7 @@ import type { DocStatus } from '../types';
 import { DOC_LABELS, DOC_STATUS_LABELS, INVOICE_TYPES } from '../types';
 import { buildUbl, peppolProblems } from '../ubl';
 import { download, fmtDate, fmtRange, money, parseNumber, save } from '../utils';
+import { Icon } from '../components/Icon';
 
 export default function DocumentView() {
   const { id } = useParams();
@@ -78,7 +79,7 @@ export default function DocumentView() {
       <style>{DOC_CSS}</style>
       <div className="no-print">
         <PageHead title={title}>
-          <Link to={'/projets/' + doc.projectId}><button className="secondary">← Projet</button></Link>
+          <Link to={'/projets/' + doc.projectId}><button className="secondary"><Icon name="arrow-left" />Projet</button></Link>
           <select value={doc.status} style={{ width: 'auto' }} onChange={async (e) => {
             const status = e.target.value as DocStatus;
             await save(db.docs, { ...doc, status });

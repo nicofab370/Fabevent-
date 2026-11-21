@@ -11,6 +11,7 @@ import { personIssue, type ProjectData } from './shared';
 import { PostRequests, useCrewDialogs } from '../crewRequests';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { perKmFor, tripKm, vehiclePrice } from '../../geo';
+import { Icon } from '../../components/Icon';
 
 /** Onglet Équipe & transport : postes et véhicules par salle et par créneau, puis affectation. */
 export default function CrewTab({ d }: { d: ProjectData }) {
@@ -96,7 +97,7 @@ export default function CrewTab({ d }: { d: ProjectData }) {
       </div>
       )}
       {mode === 'attribution' && open.length > 0 && (
-        <div className="toolbar"><button onClick={() => cd.askProject(project.id, open.map((c) => c.id))}>📨 Demander les dispos pour les {open.length} poste(s) à pourvoir</button></div>
+        <div className="toolbar"><button onClick={() => cd.askProject(project.id, open.map((c) => c.id))}><Icon name="send" />Demander les dispos pour les {open.length} poste(s) à pourvoir</button></div>
       )}
       {d.subs.map((sp) => <RoomCrew key={sp.id} d={d} sp={sp} pMap={pMap} mode={mode} ctx={ctx} actionsFor={cd.forPost} />)}
       {cd.dialogs}
@@ -186,8 +187,8 @@ function RoomCrew({ d, sp, pMap, mode, ctx, actionsFor }: { d: ProjectData; sp: 
                       <td className="n">{money(a.billed)}{a.unit === 'heure' && <div className="muted" style={{ fontSize: 11 }}>{a.hours} h{a.overtime ? ` dont ${a.overtime} h sup.` : ''}</div>}</td>
                       <td>{person ? <span>{person.name}{c.final === false && <span className="badge st-option" style={{ marginLeft: 4 }}>provisoire</span>}</span> : <span className="avail ko">à pourvoir</span>}</td>
                       <td className="nowrap">
-                        <button className="ghost small" title="Dupliquer le poste" aria-label="Dupliquer le poste" onClick={() => save(db.crew, { ...c, id: '', createdAt: '', personId: undefined, cost: undefined })}>⧉</button>
-                        <button className="ghost" onClick={() => db.crew.delete(c.id)} aria-label="Retirer">✕</button>
+                        <button className="ghost small" title="Dupliquer le poste" aria-label="Dupliquer le poste" onClick={() => save(db.crew, { ...c, id: '', createdAt: '', personId: undefined, cost: undefined })}><Icon name="copy" /></button>
+                        <button className="ghost" onClick={() => db.crew.delete(c.id)} aria-label="Retirer"><Icon name="x" /></button>
                       </td>
                     </tr>
                   );
@@ -273,12 +274,12 @@ function RoomCrew({ d, sp, pMap, mode, ctx, actionsFor }: { d: ProjectData; sp: 
                         <td><NumInput className="w-qty" step="1" min={0} value={v.trips ?? d.settings.defaultTrips ?? 2} onChange={(n) => updVaPriced(v, { trips: n, ...(v.kmManual ? {} : { km: tripKm(d.project.distanceKm, n) }) })} /></td>
                         <td>
                           <NumInput className="w-qty" min={0} value={v.km ?? 0} onChange={(n) => updVaPriced(v, { km: n, kmManual: true })} />
-                          {v.kmManual && <button className="ghost small" title="Recalculer depuis la distance du projet" onClick={() => updVaPriced(v, { kmManual: false, km: tripKm(d.project.distanceKm, v.trips ?? d.settings.defaultTrips ?? 2) })}>↺</button>}
+                          {v.kmManual && <button className="ghost small" title="Recalculer depuis la distance du projet" onClick={() => updVaPriced(v, { kmManual: false, km: tripKm(d.project.distanceKm, v.trips ?? d.settings.defaultTrips ?? 2) })} aria-label="Recalculer les km"><Icon name="reset" /></button>}
                         </td>
                         <td><NumInput className="w-qty" min={0} value={perKmFor(v, vMap.get(v.vehicleId), d.settings)} onChange={(n) => updVaPriced(v, { perKm: n })} /></td>
                         <td><NumInput className="w-price" value={v.price} onChange={(n) => updVa(v, { price: n })} /></td>
                         <td><input type="checkbox" checked={v.billable} onChange={(e) => updVa(v, { billable: e.target.checked })} /></td>
-                        <td><button className="ghost" onClick={() => db.vehicleAssignments.delete(v.id)} aria-label="Retirer">✕</button></td>
+                        <td><button className="ghost" onClick={() => db.vehicleAssignments.delete(v.id)} aria-label="Retirer"><Icon name="x" /></button></td>
                       </tr>
                     ))}
                   </tbody>

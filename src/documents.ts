@@ -304,6 +304,6 @@ async function venueNotesFor(venueId: string | undefined, spotIds: string[]): Pr
     if (ownAddress(sp)) out.push({ label: `${sp.name} — adresse`, text: placeAddress(v, sp) });
     for (const k of keys) if (sp.info?.[k]) out.push({ label: `${sp.name} — ${VENUE_INFO_LABELS[k]}`, text: sp.info[k]! });
   }
-  for (const c of v.comments || []) if (c.onRoadmap) out.push({ label: c.important ? '⚠ Remarque' : 'Remarque', text: c.text });
+  for (const c of v.comments || []) if (c.onRoadmap) out.push({ label: c.important ? 'Remarque importante' : 'Remarque', text: c.text });
   return out.length ? out : undefined;
 }

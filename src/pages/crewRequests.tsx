@@ -10,6 +10,7 @@ import type { Contact, CrewAssignment, CrewRequest, Person, Project, Settings, S
 import { RESERVING } from '../types';
 import { buildIcs, crewCostRate, crewWindow, fmtRange, money, nowIso, patch, save } from '../utils';
 import { personIssue } from './project/shared';
+import { Icon, type IconName } from '../components/Icon';
 
 /*
  * Équipe : demandes de disponibilité, confirmation et remplacement des techniciens.
@@ -36,7 +37,7 @@ export function requestsFor(crewId: string, requests: CrewRequest[]) {
   return [...byPerson.values()].map((r) => ({ r, state: postAnswer(r, crewId) }));
 }
 
-export const ANSWER_ICON: Record<Answer, string> = { oui: '✓', non: '✗', attente: '⏳' };
+export const ANSWER_ICON: Record<Answer, IconName> = { oui: 'check', non: 'x', attente: 'hourglass' };
 export const ANSWER_LABEL: Record<Answer, string> = { oui: 'disponible', non: 'pas disponible', attente: 'demandé, pas de réponse' };
 
 /** Lieu et adresse d'un poste (endroit du sous-projet, sinon lieu du projet). */
@@ -157,10 +158,10 @@ export function AskModal({ projectId, crewIds, onClose }: { projectId: string; c
   if (results) return (
     <Modal title="Demandes envoyées" onClose={onClose}>
       <table className="list"><tbody>{results.map((r) => (
-        <tr key={r.person.id}><td><strong>{r.person.name}</strong></td><td className={r.ok ? 'avail ok' : 'muted'}>{r.ok ? '✓ ' : ''}{r.msg}</td>
-          <td>{r.mailto && <a className="button-link" href={r.mailto} onClick={() => undefined}>✉ Ouvrir le mail</a>}</td></tr>
+        <tr key={r.person.id}><td><strong>{r.person.name}</strong></td><td className={r.ok ? 'avail ok' : 'muted'}>{r.ok && <Icon name="check" />}{r.msg}</td>
+          <td>{r.mailto && <a className="button-link" href={r.mailto} onClick={() => undefined}><Icon name="mail" />Ouvrir le mail</a>}</td></tr>
       ))}</tbody></table>
-      <p className="muted">Les réponses s'affichent sur chaque poste (⏳ en attente, ✓ disponible, ✗ pas disponible).{!server?.ok && ' Sans serveur d\'envoi, note les réponses à la main en touchant le nom sur le poste.'}</p>
+      <p className="muted">Les réponses s'affichent sur chaque poste : <Icon name="hourglass" /> en attente, <Icon name="check" /> disponible, <Icon name="x" /> pas disponible.{!server?.ok && ' Sans serveur d\'envoi, note les réponses à la main en touchant le nom sur le poste.'}</p>
       <div className="form-actions"><button onClick={onClose}>Terminé</button></div>
     </Modal>
   );
@@ -186,9 +187,9 @@ export function AskModal({ projectId, crewIds, onClose }: { projectId: string; c
                 <input type="checkbox" checked={picked.has(p.id)} onChange={(e) => { const n = new Set(picked); if (e.target.checked) n.add(p.id); else n.delete(p.id); setPicked(n); }} aria-label={`Demander à ${p.name}`} />
                 <span><b>{p.name}</b> <span className="muted">{[p.role, ...(p.skills || []).filter((s) => s !== p.role)].filter(Boolean).join(', ')}</span>
                   <span className="ask-tags">
-                    {skill && <span className="tag small">✓ {fns.find((f) => canDo(p, f))}</span>}
+                    {skill && <span className="tag small"><Icon name="check" />{fns.find((f) => canDo(p, f))}</span>}
                     {issue && <span className="tag small warn">{issue}</span>}
-                    {a.map((s, i) => <span key={i} className={'tag small ans-' + s}>{ANSWER_ICON[s]} déjà {s === 'attente' ? 'demandé' : ANSWER_LABEL[s]}</span>)}
+                    {a.map((s, i) => <span key={i} className={'tag small ans-' + s}><Icon name={ANSWER_ICON[s]} />déjà {s === 'attente' ? 'demandé' : ANSWER_LABEL[s]}</span>)}
                     {!p.email && <span className="tag small">pas d'email</span>}
                     <span className="muted">{crewCostRate({ rateUnit: chosen[0]?.rateUnit }, p) ? money(crewCostRate({ rateUnit: chosen[0]?.rateUnit }, p)) : ''}</span>
                   </span></span>
@@ -298,12 +299,12 @@ export function ReplaceModal({ crewId, onClose, onAsk }: { crewId: string; onClo
       ) : (
         <>
           {old && <div className="flash ok">{old.name} retiré du poste{markNo ? ' (noté pas disponible)' : ''}.</div>}
-          <p style={{ marginBottom: 4 }}><b>Qui le remplace ?</b> Les disponibles d'abord (✓ = a répondu oui).</p>
+          <p style={{ marginBottom: 4 }}><b>Qui le remplace ?</b> Ceux qui ont répondu « disponible » d'abord.</p>
           <div className="ask-people">
             {cands.map(({ p, issue, ans }) => (
               <div key={p.id} className={'replace-row' + (issue ? ' busy' : '')}>
                 <span><b>{p.name}</b> <span className="muted">{p.role}</span>
-                  {ans && <span className={'tag small ans-' + ans}>{ANSWER_ICON[ans]} {ANSWER_LABEL[ans]}</span>}
+                  {ans && <span className={'tag small ans-' + ans}><Icon name={ANSWER_ICON[ans]} />{ANSWER_LABEL[ans]}</span>}
                   {issue && <span className="tag small warn">{issue}</span>}</span>
                 <button type="button" className="small" onClick={async () => {
                   await patch(db.crew, c.id, { personId: p.id, cost: undefined });
@@ -344,7 +345,7 @@ export function PostRequests({ c, people, requests, onAsk, onReplace, onDetails 
           {list.map(({ r, state }) => (
             <span key={r.id} className="req-wrap">
               <button type="button" className={'req-chip ans-' + state + (c.personId === r.personId ? ' cur' : '')} title={`${r.personName} : ${ANSWER_LABEL[state]}${r.note ? ` — « ${r.note} »` : ''}${r.manual ? ' (noté à la main)' : ''}`}
-                onClick={() => setMenu(menu === r.id ? null : r.id)}>{ANSWER_ICON[state]} {first(r.personName)}{r.note ? ' 💬' : ''}</button>
+                onClick={() => setMenu(menu === r.id ? null : r.id)}><Icon name={ANSWER_ICON[state]} />{first(r.personName)}{r.note && <Icon name="chat" title="a laissé un mot" />}</button>
               {menu === r.id && (
                 <span className="req-menu">
                   {r.note && <span className="muted">« {r.note} »</span>}
@@ -359,9 +360,9 @@ export function PostRequests({ c, people, requests, onAsk, onReplace, onDetails 
         </div>
       )}
       <div className="req-actions">
-        {!c.personId && <button type="button" className="ghost small" onClick={onAsk}>📨 Demander les dispos</button>}
-        {c.personId && <button type="button" className="ghost small" onClick={onReplace} title="La personne n'est plus disponible : la remplacer">⇄ Remplacer</button>}
-        {c.personId && <button type="button" className="ghost small" onClick={onDetails} title="Envoyer les détails du poste (lieu, horaires, contact, agenda)">{c.detailsSentAt ? `✉ Détails envoyés le ${new Date(c.detailsSentAt).toLocaleDateString('fr-FR')}` : '✉ Envoyer les détails'}</button>}
+        {!c.personId && <button type="button" className="ghost small" onClick={onAsk}><Icon name="send" />Demander les dispos</button>}
+        {c.personId && <button type="button" className="ghost small" onClick={onReplace} title="La personne n'est plus disponible : la remplacer"><Icon name="swap" />Remplacer</button>}
+        {c.personId && <button type="button" className="ghost small" onClick={onDetails} title="Envoyer les détails du poste (lieu, horaires, contact, agenda)"><Icon name="mail" />{c.detailsSentAt ? `Détails envoyés le ${new Date(c.detailsSentAt).toLocaleDateString('fr-FR')}` : 'Envoyer les détails'}</button>}
       </div>
     </div>
   );

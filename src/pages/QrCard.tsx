@@ -6,6 +6,7 @@ import { findByCode, UNIT_STATE_LABELS, unitState } from '../codes';
 import { db } from '../db';
 import { fmtRange } from '../utils';
 import { whereIs } from './Inventory';
+import { Icon } from '../components/Icon';
 
 /**
  * Page ouverte en scannant une étiquette avec l'appareil photo de n'importe quel téléphone
@@ -40,7 +41,7 @@ export default function QrCard() {
         <dl className="kv">
           <dt>Code</dt><dd><code>{unit?.barcode || e.code}</code></dd>
           {unit && <><dt>Unité</dt><dd>n° {unit.serial} <span className={'badge ' + (st === 'ok' ? 'st-confirme' : st === 'lost' ? 'st-annule' : 'st-option')}>{UNIT_STATE_LABELS[st]}</span>{unit.defect && <div className="muted">{unit.defect}</div>}</dd></>}
-          {e.location && <><dt>Emplacement</dt><dd>📍 {e.location}</dd></>}
+          {e.location && <><dt>Emplacement</dt><dd><Icon name="pin" />{e.location}</dd></>}
           {now && <><dt>{now.state === 'en cours' ? 'En ce moment' : 'Prochain projet'}</dt><dd><Link to={'/projets/' + now.projectId}>{now.number} {now.name}</Link> · {fmtRange(now.start, now.end)} <StatusBadge status={now.status} /></dd></>}
         </dl>
       </div>
@@ -54,7 +55,7 @@ export default function QrCard() {
               <span>{c.qty > 1 ? <b>{c.qty} × </b> : null}{c.name}</span>
             </label>
           ))}
-          {contents.every((_, i) => checked[i]) && <p className="avail ok">Contenu complet ✓</p>}
+          {contents.every((_, i) => checked[i]) && <p className="avail ok"><Icon name="check" />Contenu complet</p>}
         </div>
       )}
       <Link to={'/materiel/' + e.id}><button className="secondary">Fiche complète de l'article</button></Link>

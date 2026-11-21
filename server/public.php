@@ -26,6 +26,8 @@ $db->exec('PRAGMA busy_timeout=5000;');
 function h($v): string { return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'); }
 function now_u(): string { $t = microtime(true); return gmdate('Y-m-d\TH:i:s', (int)$t) . sprintf('.%03dZ', (int)(($t - floor($t)) * 1000)); }
 function rid(): string { return bin2hex(random_bytes(10)); }
+const ICO_CHECK = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px;margin-right:6px"><path d="M5 12.5l4.5 4.5L19 7"/></svg>';
+const ICO_X = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px;margin-right:6px"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 const JOURS = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'];
 const MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
 function fdate(string $s): string {
@@ -114,7 +116,7 @@ if (isset($_GET['r'])) {
         . '<form method="post" action="' . $self . '" class="c"><input type="hidden" name="t" value="' . h($tok) . '">'
         . (count($posts) > 1 ? '<p class="m" style="margin-top:0">Décoche les postes où tu n\'es pas disponible.</p>' : '') . $list
         . '<label for="note">Un mot (facultatif)</label><textarea id="note" name="note" maxlength="500" placeholder="ex. dispo seulement à partir de 14 h">' . h($r['note'] ?? '') . '</textarea>'
-        . '<button class="ok" name="answer" value="oui">✓ Je suis disponible</button><button class="ko" name="answer" value="non">✗ Je ne suis pas disponible</button></form>');
+        . '<button class="ok" name="answer" value="oui">' . ICO_CHECK . 'Je suis disponible</button><button class="ko" name="answer" value="non">' . ICO_X . 'Je ne suis pas disponible</button></form>');
 }
 
 /* ================= formulaire d'inscription ================= */

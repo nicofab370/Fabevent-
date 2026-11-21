@@ -10,6 +10,7 @@ import { availableQty, fmtDate, fmtRange, inspectionsDue, money, save, toLocalIn
 import { EquipmentForm } from './EquipmentList';
 import { InspectionModal, RepairModal } from './Maintenance';
 import PrintLabelModal from '../components/PrintLabelModal';
+import { Icon } from '../components/Icon';
 
 const UNIT_STATUS: Record<SerialUnit['status'], string> = { ok: 'En service', hs: 'Hors service', perdu: 'Perdu / vendu' };
 
@@ -54,10 +55,10 @@ export default function EquipmentDetail() {
   return (
     <>
       <PageHead title={eq.name}>
-        <button className="secondary" onClick={() => nav('/materiel')}>← Retour</button>
+        <button className="secondary" onClick={() => nav('/materiel')}><Icon name="arrow-left" />Retour</button>
         <button className="secondary" onClick={() => setRepair({})}>Déclarer une réparation</button>
         {eq.inspectionMonths ? <button className="secondary" onClick={() => setInspect({})}>Enregistrer un contrôle</button> : null}
-        {!eq.isKit && !eq.accessoryOnly && <button className="secondary" onClick={() => setPrinting({})}>🏷 Imprimer l'étiquette</button>}
+        {!eq.isKit && !eq.accessoryOnly && <button className="secondary" onClick={() => setPrinting({})}><Icon name="tag" />Imprimer l'étiquette</button>}
         <button onClick={() => setEditing(true)}>Modifier</button>
         <button className="danger" onClick={async () => {
           if (confirm('Supprimer cet article ? Les lignes de projet existantes garderont leur désignation.')) {
@@ -91,9 +92,9 @@ export default function EquipmentDetail() {
           <div className="page-head" style={{ marginBottom: 8 }}>
             <h2 style={{ margin: 0 }}>Disponibilité sur 4 semaines</h2>
             <div className="actions">
-              <button className="secondary small" onClick={() => setWeekOffset(weekOffset - 4)}>←</button>
+              <button className="secondary small" onClick={() => setWeekOffset(weekOffset - 4)} aria-label="Précédent"><Icon name="chevron-left" /></button>
               <button className="secondary small" onClick={() => setWeekOffset(0)}>Aujourd'hui</button>
-              <button className="secondary small" onClick={() => setWeekOffset(weekOffset + 4)}>→</button>
+              <button className="secondary small" onClick={() => setWeekOffset(weekOffset + 4)} aria-label="Suivant"><Icon name="chevron-right" /></button>
             </div>
           </div>
           <div className="timeline">
@@ -130,7 +131,7 @@ export default function EquipmentDetail() {
                       <td><span className="badge">{UNIT_STATUS[u.status]}</span>{repairs.some((r) => r.unitId === u.id && r.status === 'ouvert') && <span className="badge st-annule" style={{ marginLeft: 4 }}>en réparation</span>}</td>
                       <td>{d ? <span className={d.due <= new Date().toISOString().slice(0, 10) ? 'avail ko' : ''}>{fmtDate(d.due, false)}</span> : '—'}</td>
                       <td style={{ whiteSpace: 'nowrap' }}>
-                        <button className="secondary small" onClick={() => setPrinting({ unitIds: [u.id] })} title="Imprimer l'étiquette de cette unité">🏷 Étiquette</button>{' '}
+                        <button className="secondary small" onClick={() => setPrinting({ unitIds: [u.id] })} title="Imprimer l'étiquette de cette unité"><Icon name="tag" />Étiquette</button>{' '}
                         <button className="secondary small" onClick={() => setRepair({ unitId: u.id })}>Réparation</button>{' '}
                         {eq.inspectionMonths ? <button className="secondary small" onClick={() => setInspect({ unitId: u.id })}>Contrôle</button> : null}
                       </td>
@@ -235,7 +236,7 @@ export default function EquipmentDetail() {
               {unitEdit.id && <button type="button" className="danger" style={{ marginRight: 'auto' }} onClick={async () => { if (confirm('Supprimer cette unité ?')) { await db.units.delete(unitEdit.id!); setUnitEdit(null); } }}>Supprimer</button>}
               <button type="button" className="secondary" onClick={() => setUnitEdit(null)}>Annuler</button>
               <button type="submit">Enregistrer</button>
-              <button type="submit" className="secondary" data-print="1" style={{ order: 2 }} title="Enregistre l'unité puis imprime son étiquette">🏷 Enregistrer et imprimer</button>
+              <button type="submit" className="secondary" data-print="1" style={{ order: 2 }} title="Enregistre l'unité puis imprime son étiquette"><Icon name="tag" />Enregistrer et imprimer</button>
             </div>
           </form>
         </Modal>

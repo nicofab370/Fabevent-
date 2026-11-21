@@ -10,6 +10,7 @@ import type { Subrental, SubrentStatus } from '../types';
 import { SUBRENT_LABELS } from '../types';
 import { fmtDate, fmtRange, money, save } from '../utils';
 import { CsvButton, exportCsv } from '../components/extra';
+import { Icon } from '../components/Icon';
 
 export default function Subrentals() {
   const nav = useNavigate();
@@ -65,7 +66,7 @@ export function SubrentalDetail() {
       <style>{DOC_CSS}</style>
       <div className="no-print">
         <PageHead title={`Sous-location ${sr.number}`}>
-          <button className="secondary" onClick={() => nav('/projets/' + sr.projectId)}>← Projet</button>
+          <button className="secondary" onClick={() => nav('/projets/' + sr.projectId)}><Icon name="arrow-left" />Projet</button>
           <button onClick={() => window.print()}>Bon de commande (PDF)</button>
           <button className="secondary" onClick={() => setMailing(true)}>Envoyer au fournisseur</button>
           <button className="danger" onClick={async () => { if (confirm('Supprimer cette sous-location ?')) { await db.subrentals.delete(sr.id); nav('/souslocations'); } }}>Supprimer</button>
@@ -98,7 +99,7 @@ export function SubrentalDetail() {
                     <td><NumInput className="w-qty" step="1" min={0} value={l.qty} onChange={(n) => set({ qty: n })} /></td>
                     <td><input value={l.name} onChange={(e) => set({ name: e.target.value })} /></td>
                     <td><NumInput className="w-price" value={l.cost} onChange={(n) => set({ cost: n })} /></td>
-                    <td><button className="ghost" onClick={() => upd({ lines: sr.lines.filter((_, j) => j !== i) })} aria-label="Retirer">✕</button></td>
+                    <td><button className="ghost" onClick={() => upd({ lines: sr.lines.filter((_, j) => j !== i) })} aria-label="Retirer"><Icon name="x" /></button></td>
                   </tr>
                 );
               })}

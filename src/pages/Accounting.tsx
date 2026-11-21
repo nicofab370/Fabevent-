@@ -9,6 +9,7 @@ import type { Doc } from '../types';
 import { DOC_CSS, DocRender } from '../components/DocRender';
 import { DOC_LABELS, DOC_STATUS_LABELS } from '../types';
 import { download, fmtDate, money } from '../utils';
+import { Icon } from '../components/Icon';
 
 const ym = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 /** Nombre au format français pour Excel (virgule décimale). */
@@ -52,7 +53,7 @@ export default function Accounting() {
         <style>{DOC_CSS + '@media print{.doc{break-after:page}}'}</style>
         <div className="no-print toolbar">
           <button onClick={() => window.print()}>Imprimer / enregistrer en PDF ({list.length} pièces)</button>
-          <button className="secondary" onClick={() => setPrintAll(false)}>← Retour</button>
+          <button className="secondary" onClick={() => setPrintAll(false)}><Icon name="arrow-left" />Retour</button>
           <span className="muted" style={{ alignSelf: 'center' }}>Dans la fenêtre d'impression, choisis « Enregistrer au format PDF ».</span>
         </div>
         {list.map((d) => <div key={d.id} className="doc-wrap" style={{ marginBottom: 16 }}><DocRender doc={d} /></div>)}

@@ -1385,7 +1385,7 @@ await step('Inventaire : kit compté kit par kit (contenu coché, kit complet to
   await page.locator('.inv-seg, .seg').first().locator('button:text-is("Tout")').click();
   await page.locator('.inv-row.st-kit', { hasText: 'Pack ambiance 8 PAR LED' }).click();
   const m = page.locator('.modal');
-  await m.locator('button:text-is("Kit complet ✓")').click();
+  await m.locator('button:text-is("Kit complet")').click();
   await page.waitForTimeout(200);
   expect((await m.innerText()).includes('Kit n° 1 complet'), 'kit n° 1 compté');
   // 2e kit : on coche chaque ligne, il se valide tout seul
@@ -1422,7 +1422,7 @@ await step('Inventaire : unités en pastilles, scan limité à l’article, scan
 
 await step('Inventaire : fiche (ajout de stock, état d’une unité, où est-il ?), unité perdue retrouvée au scan', async () => {
   // « Infos » : scanner pour tout voir, sans compter
-  await page.click('button:has-text("ℹ Infos")');
+  await page.click('button:has-text("Infos")');
   await invScan('SN-LA4X-1001');
   await page.waitForSelector('.modal');
   expect((await page.locator('.modal').innerText()).includes('Où est cet article ?'), 'fiche ouverte par le scan Infos');
@@ -1432,7 +1432,7 @@ await step('Inventaire : fiche (ajout de stock, état d’une unité, où est-il
   await page.waitForTimeout(400);
   expect((await page.locator('.modal tr', { hasText: 'LA4X-1002' }).innerText()).includes('Perdue'), 'unité marquée perdue');
   await page.keyboard.press('Escape');
-  await page.click('button:has-text("ℹ Infos")');
+  await page.click('button:has-text("Infos")');
   expect((await invScan('SN-LA4X-1002')).includes('retrouvée et remise en stock'), 'unité perdue retrouvée au scan');
   await page.locator('.inv-row', { hasText: 'Pied de micro perche' }).click();
   await page.click('.modal button:text-is("+ Ajouter du stock")');
@@ -1441,12 +1441,12 @@ await step('Inventaire : fiche (ajout de stock, état d’une unité, où est-il
   await page.click('.modal button:text-is("Ajouter")');
   await page.waitForTimeout(400);
   expect((await page.locator('.flash').first().innerText()).includes('+5 au stock'), 'stock ajouté');
-  await page.click('button:has-text("ℹ Infos")');
+  await page.click('button:has-text("Infos")');
   await invScan('DEMO-PIED');
   await page.waitForSelector('.modal');
   expect((await page.locator('.modal').innerText()).includes('Ajout au stock — achat Thomann (+5)'), 'mouvement de stock daté');
   await page.keyboard.press('Escape');
-  await page.click('button:has-text("ℹ Infos")');
+  await page.click('button:has-text("Infos")');
 });
 
 await step('Inventaire : unités non vues → en réparation, visibles en maintenance', async () => {
@@ -1624,7 +1624,7 @@ await step('Contenu fourni : affiché à la checklist, au scan et sur le bon de 
   await tab('Finances & documents');
   await page.click('button:text-is("+ Bon de sortie")');
   await page.waitForSelector('.doc');
-  expect((await page.locator('.doc').innerText()).includes('avec : Télécommande, Câble HDMI 5 m, Câble secteur'), 'contenu sur le bon de sortie');
+  expect((await page.locator('.doc').innerText()).toLowerCase().includes('avec : télécommande, câble hdmi 5 m, câble secteur'), 'contenu sur le bon de sortie');
   await go('entrepot');
   await page.locator('table.list tr.click', { hasText: 'Conférence annuelle' }).filter({ hasText: 'Salle plénière' }).click();
   await page.waitForSelector('.checklist-scan');
@@ -1637,7 +1637,7 @@ await step('Contenu fourni : affiché à la checklist, au scan et sur le bon de 
   const card = await page.locator('.qr-card').innerText();
   expect(card.includes('Vidéoprojecteur') && card.includes('Câble HDMI 5 m') && card.includes('VP10K-1001'), `fiche ouverte par le QR (${card.slice(0, 120)})`);
   for (const c of await page.locator('.qr-content input').all()) await c.check();
-  expect((await page.locator('.qr-card').innerText()).includes('Contenu complet ✓'), 'contenu coché');
+  expect((await page.locator('.qr-card').innerText()).includes('Contenu complet'), 'contenu coché');
   // le scanner FabEvent lit aussi un QR-lien
   await go('inventaire');
   await page.fill('.scan-input', `https://fabri.live/fabevent/#/q/${vpCode}-02`);
@@ -1781,7 +1781,7 @@ await step('Équipe : remplacer un technicien confirmé (noté pas dispo), déta
   await page.waitForTimeout(300);
   const r2 = page.locator('table.crew-assign tr', { hasText: 'Montage' }).first();
   expect((await r2.locator('select[aria-label="Technicien"] option:checked').innerText()).includes('Karim'), 'remplaçant attribué');
-  expect((await r2.locator('.req-chips').innerText()).includes('✗ Tom'), 'l’ancien noté « pas dispo »');
+  expect(await r2.locator('.req-chip.ans-non', { hasText: 'Tom' }).count() === 1, 'l’ancien noté « pas dispo »');
 });
 
 await step('Équipe : demander les dispos, réponse notée, attribution depuis la réponse', async () => {
@@ -1798,14 +1798,14 @@ await step('Équipe : demander les dispos, réponse notée, attribution depuis l
   await page.waitForSelector('.modal:has-text("Demandes envoyées")');
   await page.click('.modal button:text-is("Terminé")');
   const row = page.locator('table.crew-assign tr', { hasText: 'Rigger' }).first();
-  expect((await row.locator('.req-chips').innerText()).includes('⏳ Emma'), 'demande en attente affichée');
+  expect(await row.locator('.req-chip.ans-attente', { hasText: 'Emma' }).count() === 1, 'demande en attente affichée');
   await row.locator('.req-chip', { hasText: 'Lucas' }).click();
   await row.locator('button:text-is("Noter : pas disponible")').click();
   await page.waitForTimeout(300);
   await row.locator('.req-chip', { hasText: 'Emma' }).click();
   await row.locator('button:text-is("Noter : disponible")').click();
   await page.waitForTimeout(300);
-  expect((await row.locator('.req-chips').innerText()).includes('✓ Emma') && (await row.locator('.req-chips').innerText()).includes('✗ Lucas'), 'réponses notées');
+  expect(await row.locator('.req-chip.ans-oui', { hasText: 'Emma' }).count() === 1 && await row.locator('.req-chip.ans-non', { hasText: 'Lucas' }).count() === 1, 'réponses notées');
   expect((await row.locator('select[aria-label="Technicien"] option').nth(1).innerText()).includes('Emma'), 'la personne disponible proposée en premier');
   await row.locator('.req-chip', { hasText: 'Emma' }).click();
   await row.locator('button:has-text("Attribuer Emma")').click();
@@ -1952,8 +1952,8 @@ if (hasPhp) {
     await A.p.click('text=Projet A'); await A.p.waitForSelector('.project-tabs');
     await A.p.click('.project-tabs button:text-is("Équipe & transport")');
     await A.p.click('.crew-modes button:has-text("2. Attribution")');
-    const chips = await A.p.locator('table.crew-assign tr', { hasText: 'Régisseur' }).locator('.req-chips').innerText();
-    expect(chips.includes('✓ Sam') && chips.includes('💬'), `réponse reçue dans FabEvent (${chips})`);
+    const chip = A.p.locator('table.crew-assign tr', { hasText: 'Régisseur' }).locator('.req-chip.ans-oui', { hasText: 'Sam' });
+    expect(await chip.count() === 1 && await chip.locator('svg title').count() === 1, 'réponse « disponible » reçue dans FabEvent, avec son mot');
   });
   await step('Équipe : formulaire d’inscription public, fiche à valider', async () => {
     await A.p.goto(SU + '#/equipe'); await A.p.waitForTimeout(400);

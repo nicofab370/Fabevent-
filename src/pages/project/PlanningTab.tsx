@@ -8,6 +8,7 @@ import { shiftBetween, shiftDate, shiftProject, type Shift } from '../../project
 import { blockPeriod, confirmDeleteSubproject, deleteSubproject, fmtDate, fmtRange, nowIso, patch, save, sortPeriods, syncPeriods, toLocalInput, uid, usageDays } from '../../utils';
 import type { ProjectData } from './shared';
 import { ownAddress, placeAddress, placeName, spotOf } from '../../places';
+import { Icon } from '../../components/Icon';
 
 /** Onglet Planning : toutes les salles et tous leurs créneaux. */
 export default function PlanningTab({ d, onEditSub }: { d: ProjectData; onEditSub: (sp: Partial<Subproject>) => void }) {
@@ -197,7 +198,7 @@ export function SubprojectModal({ sp, project, onClose }: { sp: Partial<Subproje
                 <input value={pe.name} onChange={(e) => upd({ name: e.target.value })} />
                 <input type="datetime-local" value={pe.start} onChange={(e) => upd({ start: e.target.value, end: pe.end < e.target.value ? e.target.value : pe.end })} />
                 <input type="datetime-local" value={pe.end} onChange={(e) => upd({ end: e.target.value })} />
-                <button type="button" className="ghost" onClick={() => setPeriods(periods.filter((x) => x.id !== pe.id))} aria-label="Retirer">✕</button>
+                <button type="button" className="ghost" onClick={() => setPeriods(periods.filter((x) => x.id !== pe.id))} aria-label="Retirer"><Icon name="x" /></button>
               </div>
             );
           })}

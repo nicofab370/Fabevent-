@@ -10,6 +10,7 @@ import { CONTACT_TYPES, LANG_LABELS, VAT_REGIME_LABELS, type Lang, type VatRegim
 import { CsvButton, CustomFieldsEditor, exportCsv, TagInput, Tags } from '../components/extra';
 import { suggestRegime } from '../payment';
 import { save, uid } from '../utils';
+import { Icon } from '../components/Icon';
 
 type Draft = Partial<Contact> & { type: ContactType; company: string };
 
@@ -191,7 +192,7 @@ function PeopleEditor({ c, setC }: { c: Draft; setC: (c: Draft) => void }) {
           {depts.map((d) => <option key={d.id} value={d.id}>{d.name || 'Service'}</option>)}
         </select>
       ) : <span />}
-      <button type="button" className="ghost" onClick={() => setPersons(persons.filter((_, j) => j !== i))} aria-label="Retirer l'interlocuteur">✕</button>
+      <button type="button" className="ghost" onClick={() => setPersons(persons.filter((_, j) => j !== i))} aria-label="Retirer l'interlocuteur"><Icon name="x" /></button>
     </div>
   );
   const addPerson = (departmentId?: string) => setPersons([...persons, { id: uid(), name: '', departmentId }]);
@@ -211,7 +212,7 @@ function PeopleEditor({ c, setC }: { c: Draft; setC: (c: Draft) => void }) {
             <input placeholder="Email du service (factures…)" value={d.email || ''} onChange={(e) => updD(d.id, 'email', e.target.value)} />
             <input placeholder="Téléphone" value={d.phone || ''} onChange={(e) => updD(d.id, 'phone', e.target.value)} />
             <button type="button" className="ghost" aria-label="Supprimer le service" title="Supprimer le service (ses personnes restent, sans service)"
-              onClick={() => setC({ ...c, departments: depts.filter((x) => x.id !== d.id), persons: persons.map((x) => (x.departmentId === d.id ? { ...x, departmentId: undefined } : x)) })}>✕</button>
+              onClick={() => setC({ ...c, departments: depts.filter((x) => x.id !== d.id), persons: persons.map((x) => (x.departmentId === d.id ? { ...x, departmentId: undefined } : x)) })}><Icon name="x" /></button>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 6, marginBottom: 6 }}>
             <input placeholder="Adresse du service (si différente de la société)" value={d.address || ''} onChange={(e) => updD(d.id, 'address', e.target.value)} />

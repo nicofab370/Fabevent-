@@ -39,13 +39,13 @@ Si FabEvent est placé ailleurs que dans `/fabevent/`, adapte le chemin de `auth
 ## Envoi des mails depuis FabEvent
 
 Avec `mail.php`, les devis, factures, bons, plannings et demandes de disponibilité partent **directement** de FabEvent,
-pièces jointes comprises (bouton « ✉ Envoyer »). Les réponses arrivent à l'adresse de ta société (Paramètres → Ma société).
+pièces jointes comprises (bouton « Envoyer »). Les réponses arrivent à l'adresse de ta société (Paramètres → Ma société).
 
 1. Crée une boîte d'expédition sur ton domaine (ex. `fabevent@fabri.live`) chez ton hébergeur.
 2. Copie `mail-config.example.php` (dans le paquet) en `fabevent/api/mail-config.php` et remplis-le :
    adresse d'expédition, serveur SMTP, port, identifiant et mot de passe de la boîte.
    Sans bloc SMTP, la fonction `mail()` de l'hébergement est utilisée (les mails arrivent moins bien : préfère le SMTP).
-3. Vérifie : ouvre un devis → « Envoyer par email » → le bouton « ✉ Envoyer » apparaît.
+3. Vérifie : ouvre un devis → « Envoyer par email » → le bouton « Envoyer » apparaît.
 
 Sans `mail.php` (ou hors connexion), FabEvent propose toujours les autres façons : partage, brouillon .eml, messagerie.
 
@@ -54,7 +54,7 @@ Sans `mail.php` (ou hors connexion), FabEvent propose toujours les autres façon
 `public.php` sert deux pages **sans connexion**, protégées par une clé secrète dans le lien :
 
 - **Demande de disponibilité** : chaque technicien reçoit son lien et répond « disponible / pas disponible », poste par poste.
-  La réponse arrive dans FabEvent (pastilles ✓ ✗ ⏳ sur le poste).
+  La réponse arrive dans FabEvent (pastilles « disponible / pas disponible / en attente » sur le poste).
 - **Formulaire d'inscription** : Équipe → « Ouvrir le formulaire d'inscription » donne un lien à envoyer ou à mettre sur ton site.
   Les fiches remplies arrivent dans « Inscriptions à valider ». « Fermer le formulaire » désactive le lien.
 

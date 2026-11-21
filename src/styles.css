@@ -41,7 +41,16 @@ h3 { font-size: 15px; margin: 0; }
 .sidebar nav a { color: var(--side-text); padding: 8px 10px; border-radius: 8px; display: flex; gap: 10px; align-items: center; }
 .sidebar nav a:hover { background: #1e293b; text-decoration: none; }
 .sidebar nav a.active { background: #f59e0b; color: #111; font-weight: 600; }
-.ico { width: 18px; text-align: center; }
+.ico { flex: none; display: inline-block; vertical-align: -0.2em; }
+/* icône + texte : alignés, espacés de la même façon partout */
+button:has(> .ico), a:has(> .ico), .tag:has(> .ico), .badge:has(> .ico), h2:has(> .ico), strong:has(> .ico), .req-chip, .loc, dd:has(> .ico), p:has(> .ico), .cl-hint, .cl-n {
+  display: inline-flex; align-items: center; gap: .35em;
+}
+h2:has(> .ico), p:has(> .ico) { display: flex; }
+.loc { margin-left: .6em; color: var(--muted); gap: .2em; }
+.cl-check .ico { width: 18px; height: 18px; }
+.scanflash .ico { width: 72px; height: 72px; }
+nav .ico, .side .ico { width: 18px; height: 18px; opacity: .85; }
 .net { font-size: 11px; padding: 8px; }
 .net.on { color: #4ade80; } .net.off { color: #fbbf24; }
 .topbar { display: none; }

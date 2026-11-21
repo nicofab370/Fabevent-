@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { db, defaultSettings } from '../db';
 import type { ProjectStatus, Settings } from '../types';
 import { STATUS_LABELS } from '../types';
+import { Icon } from './Icon';
 
 export function useSettings(): Settings {
   const s = useLiveQuery(() => db.settings.get('main'));
@@ -20,7 +21,7 @@ export function Modal({ title, onClose, children, wide }: { title: string; onClo
       <div className={'modal' + (wide ? ' wide' : '')} role="dialog" aria-label={title}>
         <div className="modal-head">
           <h3>{title}</h3>
-          <button className="ghost" onClick={onClose} aria-label="Fermer">✕</button>
+          <button className="ghost" onClick={onClose} aria-label="Fermer"><Icon name="x" /></button>
         </div>
         <div className="modal-body">{children}</div>
       </div>

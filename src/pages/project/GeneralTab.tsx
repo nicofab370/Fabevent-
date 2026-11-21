@@ -17,6 +17,7 @@ import { setProjectDistance, type ProjectData } from './shared';
 import { drivingRoute } from '../../geo';
 import { NumInput } from '../../components/ui';
 import { money } from '../../utils';
+import { Icon } from '../../components/Icon';
 
 /** Champ texte enregistré à la sortie du champ (pas à chaque frappe). */
 function LazyInput({ value, onSave, ...rest }: { value?: string; onSave: (v: string) => void; placeholder?: string; type?: string; required?: boolean }) {
@@ -129,7 +130,7 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
                   {contacts.filter((c) => c.type === 'client' || c.id === project.clientId).map((c) => <option key={c.id} value={c.id}>{c.company}</option>)}
                 </select>
                 <button type="button" className="secondary small" title="Nouveau client" onClick={() => setNewContact('client')}>+</button>
-                {client && <button type="button" className="secondary small" title="Modifier ce client" aria-label="Modifier le client" onClick={() => setEditContact(client)}>✎</button>}
+                {client && <button type="button" className="secondary small" title="Modifier ce client" aria-label="Modifier le client" onClick={() => setEditContact(client)}><Icon name="edit" /></button>}
               </div>
             </Field>
             <Field label="Régime de TVA" full>
@@ -170,7 +171,7 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
                   {contacts.filter((c) => c.type === 'lieu').map((c) => <option key={c.id} value={c.id}>{c.company}</option>)}
                 </select>
                 <button type="button" className="secondary small" title="Nouveau lieu" onClick={() => setNewContact('lieu')}>+</button>
-                {venue && <button type="button" className="secondary small" title="Modifier ce lieu" aria-label="Modifier le lieu" onClick={() => setEditContact(venue)}>✎</button>}
+                {venue && <button type="button" className="secondary small" title="Modifier ce lieu" aria-label="Modifier le lieu" onClick={() => setEditContact(venue)}><Icon name="edit" /></button>}
               </div>
             </Field>
             {venue && (
@@ -197,7 +198,7 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
             )}
             <Field label="Nom affiché sur les documents" full><LazyInput value={project.venue} onSave={(v) => upd({ venue: v || undefined })} /></Field>
           </div>
-          {venueAddress && <p>{venueAddress}<br /><a href={route} target="_blank" rel="noreferrer">Voir l'itinéraire ↗</a></p>}
+          {venueAddress && <p>{venueAddress}<br /><a href={route} target="_blank" rel="noreferrer">Voir l'itinéraire <Icon name="external" /></a></p>}
           <Distance d={d} from={origin} to={venueAddress} fromLabel={originLabel} />
           {venue && (
             <>
@@ -208,7 +209,7 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
                   ))}
                 </dl>
               )}
-              <h3 style={{ marginBottom: 4 }}>Commentaires sur le lieu <Link to={'/lieux/' + venue.id} className="muted" style={{ fontSize: 12, fontWeight: 400 }}>fiche du lieu ↗</Link></h3>
+              <h3 style={{ marginBottom: 4 }}>Commentaires sur le lieu <Link to={'/lieux/' + venue.id} className="muted" style={{ fontSize: 12, fontWeight: 400 }}>fiche du lieu <Icon name="external" /></Link></h3>
               <VenueComments venue={venue} projects={[project]} projectId={project.id} />
             </>
           )}
@@ -217,7 +218,7 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
         <div className="card">
           <h2>Avancée du projet</h2>
           <div className="progress-steps">
-            {steps.map((s) => <span key={s.label} className={'step ' + s.state}>{s.state === 'done' ? '✓' : s.state === 'warn' ? '!' : '○'} {s.label}</span>)}
+            {steps.map((s) => <span key={s.label} className={'step ' + s.state}><Icon name={s.state === 'done' ? 'check' : s.state === 'warn' ? 'warning' : 'circle'} />{s.label}</span>)}
           </div>
           <h3 style={{ margin: '14px 0 6px' }}>Bons de livraison et feuilles d'appel</h3>
           <div className="toolbar" style={{ marginBottom: 0 }}>
@@ -308,7 +309,7 @@ function NoteList({ project }: { project: Project }) {
           <div key={n.id} className="note-item" style={{ borderTop: '1px solid var(--line)', paddingTop: 8, marginTop: 8 }}>
             <div style={{ display: 'flex', gap: 8 }}>
               <LazyInput value={n.title} onSave={(title) => upd({ title })} placeholder="Titre (ex. Accès au site)" />
-              <button className="ghost" onClick={() => set(list.filter((_, j) => j !== i))} aria-label="Supprimer la note">✕</button>
+              <button className="ghost" onClick={() => set(list.filter((_, j) => j !== i))} aria-label="Supprimer la note"><Icon name="x" /></button>
             </div>
             <LazyText value={n.text} onSave={(text) => upd({ text })} />
             <div className="muted" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 12 }}>
@@ -347,7 +348,7 @@ function Tasks({ project }: { project: Project }) {
           <input type="checkbox" checked={t.done} onChange={(e) => setTasks(tasks.map((x) => (x.id === t.id ? { ...x, done: e.target.checked } : x)))} />
           <span style={{ flex: 1 }}>{t.text}</span>
           {t.due && <span className={!t.done && t.due < today ? 'avail ko' : 'muted'} style={{ fontSize: 12 }}>{fmtDate(t.due, false)}</span>}
-          <button className="ghost" onClick={() => setTasks(tasks.filter((x) => x.id !== t.id))} aria-label="Supprimer">✕</button>
+          <button className="ghost" onClick={() => setTasks(tasks.filter((x) => x.id !== t.id))} aria-label="Supprimer"><Icon name="x" /></button>
         </div>
       ))}
       <form className="toolbar" style={{ marginTop: 8, marginBottom: 0 }} onSubmit={(e) => {
@@ -379,7 +380,7 @@ function Files({ projectId }: { projectId: string }) {
         <div key={f.id} className="task">
           <a href="#" onClick={(e) => { e.preventDefault(); open(f); }} style={{ flex: 1 }}>{f.name}</a>
           <span className="muted" style={{ fontSize: 12 }}>{Math.max(1, Math.round(f.size / 1024))} Ko</span>
-          <button className="ghost" onClick={() => confirm(`Supprimer ${f.name} ?`) && db.files.delete(f.id)} aria-label="Supprimer">✕</button>
+          <button className="ghost" onClick={() => confirm(`Supprimer ${f.name} ?`) && db.files.delete(f.id)} aria-label="Supprimer"><Icon name="x" /></button>
         </div>
       ))}
       <label className="btn secondary" style={{ background: 'var(--soft)', color: 'var(--text)', border: '1px solid var(--border)', marginTop: 8 }}>

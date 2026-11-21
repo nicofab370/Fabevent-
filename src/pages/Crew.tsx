@@ -6,6 +6,7 @@ import type { Person, ProjectFile, Unavailability } from '../types';
 import { buildIcs, crewWindow, download, fmtRange, money, save, toLocalInput, uid } from '../utils';
 import { CsvButton, exportCsv } from '../components/extra';
 import { newToken, signupLink } from '../mailer';
+import { Icon } from '../components/Icon';
 
 type Draft = Partial<Person> & { name: string; dailyRate: number; external: boolean };
 
@@ -176,7 +177,7 @@ function UnavailabilityModal({ person, list, onClose }: { person: Person; list: 
         <table className="list">
           <tbody>
             {list.sort((a, b) => a.start.localeCompare(b.start)).map((u) => (
-              <tr key={u.id}><td>{fmtRange(u.start, u.end)}</td><td>{u.reason}</td><td><button className="ghost" onClick={() => db.unavailability.delete(u.id)} aria-label="Retirer">✕</button></td></tr>
+              <tr key={u.id}><td>{fmtRange(u.start, u.end)}</td><td>{u.reason}</td><td><button className="ghost" onClick={() => db.unavailability.delete(u.id)} aria-label="Retirer"><Icon name="x" /></button></td></tr>
             ))}
           </tbody>
         </table>
@@ -220,7 +221,7 @@ function PersonDocs({ person, files, onClose }: { person: Person; files: Project
                   {f.expires && f.expires < today && <span className="avail ko"> expiré</span>}
                   {f.expires && f.expires >= today && f.expires <= soon && <span className="avail ko"> expire bientôt</span>}
                 </td>
-                <td><button className="ghost" onClick={() => confirm(`Supprimer ${f.name} ?`) && db.files.delete(f.id)} aria-label="Supprimer">✕</button></td>
+                <td><button className="ghost" onClick={() => confirm(`Supprimer ${f.name} ?`) && db.files.delete(f.id)} aria-label="Supprimer"><Icon name="x" /></button></td>
               </tr>
             ))}
           </tbody>

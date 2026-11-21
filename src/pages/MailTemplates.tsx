@@ -3,6 +3,7 @@ import { Empty, Field, PageHead, useSettings } from '../components/ui';
 import { db } from '../db';
 import { DEFAULT_TEMPLATES, MAIL_KINDS, MAIL_VARS, newTemplate } from '../mailer';
 import type { MailKind, MailTemplate } from '../types';
+import { Icon } from '../components/Icon';
 
 /** Modèles de mail par type d'envoi (devis, facture, demande de dispo, confirmation…), avec variables. */
 export default function MailTemplates() {
@@ -41,9 +42,9 @@ export default function MailTemplates() {
               <tr key={t.id}>
                 <td><strong>{t.name}</strong>{i === 0 && <span className="badge" style={{ marginLeft: 6 }}>proposé d'office</span>}<div className="muted">{t.subject}</div></td>
                 <td className="nowrap">
-                  {i > 0 && <button className="ghost small" title="Proposer d'office" onClick={() => store([t, ...list.filter((x) => x.id !== t.id)])}>↑ En premier</button>}
+                  {i > 0 && <button className="ghost small" title="Proposer d'office" onClick={() => store([t, ...list.filter((x) => x.id !== t.id)])}><Icon name="arrow-up" />En premier</button>}
                   <button className="secondary small" onClick={() => setEdit(t)}>Modifier</button>
-                  <button className="ghost small" aria-label={`Supprimer ${t.name}`} onClick={() => confirm(`Supprimer le modèle « ${t.name} » ?`) && store(list.filter((x) => x.id !== t.id))}>✕</button>
+                  <button className="ghost small" aria-label={`Supprimer ${t.name}`} onClick={() => confirm(`Supprimer le modèle « ${t.name} » ?`) && store(list.filter((x) => x.id !== t.id))}><Icon name="x" /></button>
                 </td>
               </tr>
             ))}</tbody></table>

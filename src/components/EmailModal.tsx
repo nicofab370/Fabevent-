@@ -8,6 +8,7 @@ import { safeFileName } from '../pdf';
 import type { MailKind } from '../types';
 import { download } from '../utils';
 import { Field, Modal, useSettings } from './ui';
+import { Icon } from './Icon';
 
 const size = (b: Blob) => (b.size > 1024 * 1024 ? `${(b.size / 1024 / 1024).toFixed(1)} Mo` : `${Math.max(1, Math.round(b.size / 1024))} Ko`);
 
@@ -48,7 +49,7 @@ export function Recipients({ label, value, onChange, book }: { label: string; va
       <div className="rcpt-box">
         {list.map((e) => (
           <span key={e} className="rcpt" title={e}>{nameOf(e) ? <>{nameOf(e)} <small>{e}</small></> : e}
-            <button type="button" aria-label={`Retirer ${e}`} onClick={() => onChange(list.filter((x) => x !== e).join(', '))}>✕</button></span>
+            <button type="button" aria-label={`Retirer ${e}`} onClick={() => onChange(list.filter((x) => x !== e).join(', '))}><Icon name="x" /></button></span>
         ))}
         <input value={q} aria-label={`${label} : ajouter une adresse`} placeholder={list.length ? '' : 'Nom ou adresse…'} onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => { setOpen(false); if (q.includes('@')) add(q); }, 150)}
           onChange={(e) => { const v = e.target.value; if (/[,;]$/.test(v)) add(v); else setQ(v); }}
@@ -56,7 +57,7 @@ export function Recipients({ label, value, onChange, book }: { label: string; va
             if (e.key === 'Enter') { e.preventDefault(); if (hits[0] && !q.includes('@')) add(hits[0].email); else if (q.trim()) add(q); }
             if (e.key === 'Backspace' && !q && list.length) onChange(list.slice(0, -1).join(', '));
           }} />
-        <button type="button" className="ghost small" title="Carnet d'adresses" aria-label={`Carnet d'adresses (${label})`} onClick={() => setPicker(true)}>📒</button>
+        <button type="button" className="ghost small" title="Carnet d'adresses" aria-label={`Carnet d'adresses (${label})`} onClick={() => setPicker(true)}><Icon name="book" /></button>
       </div>
       {open && hits.length > 0 && (
         <div className="rcpt-hits">
@@ -187,7 +188,7 @@ export function EmailModal({ initial, prepare, onSent, onClose, kind, vars }: {
           {error ? <div className="avail ko">{error}</div> : !files ? <p className="muted" style={{ margin: 0 }}>Préparation des pièces jointes…</p> : files.length === 0 ? <p className="muted" style={{ margin: 0 }}>Aucune.</p> : (
             <ul className="attachments" style={{ margin: 0, paddingLeft: 18 }}>
               {files.map((f) => (
-                <li key={f.name}>📎 <a href="#" onClick={(e) => { e.preventDefault(); download(f.name, f.blob, f.type); }}>{f.name}</a> <span className="muted">({size(f.blob)})</span></li>
+                <li key={f.name}><Icon name="clip" /> <a href="#" onClick={(e) => { e.preventDefault(); download(f.name, f.blob, f.type); }}>{f.name}</a> <span className="muted">({size(f.blob)})</span></li>
               ))}
             </ul>
           )}
@@ -200,9 +201,9 @@ export function EmailModal({ initial, prepare, onSent, onClose, kind, vars }: {
             setBusy(true); setError('');
             try {
               const r = await sendMail({ ...m, cc, bcc: copyMe && me ? me : '', replyTo: me }, files!);
-              finish(`Envoyé à ${r.to.join(', ')}${cc ? ` (copie : ${cc})` : ''} ✓`, 'direct');
+              finish(`Envoyé à ${r.to.join(', ')}${cc ? ` (copie : ${cc})` : ''}`, 'direct');
             } catch (e) { setError('Envoi impossible : ' + (e as Error).message); } finally { setBusy(false); }
-          }}>{busy ? 'Envoi…' : `✉ Envoyer${files?.length ? ` avec ${files.length} pièce(s) jointe(s)` : ''}`}</button>
+          }}>{busy ? 'Envoi…' : <><Icon name="send" />{`Envoyer${files?.length ? ` avec ${files.length} pièce(s) jointe(s)` : ''}`}</>}</button>
           {me && <label className="check-row"><input type="checkbox" checked={copyMe} onChange={(e) => setCopyMe(e.target.checked)} /> Copie cachée à moi ({me}) — les réponses arrivent à cette adresse</label>}
         </div>
       )}

@@ -373,7 +373,7 @@ export async function confirmDeleteSubproject(sp: { id: string; name: string; pr
   const out = lines.reduce((a, l) => a + Math.max(0, (l.outQty || 0) - (l.inQty || 0)), 0);
   const people = crew.filter((c) => c.personId).length;
   const warn = [
-    out ? `⚠ ${out} article(s) sorti(s) et pas encore rentré(s) : fais d'abord le retour, sinon ils disparaissent de la checklist.` : '',
+    out ? `Attention : ${out} article(s) sorti(s) et pas encore rentré(s) : fais d'abord le retour, sinon ils disparaissent de la checklist.` : '',
     people ? `${people} technicien(s) affecté(s) perdront ce poste.` : '',
     siblings <= 1 ? 'C\'est le dernier sous-projet du projet.' : '',
   ].filter(Boolean);

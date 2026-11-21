@@ -13,6 +13,7 @@ import { RepairModal } from './Maintenance';
 import { ItemSheet, beep } from './Inventory';
 import { addEquipmentToSub } from './project/EquipmentTab';
 import { warehouseStatus } from './project/status';
+import { Icon, type IconName } from '../components/Icon';
 
 /*
  * Checklist de sortie et de retour — reprise de la Checklist FABRI.live (sitefab/checklist), désormais native :
@@ -74,7 +75,7 @@ export interface ChecklistSource {
   /** une ligne de plus sur une ligne existante */
   bumpQty: (key: string, n: number) => Promise<void>;
   /** actions en plus dans le menu ⋯ */
-  menuExtra?: { label: string; run: () => void }[];
+  menuExtra?: { label: string; run: () => void; icon?: IconName }[];
   /** checklist libre : modifier les lignes et la liste */
   edit?: {
     update: (key: string, d: LineDraft) => Promise<void>;
@@ -175,11 +176,11 @@ export function ChecklistView({ src }: { src: ChecklistSource }) {
         return false;
       }
       if (st === 'repair' && ph === 'sortie') {
-        say({ ok: false, msg: `🔧 ${name} est en réparation (hors service) : elle ne doit pas partir.` });
+        say({ ok: false, msg: `${name} est en réparation (hors service) : elle ne doit pas partir.` });
         return false;
       }
     }
-    const fixNote = unit?.defect ? ` · ⚠ à réparer : ${unit.defect}` : '';
+    const fixNote = unit?.defect ? ` · à réparer : ${unit.defect}` : '';
     const contentNote = eq.contents?.length ? ` · vérifie le contenu : ${contentsText(eq)}` : '';
     const cands = src.lines.filter((l) => l.equipmentId === eq.id && !isKit(l) && inPhase(l, ph));
     // QR d'un kit (ligne qui a du contenu) : valider tout le kit d'un coup
@@ -194,7 +195,7 @@ export function ChecklistView({ src }: { src: ChecklistSource }) {
           title: `Kit ${eq.name} : marquer comme ${verb} tout son contenu ?`,
           body: <ul className="cl-asklist">{rest.map((k) => <li key={k.key}>{target(k, ph) - counted(k, ph)} × {k.name}</li>)}</ul>,
           okLabel: ph === 'sortie' ? 'Valider la sortie du kit' : 'Valider le retour du kit',
-          onOk: async () => { for (const k of rest) await setN(k, target(k, ph)); say({ ok: true, msg: `Kit ${eq.name} ✓ ${verb} (${rest.length} ligne(s))` }); },
+          onOk: async () => { for (const k of rest) await setN(k, target(k, ph)); say({ ok: true, msg: `Kit ${eq.name} : ${verb} (${rest.length} ligne(s))` }); },
         });
         return true;
       }
@@ -221,7 +222,7 @@ export function ChecklistView({ src }: { src: ChecklistSource }) {
         beep(false);
         setAsk({
           title: `${eq.name} : les ${line.qty} prévus sont déjà sortis. Ajouter ${unitLabel(eq.id, unit.serial)} en plus ?`, okLabel: 'Oui, +1',
-          onOk: async () => { await src.bumpQty(line.key, 1); await src.setSerials(line.key, ph, [...serials, unit.serial]); say({ ok: true, msg: `Sortie : ${name} ✓ en plus (${cur + 1}/${t + 1})` }); },
+          onOk: async () => { await src.bumpQty(line.key, 1); await src.setSerials(line.key, ph, [...serials, unit.serial]); say({ ok: true, msg: `Sortie : ${name} en plus (${cur + 1}/${t + 1})` }); },
         });
         return false;
       }
@@ -284,32 +285,32 @@ export function ChecklistView({ src }: { src: ChecklistSource }) {
     return (
       <div key={l.key} className={`cl-line ${st}${kid ? ' kid' : ''}${kit ? ' kit' : ''}`} data-line={l.name} role="checkbox" aria-checked={st === 'done'} tabIndex={0}
         onClick={() => (editing && src.edit ? setLineEdit({ line: l }) : toggle(l))} onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); (e.currentTarget as HTMLElement).click(); } }}>
-        <button type="button" className="cl-check" aria-label={st === 'done' ? 'Décocher' : 'Tout cocher'} disabled={serial && !editing} tabIndex={-1}>{st === 'done' ? '✓' : st === 'part' ? '◐' : ''}</button>
+        <button type="button" className="cl-check" aria-label={st === 'done' ? 'Décocher' : 'Tout cocher'} disabled={serial && !editing} tabIndex={-1}>{st === 'done' ? <Icon name="check" /> : st === 'part' ? <Icon name="minus" /> : null}</button>
         <div className="cl-name">
           <div className="cl-title"><span className="cl-q">{kit ? l.qty : t}×</span> <strong>{l.name}</strong>
             {kit && <span className="tag small">KIT · {kidsOf(l).filter(lineDone).length}/{kidsOf(l).length}</span>}
             {l.extra && <span className="tag small">en plus</span>}</div>
-          {(l.code || l.location || l.remark) && <div className="cl-meta">{[l.code, l.location && `📍 ${l.location}`, l.remark].filter(Boolean).join(' · ')}</div>}
-          {l.contents && <div className="cl-meta cl-contents">↳ avec : {l.contents}</div>}
+          {(l.code || l.location || l.remark) && <div className="cl-meta">{l.code}{l.location && <span className="loc"><Icon name="pin" />{l.location}</span>}{l.remark && <span>{(l.code || l.location) ? ' · ' : ''}{l.remark}</span>}</div>}
+          {l.contents && <div className="cl-meta cl-contents"><Icon name="corner" />avec : {l.contents}</div>}
           {serial && !kit && (
             <div className="cl-units">
               {outU.map((s) => {
                 const u = av.units.find((x) => x.equipmentId === l.equipmentId && x.serial === s);
-                return <span key={s} className={'unit-chip ' + (ph === 'retour' ? 'miss' : 'ok')} title={u?.defect ? `À réparer : ${u.defect}` : ''}>{ph === 'retour' ? 'manque ' : ''}{unitLabel(l.equipmentId, s)}{u?.defect ? ' 🔧' : ''}</span>;
+                return <span key={s} className={'unit-chip ' + (ph === 'retour' ? 'miss' : 'ok')} title={u?.defect ? `À réparer : ${u.defect}` : ''}>{ph === 'retour' ? 'manque ' : ''}{unitLabel(l.equipmentId, s)}{u?.defect && <Icon name="wrench" />}</span>;
               })}
-              {ph === 'retour' && l.inSerials.length > 0 && l.inSerials.map((s) => <span key={'b' + s} className="unit-chip ok">{unitLabel(l.equipmentId, s)} ✓</span>)}
-              {n < t && <span className="muted cl-hint">📷 scanne chaque unité</span>}
+              {ph === 'retour' && l.inSerials.length > 0 && l.inSerials.map((s) => <span key={'b' + s} className="unit-chip ok">{unitLabel(l.equipmentId, s)} <Icon name="check" /></span>)}
+              {n < t && <span className="muted cl-hint"><Icon name="camera" />scanne chaque unité</span>}
             </div>
           )}
         </div>
         {!editing && (
           <div className="cl-count" onClick={(e) => e.stopPropagation()}>
             {!kit && !serial && t > 1 && <button type="button" className="ghost" aria-label="Moins" onClick={() => setN(l, n - 1)}>−</button>}
-            {!kit && <span className="cl-n" title={serial ? 'Scanne chaque unité' : undefined}>{serial && '📷 '}<b>{n}</b>/{t}</span>}
+            {!kit && <span className="cl-n" title={serial ? 'Scanne chaque unité' : undefined}>{serial && <Icon name="camera" />}<b>{n}</b>/{t}</span>}
             {!kit && !serial && t > 1 && <button type="button" className="ghost" aria-label="Plus" onClick={() => (n < t || ph === 'retour' ? setN(l, n + 1) : src.bumpQty(l.key, 1).then(() => setN(l, n + 1)))}>+</button>}
-            {l.equipmentId && <button type="button" className="ghost small" aria-label={`Infos ${l.name}`} title="Infos (stock, unités, où est-il ?)" onClick={() => setSheet(l.equipmentId!)}>ℹ</button>}
+            {l.equipmentId && <button type="button" className="ghost small" aria-label={`Infos ${l.name}`} title="Infos (stock, unités, où est-il ?)" onClick={() => setSheet(l.equipmentId!)}><Icon name="info" /></button>}
             {ph === 'retour' && l.equipmentId && !kit && <button type="button" className="secondary small" onClick={() => setBroken(l)}>Cassé</button>}
-            {kit && <button type="button" className="ghost small" aria-label="Déplier" aria-expanded={!fold[`${src.title}|k|${l.key}`]} onClick={() => setFold(`${src.title}|k|${l.key}`, !fold[`${src.title}|k|${l.key}`])}>{fold[`${src.title}|k|${l.key}`] ? '▸' : '▾'}</button>}
+            {kit && <button type="button" className="ghost small" aria-label="Déplier" aria-expanded={!fold[`${src.title}|k|${l.key}`]} onClick={() => setFold(`${src.title}|k|${l.key}`, !fold[`${src.title}|k|${l.key}`])}><Icon name={fold[`${src.title}|k|${l.key}`] ? 'chevron-right' : 'chevron-down'} /></button>}
           </div>
         )}
       </div>
@@ -336,7 +337,7 @@ export function ChecklistView({ src }: { src: ChecklistSource }) {
     return (
       <section key={cat} className="card checklist-cat">
         <button type="button" className="cl-chead" aria-expanded={open} onClick={() => setFold(fk, !fold[fk])}>
-          <span>{open ? '▾' : '▸'}</span><h3>{cat}</h3><span className={'cl-cnt' + (dn === lv.length && lv.length ? ' full' : '')}>{dn}/{lv.length}</span>
+          <Icon name={open ? 'chevron-down' : 'chevron-right'} /><h3>{cat}</h3><span className={'cl-cnt' + (dn === lv.length && lv.length ? ' full' : '')}>{dn}/{lv.length}</span>
         </button>
         {open && rows}
         {open && editing && src.edit && <button type="button" className="ghost small cl-addrow" onClick={() => setLineEdit({ cat })}>+ Ajouter une ligne</button>}
@@ -360,22 +361,22 @@ export function ChecklistView({ src }: { src: ChecklistSource }) {
   return (
     <>
       <PageHead title={src.title}>
-        {src.backTo && <Link to={src.backTo.to}><button className="secondary">← {src.backTo.label}</button></Link>}
-        <button className="secondary" aria-label="Menu de la checklist" onClick={() => setMenu(true)}>⋯</button>
+        {src.backTo && <Link to={src.backTo.to}><button className="secondary"><Icon name="arrow-left" />{src.backTo.label}</button></Link>}
+        <button className="secondary" aria-label="Menu de la checklist" onClick={() => setMenu(true)}><Icon name="more" /></button>
       </PageHead>
       {src.subtitle && <div className="info">{src.subtitle}</div>}
       <div className="card checklist-scan">
         <div className="cl-phrow">
           <div className="seg cl-phase" role="group" aria-label="Phase">
-            <button type="button" aria-pressed={ph === 'sortie'} onClick={() => { src.setPhase('sortie'); setFlash(null); setAsk(null); setFilter('all'); }}>↑ Sortie</button>
-            <button type="button" aria-pressed={ph === 'retour'} onClick={() => { src.setPhase('retour'); setFlash(null); setAsk(null); setFilter('all'); }}>↓ Retour</button>
+            <button type="button" aria-pressed={ph === 'sortie'} onClick={() => { src.setPhase('sortie'); setFlash(null); setAsk(null); setFilter('all'); }}><Icon name="arrow-up" />Sortie</button>
+            <button type="button" aria-pressed={ph === 'retour'} onClick={() => { src.setPhase('retour'); setFlash(null); setAsk(null); setFilter('all'); }}><Icon name="arrow-down" />Retour</button>
           </div>
-          <button type="button" className={infoMode ? '' : 'secondary'} aria-pressed={infoMode} title="Scanner un code pour voir sa fiche, sans rien compter" onClick={() => { setInfoMode(!infoMode); inputRef.current?.focus(); }}>ℹ Infos</button>
+          <button type="button" className={infoMode ? '' : 'secondary'} aria-pressed={infoMode} title="Scanner un code pour voir sa fiche, sans rien compter" onClick={() => { setInfoMode(!infoMode); inputRef.current?.focus(); }}><Icon name="info" />Infos</button>
         </div>
         <div className="toolbar">
           <input ref={inputRef} className="scan-input" autoFocus placeholder={infoMode ? 'Infos : scanne un code pour voir sa fiche…' : `Scanner (${ph === 'sortie' ? 'sortie' : 'retour'}) à la douchette ou taper un code…`} value={code}
             onChange={(e) => setCode(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handle(code)} enterKeyHint="go" style={{ maxWidth: 'none', flex: 1 }} />
-          <button className="secondary" onClick={() => setCamera(!camera)}>{camera ? 'Fermer la caméra' : '📷 Caméra'}</button>
+          <button className="secondary" onClick={() => setCamera(!camera)}>{camera ? 'Fermer la caméra' : <><Icon name="camera" />Caméra</>}</button>
         </div>
         <label className="check-row cl-perscan"><input type="checkbox" checked={perScan} onChange={(e) => { setPerScan(e.target.checked); try { localStorage.setItem('fab.cl.perScan', e.target.checked ? '1' : '0'); } catch { /* sans stockage */ } }} />
           Chaque scan compte 1 (sinon le scan d'un article en vrac demande combien, le reste par défaut)</label>
@@ -410,7 +411,7 @@ export function ChecklistView({ src }: { src: ChecklistSource }) {
 
       {ph === 'retour' && !editing && (
         <div className={'cl-banner' + (nMissing ? '' : ' ok')}>
-          <span>{nMissing ? <>Retour : <b>{nMissing}</b> élément(s) pas encore rentré(s){src.lostSent.length ? ' · pertes déjà déclarées' : ''}</> : 'Retour : tout ce qui est sorti est rentré ✓'}</span>
+          <span>{nMissing ? <>Retour : <b>{nMissing}</b> élément(s) pas encore rentré(s){src.lostSent.length ? ' · pertes déjà déclarées' : ''}</> : 'Retour : tout ce qui est sorti est rentré.'}</span>
           <button className="small" onClick={() => setSummary(true)}>Bilan du retour</button>
         </div>
       )}
@@ -426,12 +427,12 @@ export function ChecklistView({ src }: { src: ChecklistSource }) {
       {menu && (
         <Modal title={src.title} onClose={() => setMenu(false)}>
           <div className="cl-menu">
-            {src.edit && <button className="secondary" onClick={() => { setEditing(!editing); setMenu(false); }}>{editing ? 'Quitter le mode édition' : '✎ Modifier les lignes (corriger l\'import)'}</button>}
+            {src.edit && <button className="secondary" onClick={() => { setEditing(!editing); setMenu(false); }}>{editing ? 'Quitter le mode édition' : <><Icon name="edit" />Modifier les lignes (corriger l'import)</>}</button>}
             <button className="secondary" onClick={() => { const v = !allFolded; const n = { ...fold }; for (const c of cats) n[`${src.title}|c|${c}`] = v; for (const l of src.lines) if (isKit(l)) n[`${src.title}|k|${l.key}`] = v; setFoldState(n); try { localStorage.setItem(FOLD, JSON.stringify(n)); } catch { /* */ } setMenu(false); }}>{allFolded ? 'Tout déplier' : 'Tout replier'}</button>
-            {src.menuExtra?.map((m) => <button key={m.label} className="secondary" onClick={() => { setMenu(false); m.run(); }}>{m.label}</button>)}
-            <button className="secondary" onClick={async () => { setMenu(false); await resetPhase(); }}>↺ Tout décocher ({ph})</button>
-            <button className="secondary" onClick={() => { setMenu(false); printSheet(src, false, isKit); }}>🖨 Imprimer / PDF (A4) avec l'état actuel</button>
-            <button className="secondary" onClick={() => { setMenu(false); printSheet(src, true, isKit); }}>🖨 Imprimer vierge (à remplir à la main)</button>
+            {src.menuExtra?.map((m) => <button key={m.label} className="secondary" onClick={() => { setMenu(false); m.run(); }}>{m.icon && <Icon name={m.icon} />}{m.label}</button>)}
+            <button className="secondary" onClick={async () => { setMenu(false); await resetPhase(); }}><Icon name="reset" />Tout décocher ({ph})</button>
+            <button className="secondary" onClick={() => { setMenu(false); printSheet(src, false, isKit); }}><Icon name="printer" />Imprimer / PDF (A4) avec l'état actuel</button>
+            <button className="secondary" onClick={() => { setMenu(false); printSheet(src, true, isKit); }}><Icon name="printer" />Imprimer vierge (à remplir à la main)</button>
             {src.edit && <>
               <button className="secondary" onClick={async () => { const n = prompt('Titre de la checklist', src.title)?.trim(); if (n) await src.edit!.rename(n); setMenu(false); }}>Renommer</button>
               <button className="secondary" onClick={async () => { setMenu(false); await src.edit!.duplicate(); }}>Dupliquer (nouvelle préparation à zéro)</button>
@@ -555,7 +556,7 @@ function ReturnSummary({ src, units, equipment, isKit, onClose }: { src: Checkli
   const nb = missing.reduce((a, l) => a + l.out - l.back, 0);
   return (
     <Modal title="Bilan du retour" onClose={onClose} wide>
-      {missing.length === 0 ? <p className="avail ok" style={{ fontSize: 16 }}>Tout ce qui est sorti est rentré ✓</p> : (
+      {missing.length === 0 ? <p className="avail ok" style={{ fontSize: 16 }}><Icon name="check" />Tout ce qui est sorti est rentré.</p> : (
         <>
           <p className="muted" style={{ marginTop: 0 }}>{nb} élément(s) sortis ne sont pas rentrés. Coche ce qui est <b>perdu</b> (décoche ce qui revient plus tard).</p>
           {rows.length > 0 && (
@@ -747,7 +748,7 @@ export function FreeChecklistPage() {
     backTo: { to: '/checklists', label: 'Checklists' },
     label: cl.title,
     kitMode: true,
-    menuExtra: [{ label: cl.projectId ? '📁 Ouvrir le projet créé avec cette liste' : '📁 Créer un projet avec cette liste', run: () => (cl.projectId ? nav('/projets/' + cl.projectId) : setToProject(true)) }],
+    menuExtra: [{ icon: 'folder', label: cl.projectId ? 'Ouvrir le projet créé avec cette liste' : 'Créer un projet avec cette liste', run: () => (cl.projectId ? nav('/projets/' + cl.projectId) : setToProject(true)) }],
     phase: cl.phase, setPhase: (p) => patch(db.checklists, cl.id, { phase: p }),
     lines: cl.lines.map((l) => ({
       key: l.id, name: l.name, code: l.code, equipmentId: l.equipmentId, qty: l.qty, out: l.out, back: l.back,

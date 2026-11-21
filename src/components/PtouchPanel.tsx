@@ -4,6 +4,7 @@ import { NumInput } from './ui';
 import {
   type Bitmap, type LabelSpec, DOTS_PER_MM, PtouchUsb, TAPES, bitmapToCanvas, mediaName, qrModuleDots, renderLabel, tapeDots, usbErrorText, webUsbAvailable,
 } from '../ptouch';
+import { Icon } from './Icon';
 
 export interface LabelData { code: string; title: string; sub: string; serial?: string; contents?: string }
 
@@ -214,7 +215,7 @@ export default function PtouchPanel({ total, collect, linkFor, company, sig = ''
       )}
 
       <div className="toolbar">
-        <button disabled={!total || busy || !usbOk} onClick={() => printUsb()}>🖨 Imprimer {total || ''} étiquette(s) sur la PT-P750W</button>
+        <button disabled={!total || busy || !usbOk} onClick={() => printUsb()}><Icon name="printer" />Imprimer {total || ''} étiquette(s) sur la PT-P750W</button>
         {usbOk && <button className="secondary" disabled={busy} onClick={() => (printer ? detect() : connect())}>{printer ? 'Lire le ruban' : 'Connecter en USB'}</button>}
         {usbOk && <button className="secondary" disabled={busy} onClick={() => printUsb(true)} title="Imprime une seule étiquette d'exemple pour vérifier le rendu">Étiquette d'essai</button>}
         <button className="secondary" disabled={!total || busy} onClick={downloadPng}>Image PNG (iPrint&Label)</button>

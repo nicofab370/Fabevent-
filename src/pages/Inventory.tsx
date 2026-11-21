@@ -11,6 +11,7 @@ import { currentWorkspace, db } from '../db';
 import type { Equipment, SerialUnit } from '../types';
 import { fmtDate, fmtRange, money, patch, save, stockIn, toLocalInput } from '../utils';
 import { AssociateModal, stockMove } from './Checklist';
+import { Icon } from '../components/Icon';
 
 /*
  * Inventaire — repris de l'Inventaire FABRI.live (sitefab/inventaire), désormais natif :
@@ -155,14 +156,14 @@ export default function Inventory() {
         // unité perdue retrouvée à l'inventaire : elle revient en stock
         await setUnitState(unit.id, 'ok', "retrouvée à l'inventaire");
         markUnits([unit.id]);
-        say({ ok: true, msg: `${e.name} n° ${unit.serial} était déclarée perdue : retrouvée et remise en stock ✓` });
+        say({ ok: true, msg: `${e.name} n° ${unit.serial} était déclarée perdue : retrouvée et remise en stock` });
         return true;
       }
-      if (st === 'repair') { say({ ok: false, msg: `🔧 ${e.name} n° ${unit.serial} est en réparation (hors service) : non comptée.`, actions: [{ label: 'Remettre en service', run: async () => { await setUnitState(unit.id, 'ok'); setFlash({ ok: true, msg: 'Remise en service. Scanne-la à nouveau.' }); } }] }); return false; }
-      if (!ui.burst) { beep(true); markUnits([unit.id]); setFlash({ ok: true, msg: `${e.name} n° ${unit.serial} ✓ (ouvert)` }); setOpen({ id: e.id, unit: unit.id }); return true; }
+      if (st === 'repair') { say({ ok: false, msg: `${e.name} n° ${unit.serial} est en réparation (hors service) : non comptée.`, actions: [{ label: 'Remettre en service', run: async () => { await setUnitState(unit.id, 'ok'); setFlash({ ok: true, msg: 'Remise en service. Scanne-la à nouveau.' }); } }] }); return false; }
+      if (!ui.burst) { beep(true); markUnits([unit.id]); setFlash({ ok: true, msg: `${e.name} n° ${unit.serial} : ouvert` }); setOpen({ id: e.id, unit: unit.id }); return true; }
       if (found.has(unit.id)) { say({ ok: false, msg: `${e.name} n° ${unit.serial} déjà compté, pas compté deux fois.` }); return false; }
       markUnits([unit.id]);
-      say({ ok: true, msg: `${e.name} n° ${unit.serial} ✓ — ${unitsHere(e.id).filter((u) => found.has(u.id)).length + 1} / ${unitsHere(e.id).length}${unit.defect ? ` · ⚠ à réparer : ${unit.defect}` : ''}` });
+      say({ ok: true, msg: `${e.name} n° ${unit.serial} — ${unitsHere(e.id).filter((u) => found.has(u.id)).length + 1} / ${unitsHere(e.id).length}${unit.defect ? ` · à réparer : ${unit.defect}` : ''}` });
       return true;
     }
     if (e.isKit && e.kitItems.length) {
@@ -228,8 +229,8 @@ export default function Inventory() {
         <div className="toolbar">
           <input ref={ref} className="scan-input" autoFocus placeholder={infoMode ? 'Infos : scanne un code pour tout voir (rien n\'est compté)…' : 'Scanner une étiquette (article, unité ou kit) ou saisir un code…'} value={code}
             onChange={(e) => setCode(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && scan(code)} enterKeyHint="search" style={{ maxWidth: 'none', flex: 1 }} />
-          <button className={infoMode ? '' : 'secondary'} onClick={() => { setInfoMode(!infoMode); ref.current?.focus(); }} title="Scanner un code pour voir toutes ses infos, sans rien compter" aria-pressed={infoMode}>ℹ Infos</button>
-          <button className="secondary" onClick={() => setCamera(!camera)}>{camera ? 'Fermer la caméra' : '📷 Caméra'}</button>
+          <button className={infoMode ? '' : 'secondary'} onClick={() => { setInfoMode(!infoMode); ref.current?.focus(); }} title="Scanner un code pour voir toutes ses infos, sans rien compter" aria-pressed={infoMode}><Icon name="info" />Infos</button>
+          <button className="secondary" onClick={() => setCamera(!camera)}>{camera ? 'Fermer la caméra' : <><Icon name="camera" />Caméra</>}</button>
         </div>
         <label className="check-row"><input type="checkbox" checked={ui.burst} onChange={(e) => setUiP({ burst: e.target.checked })} />
           Scan en continu : chaque scan compte 1 (une unité à numéro de série ne compte qu'une fois). Décoché : le scan ouvre l'article pour taper la quantité.</label>
@@ -251,7 +252,7 @@ export default function Inventory() {
         <div className="inv-bar"><i style={{ width: `${pct}%` }} /></div>
       </div>
 
-      {groups.length === 0 ? <Empty>{qn ? 'Aucun article trouvé. Crée-le avec « + Nouvel article ».' : ui.view === 'todo' ? 'Tout est compté ici 🎉' : ui.view === 'diff' ? 'Aucun écart.' : 'Aucun article.'}</Empty> : groups.map((g) => {
+      {groups.length === 0 ? <Empty>{qn ? 'Aucun article trouvé. Crée-le avec « + Nouvel article ».' : ui.view === 'todo' ? 'Tout est compté ici.' : ui.view === 'diff' ? 'Aucun écart.' : 'Aucun article.'}</Empty> : groups.map((g) => {
         const cnt = g.list.filter((e) => !e.isKit);
         return (
           <section key={g.name} className="inv-group">
@@ -274,7 +275,7 @@ export default function Inventory() {
                 return (
                   <button key={e.id} type="button" className={`inv-row st-${st}`} onClick={() => setOpen({ id: e.id })} aria-label={`Compter ${e.name}`}>
                     <span className="inv-main"><span className="inv-name">{e.name}</span>
-                      <span className="inv-sub">{e.code && <span>{e.code}</span>}{e.location && <span>📍 {e.location}</span>}{e.trackSerials && <span className="tag">n° de série</span>}{defects > 0 && <span className="tag">🔧 {defects}</span>}
+                      <span className="inv-sub">{e.code && <span>{e.code}</span>}{e.location && <span className="loc"><Icon name="pin" />{e.location}</span>}{e.trackSerials && <span className="tag">n° de série</span>}{defects > 0 && <span className="tag"><Icon name="wrench" />{defects}</span>}
                         {miss.length > 0 && <span className="warn-txt">manque {miss.length > 5 ? `${miss.length} unités` : miss.map((u) => u.barcode || u.serial).join(', ')}</span>}</span></span>
                     <span className="inv-exp"><small>attendu</small><b>{exp}</b></span>
                     <span className="inv-badge">{c === undefined ? <>—<small>à compter</small></> : <>{c}<small>{st === 'ok' ? 'conforme' : signed(c - exp)}</small></>}</span>
@@ -363,7 +364,7 @@ function CountModal({ e, exp, parts: parts0, onSave, onClear, onClose, onPrint, 
   return (
     <Modal title={e.name} onClose={onClose}>
       <div className="inv-count">
-        <div className="muted">{[e.code, e.location && `📍 ${e.location}`].filter(Boolean).join(' · ')}</div>
+        <div className="muted">{e.code}{e.location && <span className="loc"><Icon name="pin" />{e.location}</span>}</div>
         <div className="inv-expect"><span className="muted">Attendu</span><b>{exp}</b></div>
         {mode === 'add' && <div className="inv-expect"><span className="muted">Déjà compté{parts.length > 1 ? ` (${parts.join(' + ')})` : ''}</span><b>{before}</b></div>}
         <div className="inv-lab">{mode === 'add' ? 'Trouvés ici (en plus)' : parts0.length ? 'Total compté' : 'Quantité comptée'}</div>
@@ -374,7 +375,7 @@ function CountModal({ e, exp, parts: parts0, onSave, onClear, onClose, onPrint, 
           <button type="button" onClick={() => step(1)} aria-label="Un de plus">+</button>
         </div>
         <div className={'inv-diff ' + (x === null ? '' : x === 0 ? 'ok' : 'ko')}>
-          {x === null ? '' : `${mode === 'add' && val !== null ? `Total ${before} + ${val} = ${total} · ` : mode === 'add' ? `Total ${before} · ` : ''}${x === 0 ? 'Conforme ✓' : `Écart ${signed(x)}`}`}
+          {x === null ? '' : `${mode === 'add' && val !== null ? `Total ${before} + ${val} = ${total} · ` : mode === 'add' ? `Total ${before} · ` : ''}${x === 0 ? 'Conforme' : `Écart ${signed(x)}`}`}
         </div>
         <div className="inv-quick">
           {parts0.length > 0 && <button type="button" className="secondary" onClick={() => { const m = mode === 'add' ? 'set' : 'add'; setMode(m); setTxt(m === 'set' ? String(before) : ''); }}>{mode === 'add' ? 'Corriger le total' : 'Ajouter à ce qui est déjà compté'}</button>}
@@ -382,8 +383,8 @@ function CountModal({ e, exp, parts: parts0, onSave, onClear, onClose, onPrint, 
         </div>
         <div className="inv-quick">
           <button type="button" className="secondary" onClick={() => { onSave(exp, [exp]); onClose(); }}>Conforme ({exp})</button>
-          <button type="button" className="secondary" onClick={onPrint}>🏷 Étiquette</button>
-          <button type="button" className="secondary" onClick={onInfo}>ℹ Infos</button>
+          <button type="button" className="secondary" onClick={onPrint}><Icon name="tag" />Étiquette</button>
+          <button type="button" className="secondary" onClick={onInfo}><Icon name="info" />Infos</button>
           <button type="button" className="secondary" onClick={onAddStock}>+ Ajouter du stock</button>
           {parts0.length > 0 && <button type="button" className="ghost" onClick={() => { onClear(); onClose(); }}>Pas compté (effacer)</button>}
         </div>
@@ -421,20 +422,20 @@ function UnitsModal({ e, here, all, found, flash, equipment, units, onToggle, on
     if (!hit.unit) return ko("C'est l'étiquette de l'article : scanne celle de chaque unité.");
     const u = hit.unit, st = unitState(u);
     if (st === 'repair') return ko(`${label(u)} est en réparation (hors service) : pas comptée.`);
-    if (st === 'lost') { await setUnitState(u.id, 'ok', "retrouvée à l'inventaire"); onMark([u.id]); setHl(u.id); setMsg({ ok: true, t: `${label(u)} était perdue : retrouvée et remise en stock ✓` }); beep(true); return true; }
+    if (st === 'lost') { await setUnitState(u.id, 'ok', "retrouvée à l'inventaire"); onMark([u.id]); setHl(u.id); setMsg({ ok: true, t: `${label(u)} était perdue : retrouvée et remise en stock` }); beep(true); return true; }
     if (found.has(u.id)) return ko(`${label(u)} déjà scannée, pas comptée deux fois.`);
     onMark([u.id]); setHl(u.id); beep(true);
-    setMsg({ ok: true, t: `${label(u)} ✓ — ${seen.length + 1} / ${here.length}` });
+    setMsg({ ok: true, t: `${label(u)} — ${seen.length + 1} / ${here.length}` });
     return true;
   };
   return (
     <Modal title={e.name} onClose={onClose} wide>
-      <div className="muted">{[e.code, e.location && `📍 ${e.location}`].filter(Boolean).join(' · ')}</div>
+      <div className="muted">{e.code}{e.location && <span className="loc"><Icon name="pin" />{e.location}</span>}</div>
       <div className="inv-expect"><span className="muted">Unités vues</span><b>{seen.length} / {here.length}</b></div>
       <p className="muted">Scanne l'étiquette de chaque unité : une unité scannée deux fois ne compte qu'une fois. Touche un numéro pour le cocher ou le décocher à la main.</p>
       <div className="toolbar">
         <input className="unit-scan" placeholder="Scanner les unités…" value={code} onChange={(ev) => setCode(ev.target.value)} onKeyDown={(ev) => ev.key === 'Enter' && scanHere(code)} aria-label="Scanner une unité" autoFocus />
-        <button type="button" className="secondary" onClick={() => setCamera(!camera)}>{camera ? 'Fermer la caméra' : '📷 Caméra'}</button>
+        <button type="button" className="secondary" onClick={() => setCamera(!camera)}>{camera ? 'Fermer la caméra' : <><Icon name="camera" />Caméra</>}</button>
       </div>
       {camera && <Scanner onCode={scanHere} onClose={() => setCamera(false)} />}
       {msg && <div className={'flash ' + (msg.ok ? 'ok' : 'ko')}>{msg.t}</div>}
@@ -444,14 +445,14 @@ function UnitsModal({ e, here, all, found, flash, equipment, units, onToggle, on
             title={u.serial !== label(u) ? `N° fabricant : ${u.serial}` : undefined} onClick={() => { setHl(undefined); onToggle(u.id); }}>{label(u)}</button>
         ))}
       </div>
-      <div className={'inv-umsg ' + (!started ? '' : miss.length ? 'ko' : 'ok')}>{!started ? 'Pas encore compté.' : miss.length ? `Manquent : ${miss.map(label).join(', ')}` : 'Toutes les unités sont là ✓'}</div>
+      <div className={'inv-umsg ' + (!started ? '' : miss.length ? 'ko' : 'ok')}>{!started ? 'Pas encore compté.' : miss.length ? `Manquent : ${miss.map(label).join(', ')}` : 'Toutes les unités sont là.'}</div>
       {lost.length > 0 && <p className="muted">Déclarée(s) perdue(s) : {lost.map(label).join(', ')}. Scanne-la pour la remettre en stock.</p>}
-      {rep.length > 0 && <p className="muted">🔧 En réparation, hors service (pas comptées) : {rep.map(label).join(', ')}.</p>}
-      {fix.length > 0 && <p className="muted">🔧 À réparer mais utilisables : {fix.map(label).join(', ')}.</p>}
+      {rep.length > 0 && <p className="muted"><Icon name="wrench" />En réparation, hors service (pas comptées) : {rep.map(label).join(', ')}.</p>}
+      {fix.length > 0 && <p className="muted"><Icon name="wrench" />À réparer mais utilisables : {fix.map(label).join(', ')}.</p>}
       <div className="inv-quick">
         <button type="button" className="secondary" onClick={() => onMark(here.map((u) => u.id))}>Toutes présentes</button>
-        <button type="button" className="secondary" onClick={() => onPrint(started && miss.length && miss.length < here.length ? miss.map((u) => u.id) : hl ? [hl] : undefined)}>🏷 Étiquettes{started && miss.length && miss.length < here.length ? ' (manquantes)' : hl ? ' (dernière)' : ''}</button>
-        <button type="button" className="secondary" onClick={onInfo}>ℹ Infos</button>
+        <button type="button" className="secondary" onClick={() => onPrint(started && miss.length && miss.length < here.length ? miss.map((u) => u.id) : hl ? [hl] : undefined)}><Icon name="tag" />Étiquettes{started && miss.length && miss.length < here.length ? ' (manquantes)' : hl ? ' (dernière)' : ''}</button>
+        <button type="button" className="secondary" onClick={onInfo}><Icon name="info" />Infos</button>
         {started && <button type="button" className="ghost" onClick={onReset}>Remettre à zéro</button>}
       </div>
       <form className="toolbar inv-addunit" onSubmit={async (ev) => {
@@ -494,7 +495,7 @@ function KitModal({ kit, byId, units, done, canUndo, onCommit, onUndo, onClose, 
     onCommit(qtys, us);
     const skip = rows.filter((r) => r.comp.trackSerials && !(cu[r.i] || []).length).map((r) => r.comp.name);
     setCur({}); setCurU({});
-    setMsg({ ok: true, t: `Kit n° ${done + 1} ${full || auto ? 'complet ✓' : 'incomplet enregistré'}${skip.length ? ` · à scanner unité par unité : ${skip.join(', ')}` : ''}` });
+    setMsg({ ok: true, t: `Kit n° ${done + 1} ${full || auto ? 'complet' : 'incomplet enregistré'}${skip.length ? ` · à scanner unité par unité : ${skip.join(', ')}` : ''}` });
     beep(true);
   };
   const check = (c: typeof cur, cu: typeof curU) => {
@@ -515,7 +516,7 @@ function KitModal({ kit, byId, units, done, canUndo, onCommit, onUndo, onClose, 
     } else if (r.comp.trackSerials) { setMsg({ ok: false, t: `${r.comp.name} : scanne l'étiquette de l'unité.` }); beep(false); return false; }
     else check({ ...cur, [r.i]: Math.min(r.k.qty, got(r) + 1) }, curU);
     const left = rows.filter((x) => got(x) < x.k.qty).length;
-    setMsg({ ok: true, t: `${r.comp.name} ✓${left > 1 ? ` — encore ${left - 1} article(s) à trouver` : ''}` });
+    setMsg({ ok: true, t: `${r.comp.name} trouvé${left > 1 ? ` — encore ${left - 1} article(s) à trouver` : ''}` });
     beep(true);
     return true;
   };
@@ -527,7 +528,7 @@ function KitModal({ kit, byId, units, done, canUndo, onCommit, onUndo, onClose, 
       <p className="muted"><b>Kit n° {done + 1}</b> — « Kit complet » s'il ne manque rien. Sinon touche (ou scanne) chaque article trouvé : quand tout y est, le kit est compté tout seul et on passe au suivant.</p>
       <div className="toolbar">
         <input placeholder="Scanner le contenu…" value={code} onChange={(ev) => setCode(ev.target.value)} onKeyDown={(ev) => ev.key === 'Enter' && scanHere(code)} aria-label="Scanner le contenu du kit" />
-        <button type="button" className="secondary" onClick={() => setCamera(!camera)}>{camera ? 'Fermer la caméra' : '📷 Caméra'}</button>
+        <button type="button" className="secondary" onClick={() => setCamera(!camera)}>{camera ? 'Fermer la caméra' : <><Icon name="camera" />Caméra</>}</button>
       </div>
       {camera && <Scanner onCode={scanHere} onClose={() => setCamera(false)} />}
       <div className="inv-kitlist">
@@ -536,7 +537,7 @@ function KitModal({ kit, byId, units, done, canUndo, onCommit, onUndo, onClose, 
           return (
             <div key={r.i} className={'inv-kitrow' + (ok ? ' ok' : '')} role="button" tabIndex={0}
               onClick={() => { if (r.comp.trackSerials) return; const c = { ...cur, [r.i]: ok ? 0 : r.k.qty }; const cu = { ...curU }; if (!c[r.i]) delete cu[r.i]; check(c, cu); }}>
-              <span className="inv-main"><span className="inv-name">{ok && <b className="ok-txt">✓ </b>}{r.comp.name}</span>
+              <span className="inv-main"><span className="inv-name">{ok && <Icon name="check" className="ok-txt" />}{r.comp.name}</span>
                 <span className="inv-sub">{r.comp.code}{r.comp.trackSerials ? ' · unités : scanne-les' : ''}</span></span>
               <span className="inv-kq" onClick={(ev) => ev.stopPropagation()}>
                 {r.k.qty > 1 && !r.comp.trackSerials && <button type="button" className="ghost small" aria-label="Un de moins" onClick={() => check({ ...cur, [r.i]: Math.max(0, g - 1) }, curU)}>−</button>}
@@ -548,7 +549,7 @@ function KitModal({ kit, byId, units, done, canUndo, onCommit, onUndo, onClose, 
         })}
       </div>
       <div className="inv-quick">
-        <button type="button" className="secondary" onClick={onPrint}>🏷 Étiquette du kit</button>
+        <button type="button" className="secondary" onClick={onPrint}><Icon name="tag" />Étiquette du kit</button>
         {canUndo && <button type="button" className="secondary" onClick={() => { onUndo(); setMsg({ ok: true, t: 'Dernier kit annulé.' }); }}>Annuler le dernier kit</button>}
       </div>
       <div className="form-actions">
@@ -557,7 +558,7 @@ function KitModal({ kit, byId, units, done, canUndo, onCommit, onUndo, onClose, 
           const miss = rows.filter((r) => got(r) < r.k.qty).map((r) => `${r.comp.name} (${r.k.qty - got(r)})`);
           if (confirm(`Enregistrer ce kit avec seulement ce qui a été trouvé ? Manque : ${miss.join(', ')}.`)) finish(false);
         }}>Kit incomplet : enregistrer</button>}
-        <button type="button" onClick={() => finish(true)}>Kit complet ✓</button>
+        <button type="button" onClick={() => finish(true)}><Icon name="check" />Kit complet</button>
       </div>
     </Modal>
   );
@@ -731,11 +732,11 @@ export function ItemSheet({ id, onClose }: { id: string; onClose: () => void }) 
     <Modal title={e.name} onClose={onClose} wide>
       <dl className="kv">
         <dt>Code</dt><dd>{e.code || '—'}{e.barcode && <span className="muted"> · étiquette {e.barcode}</span>}</dd>
-        {e.location && <><dt>Emplacement</dt><dd>📍 {e.location}</dd></>}
+        {e.location && <><dt>Emplacement</dt><dd><Icon name="pin" />{e.location}</dd></>}
         <dt>Stock</dt><dd><strong>{e.trackSerials ? units.filter((u) => u.status === 'ok').length : e.quantity}</strong>{e.trackSerials && ` unité(s) en service sur ${units.length}`}</dd>
         {e.contents?.length ? <><dt>Contenu fourni</dt><dd>{contentsText(e)}</dd></> : null}
         <dt>Codes en plus</dt><dd>
-          {(e.extraCodes || []).map((c) => <span key={c} className="tag small">{c} <button className="ghost small" aria-label={`Retirer ${c}`} onClick={() => removeExtraCode({ equipmentId: e.id }, c)}>✕</button></span>)}
+          {(e.extraCodes || []).map((c) => <span key={c} className="tag small">{c} <button className="ghost small" aria-label={`Retirer ${c}`} onClick={() => removeExtraCode({ equipmentId: e.id }, c)}><Icon name="x" /></button></span>)}
           <form style={{ display: 'inline-flex', gap: 4, marginLeft: 4 }} onSubmit={async (ev) => { ev.preventDefault(); if (newCode.trim()) { await addExtraCode({ equipmentId: e.id }, newCode); setNewCode(''); } }}>
             <input value={newCode} onChange={(ev) => setNewCode(ev.target.value)} placeholder="code fabricant…" style={{ width: 160 }} /><button className="secondary small" type="submit">+ Code</button>
           </form>

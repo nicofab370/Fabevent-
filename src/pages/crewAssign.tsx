@@ -7,8 +7,9 @@ import type { CrewAssignment, CrewFunction, Person, Project, Subproject, Unavail
 import { RESERVING } from '../types';
 import { crewAmount, crewCostRate, fmtRange, functionRate, money, patch, round2, toLocalInput } from '../utils';
 import { personIssue } from './project/shared';
-import { ANSWER_ICON, PostRequests, closeFilledRequests, requestsFor, useCrewDialogs } from './crewRequests';
+import { PostRequests, closeFilledRequests, requestsFor, useCrewDialogs } from './crewRequests';
 import type { CrewRequest } from '../types';
+import { Icon } from '../components/Icon';
 
 /** Tout ce qu'il faut pour proposer des techniciens sur un poste. */
 export interface CrewContext {
@@ -44,7 +45,7 @@ export function PersonSelect({ c, ctx }: { c: CrewAssignment; ctx: CrewContext }
       }}>
         <option value="">— à pourvoir —</option>
         {candidates(c, ctx).map(({ p, issue: why, cost, answer }) => (
-          <option key={p.id} value={p.id}>{answer ? `${ANSWER_ICON[answer]} ` : ''}{p.name}{p.external ? ' (ext.)' : ''} — {cost ? `${money(cost)}${unit}` : 'coût ?'}{why ? ` — ${why}` : ''}{answer === 'oui' ? ' — dispo' : answer === 'non' ? ' — pas dispo' : ''}</option>
+          <option key={p.id} value={p.id}>{p.name}{p.external ? ' (ext.)' : ''} — {cost ? `${money(cost)}${unit}` : 'coût ?'}{why ? ` — ${why}` : ''}{answer === 'oui' ? ' — dispo' : answer === 'non' ? ' — pas dispo' : ''}</option>
         ))}
       </select>
       {issue && <div className="avail ko">{issue === 'indisponible' ? 'Indisponible' : 'Déjà planifié ailleurs'}</div>}
@@ -60,7 +61,7 @@ export function CostCell({ c, person }: { c: CrewAssignment; person?: Person }) 
     <>
       <NumInput className="w-price" value={c.cost ?? personCost} onChange={(n) => patch(db.crew, c.id, { cost: n })} aria-label="Coût" />
       {c.cost != null && c.cost !== personCost && (
-        <button className="ghost small" title={`Revenir au coût de la personne (${money(personCost)}${unit})`} onClick={() => patch(db.crew, c.id, { cost: undefined })}>↺</button>
+        <button className="ghost small" title={`Revenir au coût de la personne (${money(personCost)}${unit})`} onClick={() => patch(db.crew, c.id, { cost: undefined })} aria-label="Revenir au coût de la personne"><Icon name="reset" /></button>
       )}
     </>
   );
@@ -126,7 +127,7 @@ export default function CrewAssignmentPage() {
           {functions.map((f) => <option key={f}>{f}</option>)}
         </select>
       </div>
-      {posts.length === 0 ? <div className="card"><Empty>{onlyOpen ? 'Tous les postes sont pourvus. 👍' : 'Aucun poste sur la période.'}</Empty></div> : (
+      {posts.length === 0 ? <div className="card"><Empty>{onlyOpen ? 'Tous les postes sont pourvus.' : 'Aucun poste sur la période.'}</Empty></div> : (
         [...days.entries()].map(([day, list]) => (
           <div key={day} className="card">
             <h2 style={{ marginTop: 0 }}>{new Date(day + 'T12:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</h2>

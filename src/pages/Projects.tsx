@@ -10,6 +10,7 @@ import { fmtRange, save, toLocalInput } from '../utils';
 import { ContactForm } from './Contacts';
 import { ContactPicker } from '../components/ContactPicker';
 import { CsvButton, customText, exportCsv, Tags } from '../components/extra';
+import { Icon } from '../components/Icon';
 
 type Draft = Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'number'> & Partial<Project>;
 
@@ -118,7 +119,7 @@ export default function Projects() {
     <>
       <PageHead title={showTemplates ? 'Modèles de projet' : 'Projets'}>
         <CsvButton onClick={csv} />
-        <button className="secondary" onClick={() => setShowTemplates(!showTemplates)}>{showTemplates ? '← Projets' : `Modèles (${templates.length})`}</button>
+        <button className="secondary" onClick={() => setShowTemplates(!showTemplates)}>{showTemplates ? <><Icon name="arrow-left" />Projets</> : `Modèles (${templates.length})`}</button>
         {templates.length > 0 && <button className="secondary" onClick={() => setFromTemplate(true)}>+ À partir d'un modèle</button>}
         <button onClick={() => setCreating(true)}>+ Nouveau projet</button>
       </PageHead>
