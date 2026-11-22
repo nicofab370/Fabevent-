@@ -250,6 +250,30 @@ export function availableQty(
   return stockIn(eq, depotId) - peakReserved(res, eq.id, start, end, excludeLineId, depotId);
 }
 
+/** une ligne du contenu d'un kit : quantité par kit, stock et dispo de l'élément, kits que cela permet */
+export interface KitRow { equipment: Equipment; perKit: number; stock: number; avail: number; kitsStock: number; kitsAvail: number; limiting: boolean }
+
+/**
+ * Contenu d'un kit avec les quantités : pour chaque élément, combien par kit, combien en stock (dans le dépôt),
+ * combien disponibles sur la période, et combien de kits complets cela permet. L'élément qui limite le kit est marqué.
+ */
+export function kitBreakdown(kit: Equipment, all: Equipment[], res: Reservation[], start: string, end: string, depotId?: string): { rows: KitRow[]; kitsStock: number; kitsAvail: number } {
+  const map = new Map(all.map((e) => [e.id, e]));
+  const rows: KitRow[] = [];
+  for (const k of kit.kitItems) {
+    const c = map.get(k.equipmentId);
+    if (!c) continue;
+    const per = Math.max(1, k.qty);
+    const stock = c.isKit ? kitBreakdown(c, all, res, start, end, depotId).kitsStock : depotId ? stockAt(c, depotId, res) : c.quantity;
+    const avail = Math.max(0, availableQty(c, all, res, start, end, undefined, depotId));
+    rows.push({ equipment: c, perKit: per, stock, avail, kitsStock: Math.floor(stock / per), kitsAvail: Math.floor(avail / per), limiting: false });
+  }
+  const kitsStock = rows.length ? Math.min(...rows.map((r) => r.kitsStock)) : 0;
+  const kitsAvail = rows.length ? Math.min(...rows.map((r) => r.kitsAvail)) : 0;
+  for (const r of rows) r.limiting = rows.length > 1 && r.kitsAvail === kitsAvail;
+  return { rows, kitsStock, kitsAvail };
+}
+
 export interface Conflict {
   equipment: Equipment;
   subprojectId: string;

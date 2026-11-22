@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { cleanLetter, newArticleCode, suggestCategoryLetter } from '../codegen';
 import { useNavigate } from 'react-router-dom';
 import { Empty, Field, Modal, NumInput, PageHead, useSettings } from '../components/ui';
@@ -8,7 +8,7 @@ import type { Category, Equipment } from '../types';
 import { useAvailability } from '../data';
 import { resizeImage } from '../image';
 import { CsvButton, CustomFieldsEditor, exportCsv, TagInput, Tags } from '../components/extra';
-import { availableQty, inDepot, money, save, stockAt, toLocalInput } from '../utils';
+import { availableQty, inDepot, kitBreakdown, money, save, stockAt, toLocalInput } from '../utils';
 import PrintLabelModal from '../components/PrintLabelModal';
 import { Icon } from '../components/Icon';
 import { CategoryOptions } from '../components/CategoryOptions';
@@ -255,6 +255,10 @@ export default function EquipmentList() {
   const [showCats, setShowCats] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [showAcc, setShowAcc] = useState(false);
+  /** contenu des kits affiché sous chaque kit (mémorisé sur l'appareil) ; kits repliés un par un */
+  const [kitContents, setKitContents] = useState(() => { try { return localStorage.getItem('fab.materiel.kits') !== '0'; } catch { return true; } });
+  const [folded, setFolded] = useState<Set<string>>(new Set());
+  const toggleKitContents = (on: boolean) => { setKitContents(on); setFolded(new Set()); try { localStorage.setItem('fab.materiel.kits', on ? '1' : '0'); } catch { /* stockage indisponible */ } };
   const allTags = Array.from(new Set(equipment.flatMap((e) => e.tags || []))).sort();
   const filtered = equipment.filter((e) =>
     !!e.archived === showArchived &&
@@ -297,6 +301,7 @@ export default function EquipmentList() {
             </select>
           )}
           <label className="check-row"><input type="checkbox" checked={showArchived} onChange={(x) => setShowArchived(x.target.checked)} /> Archivés</label>
+          <label className="check-row" title="Les éléments de chaque kit, avec leur quantité, sous le kit"><input type="checkbox" checked={kitContents} onChange={(x) => toggleKitContents(x.target.checked)} /> Contenu des kits</label>
           <label className="check-row" title="Chargeurs, docks… qui n'existent que comme accessoires d'autres articles"><input type="checkbox" checked={showAcc} onChange={(x) => setShowAcc(x.target.checked)} /> Éléments hors inventaire</label>
           <span className="muted" style={{ alignSelf: 'center' }}>Dispo du</span>
           <input type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} />
@@ -321,16 +326,34 @@ export default function EquipmentList() {
               <tbody>
                 {filtered.map((e) => {
                   const av = availableQty(e, equipment, res, from, to, undefined, depot || undefined);
+                  const kit = e.isKit && e.kitItems.length ? kitBreakdown(e, equipment, res, from, to, depot || undefined) : null;
+                  const open = !!kit && kitContents && !folded.has(e.id);
                   return (
-                    <tr key={e.id} className="click" onClick={() => nav('/materiel/' + e.id)}>
+                    <Fragment key={e.id}>
+                    <tr className={'click' + (kit ? ' kit-row' : '')} onClick={() => nav('/materiel/' + e.id)}>
                       <td onClick={(x) => x.stopPropagation()}><input type="checkbox" aria-label={`Sélectionner ${e.name}`} checked={selected.has(e.id)} onChange={() => toggle(e.id)} /></td>
-                      <td>{e.photo && <img src={e.photo} alt="" className="thumb" />}<strong>{e.name}</strong> {e.isKit && <span className="badge">Kit</span>} {e.kind === 'vente' && <span className="badge">vente</span>} {e.trackSerials && <span className="badge">n° série</span>} <Tags tags={e.tags} /></td>
+                      <td>{kit && kitContents && (
+                        <button type="button" className="ghost small kit-fold" aria-expanded={open} aria-label={`${open ? 'Replier' : 'Déplier'} le contenu de ${e.name}`}
+                          onClick={(x) => { x.stopPropagation(); setFolded((f) => { const n = new Set(f); if (n.has(e.id)) n.delete(e.id); else n.add(e.id); return n; }); }}>{open ? '▾' : '▸'}</button>
+                      )}{e.photo && <img src={e.photo} alt="" className="thumb" />}<strong>{e.name}</strong> {e.isKit && <span className="badge">Kit · {e.kitItems.reduce((a, k) => a + k.qty, 0)} élément(s)</span>} {e.kind === 'vente' && <span className="badge">vente</span>} {e.trackSerials && <span className="badge">n° série</span>} <Tags tags={e.tags} /></td>
                       <td>{e.code}</td>
                       <td>{e.categoryId ? catName.get(e.categoryId) : ''}</td>
-                      <td className="n" title={e._stock ? depots.map((dp) => `${dp.name} : ${stockAt(e, dp.id, res)}`).join('\n') : undefined}>{e.isKit || e.accessoryOnly ? '—' : depot ? stockAt(e, depot, res) : e.quantity}</td>
+                      <td className="n" title={e._stock ? depots.map((dp) => `${dp.name} : ${stockAt(e, dp.id, res)}`).join('\n') : undefined}>{kit ? <span title="Kits complets possibles avec le stock des éléments">{kit.kitsStock} kit{kit.kitsStock > 1 ? 's' : ''}</span> : e.isKit || e.accessoryOnly ? '—' : depot ? stockAt(e, depot, res) : e.quantity}</td>
                       <td className="n">{e.accessoryOnly ? <span className="muted">hors inventaire</span> : <span className={'avail ' + (av > 0 ? 'ok' : 'ko')}>{av}</span>}</td>
                       <td className="n">{money(e.dailyPrice)}{e.kind === 'vente' ? ' /pce' : ''}</td>
                     </tr>
+                    {open && kit!.rows.map((r) => (
+                      <tr key={e.id + '>' + r.equipment.id} className={'click kit-child' + (r.limiting ? ' limiting' : '')} onClick={() => nav('/materiel/' + r.equipment.id)}>
+                        <td />
+                        <td><span className="kit-qty">{r.perKit} ×</span> {r.equipment.name}{r.limiting && <span className="badge st-option" title="C'est cet élément qui limite le nombre de kits disponibles">limite le kit</span>}</td>
+                        <td className="muted">{r.equipment.code}</td>
+                        <td className="muted">dans le kit</td>
+                        <td className="n" title={`${r.stock} en stock → ${r.kitsStock} kit(s)`}>{r.stock} <span className="muted">→ {r.kitsStock} kit{r.kitsStock > 1 ? 's' : ''}</span></td>
+                        <td className="n"><span className={'avail ' + (r.kitsAvail > 0 ? 'ok' : 'ko')} title={`${r.avail} disponible(s) sur la période → ${r.kitsAvail} kit(s)`}>{r.avail}</span> <span className="muted">→ {r.kitsAvail}</span></td>
+                        <td />
+                      </tr>
+                    ))}
+                    </Fragment>
                   );
                 })}
               </tbody>

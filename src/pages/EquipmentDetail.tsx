@@ -8,7 +8,7 @@ import { nextUnitCode } from '../codegen';
 import { ensureSerialCodes } from '../autoCodes';
 import { db } from '../db';
 import type { SerialUnit } from '../types';
-import { availableQty, stockAt, fmtDate, fmtRange, inspectionsDue, money, save, toLocalInput } from '../utils';
+import { availableQty, kitBreakdown, stockAt, fmtDate, fmtRange, inspectionsDue, money, save, toLocalInput } from '../utils';
 import { EquipmentForm } from './EquipmentList';
 import { InspectionModal, RepairModal } from './Maintenance';
 import PrintLabelModal from '../components/PrintLabelModal';
@@ -41,6 +41,10 @@ export default function EquipmentDetail() {
   const usage = av.res.filter((r) => r.equipmentId === eq.id && r.source === 'projet').sort((a, b) => b.start.localeCompare(a.start));
   const usedIn = av.equipment.filter((k) => k.isKit && k.kitItems.some((i) => i.equipmentId === eq.id));
   const due = inspectionsDue([eq], units, inspections);
+  // kit : contenu avec les quantités, aujourd'hui (stock, sorti ou réservé, disponible, kits complets)
+  const today0 = new Date(); today0.setHours(0, 0, 0, 0);
+  const today1 = new Date(today0); today1.setHours(23, 59);
+  const kit = eq.isKit && eq.kitItems.length ? kitBreakdown(eq, av.equipment, av.res, toLocalInput(today0), toLocalInput(today1)) : null;
 
   // Frise : disponibilité jour par jour sur 28 jours
   const first = new Date();
@@ -72,7 +76,8 @@ export default function EquipmentDetail() {
       {eq.archived && <div className="alert">Article archivé : il n'est plus proposé dans les projets.</div>}
       {eq.photo && <img src={eq.photo} alt="" style={{ maxHeight: 160, borderRadius: 10, marginBottom: 12 }} />}
       <div className="stats">
-        <div className="stat"><b>{eq.isKit ? 'Kit' : eq.accessoryOnly ? '—' : eq.quantity}</b><span>{eq.isKit ? 'composé' : eq.accessoryOnly ? 'hors inventaire' : eq.trackSerials ? 'unités en service' : 'en stock'}</span></div>
+        <div className="stat"><b>{kit ? kit.kitsStock : eq.isKit ? 'Kit' : eq.accessoryOnly ? '—' : eq.quantity}</b><span>{kit ? `kit${kit.kitsStock > 1 ? 's' : ''} complet${kit.kitsStock > 1 ? 's' : ''} avec le stock` : eq.isKit ? 'composé' : eq.accessoryOnly ? 'hors inventaire' : eq.trackSerials ? 'unités en service' : 'en stock'}</span></div>
+        {kit && <div className="stat"><b className={kit.kitsAvail > 0 ? '' : 'avail ko'}>{kit.kitsAvail}</b><span>disponible{kit.kitsAvail > 1 ? 's' : ''} aujourd'hui</span></div>}
         <div className="stat"><b>{money(eq.dailyPrice)}</b><span>{eq.kind === 'vente' ? 'prix de vente / pièce' : 'prix / jour HT'}</span></div>
         <div className="stat"><b>{money(eq.replacementValue || 0)}</b><span>valeur de remplacement</span></div>
         <div className="stat"><b>{eq.code || '—'}</b><span>référence{eq.location ? ` · ${eq.location}` : ''}</span></div>
@@ -154,7 +159,27 @@ export default function EquipmentDetail() {
       {eq.isKit && (
         <div className="card">
           <h2>Contenu du kit</h2>
-          <ul>{eq.kitItems.map((k, i) => <li key={i}>{k.qty} × <Link to={'/materiel/' + k.equipmentId}>{allMap.get(k.equipmentId)?.name || '?'}</Link></li>)}</ul>
+          {kit && (
+            <div className="table-wrap">
+              <table className="list kit-table">
+                <thead><tr><th>Élément</th><th className="n">Par kit</th><th className="n">En stock</th><th className="n">Sortis / réservés aujourd'hui</th><th className="n">Disponibles</th><th className="n">Kits possibles</th></tr></thead>
+                <tbody>
+                  {kit.rows.map((r) => (
+                    <tr key={r.equipment.id} className={r.limiting ? 'limiting' : ''}>
+                      <td><Link to={'/materiel/' + r.equipment.id}>{r.equipment.name}</Link>{r.equipment.code && <span className="muted"> {r.equipment.code}</span>}{r.limiting && <span className="badge st-option" style={{ marginLeft: 6 }} title="C'est cet élément qui limite le nombre de kits disponibles">limite le kit</span>}</td>
+                      <td className="n"><strong className="kit-qty">{r.perKit}</strong></td>
+                      <td className="n">{r.stock}</td>
+                      <td className="n">{Math.max(0, r.stock - r.avail) || <span className="muted">0</span>}</td>
+                      <td className="n"><span className={'avail ' + (r.avail >= r.perKit ? 'ok' : 'ko')}>{r.avail}</span></td>
+                      <td className="n">{r.kitsAvail} <span className="muted">/ {r.kitsStock}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot><tr><td><strong>Kit complet</strong></td><td className="n">{kit.rows.reduce((a, r) => a + r.perKit, 0)} pièce(s)</td><td /><td /><td /><td className="n"><strong>{kit.kitsAvail}</strong> <span className="muted">/ {kit.kitsStock}</span></td></tr></tfoot>
+              </table>
+            </div>
+          )}
+          <p className="muted" style={{ fontSize: 12 }}>« Kits possibles » : disponibles aujourd'hui / avec tout le stock. Un élément partagé avec d'autres kits ou projets réduit le nombre de kits disponibles.</p>
         </div>
       )}
       {(eq.accessories || []).length > 0 && (
@@ -167,7 +192,9 @@ export default function EquipmentDetail() {
         <div className="card"><h2>Articles de remplacement</h2>{eq.alternatives!.map((id) => <Link key={id} to={'/materiel/' + id} style={{ marginRight: 12 }}>{allMap.get(id)?.name || '?'}</Link>)}</div>
       )}
       {usedIn.length > 0 && (
-        <div className="card"><h2>Inclus dans les kits</h2>{usedIn.map((k) => <Link key={k.id} to={'/materiel/' + k.id} style={{ marginRight: 12 }}>{k.name}</Link>)}</div>
+        <div className="card"><h2>Inclus dans les kits</h2>
+          <ul style={{ margin: 0 }}>{usedIn.map((k) => <li key={k.id}><strong className="kit-qty">{k.kitItems.filter((i) => i.equipmentId === eq.id).reduce((a, i) => a + i.qty, 0)} ×</strong> par kit dans <Link to={'/materiel/' + k.id}>{k.name}</Link></li>)}</ul>
+        </div>
       )}
 
       <div className="card">
