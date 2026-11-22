@@ -8,7 +8,7 @@ import { EmailModal } from '../../components/EmailModal';
 import { appBaseUrl, db } from '../../db';
 import type { CrewAssignment, CrewPreset, Person, Subproject, VehicleAssignment } from '../../types';
 import { RESERVING } from '../../types';
-import { blockPeriod, buildIcs, crewAmount, crewCostRate, crewWindow, functionRate, daysBetween, download, fmtRange, money, overlaps, round2, save, sortPeriods, patch, uid } from '../../utils';
+import { blockPeriod, buildIcs, crewAmount, crewCostProfile, crewWindow, functionRate, daysBetween, download, fmtRange, money, overlaps, round2, save, sortPeriods, patch, uid } from '../../utils';
 import { personIssue, type ProjectData } from './shared';
 import { PostRequests, useCrewDialogs } from '../crewRequests';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -217,7 +217,7 @@ function RoomCrew({ d, sp, pMap, mode, ctx, actionsFor }: { d: ProjectData; sp: 
               <tbody>
                 {crew.map((c) => {
                   const person = c.personId ? pMap.get(c.personId) : undefined;
-                  const a = crewAmount(c, d.settings, d.project.travelMinutes, crewCostRate(c, person));
+                  const a = crewAmount(c, d.settings, d.project.travelMinutes, crewCostProfile(c, person));
                   return (
                     <tr key={c.id} className={c.personId ? '' : 'post-open'}>
                       <td>
@@ -261,7 +261,7 @@ function RoomCrew({ d, sp, pMap, mode, ctx, actionsFor }: { d: ProjectData; sp: 
               <tbody>
                 {crew.map((c) => {
                   const person = c.personId ? pMap.get(c.personId) : undefined;
-                  const a = crewAmount(c, d.settings, d.project.travelMinutes, crewCostRate(c, person));
+                  const a = crewAmount(c, d.settings, d.project.travelMinutes, crewCostProfile(c, person));
                   const margin = (c.billable ? a.billed : 0) - a.cost;
                   const pe = periods.find((x) => x.id === c.periodId);
                   return (
@@ -272,7 +272,7 @@ function RoomCrew({ d, sp, pMap, mode, ctx, actionsFor }: { d: ProjectData; sp: 
                       <td className="nowrap"><CostCell c={c} person={person} /></td>
                       <td><input type="checkbox" aria-label="Planification finale" checked={c.final !== false} onChange={(e) => updCrew(c, { final: e.target.checked })} /></td>
                       <td className="n">{c.billable ? money(a.billed) : <span className="muted">non facturé</span>}</td>
-                      <td className="n">{!c.personId && c.cost == null ? <span className="muted">à pourvoir</span> : <><span className={'avail ' + (margin < 0 ? 'ko' : 'ok')}>{money(round2(margin))}</span><div className="muted" style={{ fontSize: 11 }}>coût {money(a.cost)}</div></>}</td>
+                      <td className="n">{!c.personId && c.cost == null ? <span className="muted">à pourvoir</span> : <><span className={'avail ' + (margin < 0 ? 'ko' : 'ok')}>{money(round2(margin))}</span><div className="muted" style={{ fontSize: 11 }}>coût {money(a.cost)}{a.costOvertime ? ` dont ${a.costOvertime} h sup.` : ''}</div></>}</td>
                     </tr>
                   );
                 })}

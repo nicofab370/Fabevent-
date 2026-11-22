@@ -743,3 +743,5 @@ tr.post-open td:first-child { box-shadow: inset 4px 0 0 #d97706; }
 .contact-field { display: flex; gap: 6px; align-items: center; flex: 1; min-width: 0; }
 .contact-field .quick-add-box { flex: 1; min-width: 0; }
 .contact-field .quick-add-list li span.muted { font-size: 12px; }
+.cost-unit { margin-left: 3px; font-size: 12px; }
+.cost-help { margin: -4px 0 4px; font-size: 12px; }

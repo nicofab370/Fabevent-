@@ -5,7 +5,7 @@ import { Empty, NumInput, PageHead, StatusBadge, useSettings } from '../componen
 import { db } from '../db';
 import type { CrewAssignment, CrewFunction, Person, Project, Subproject, Unavailability } from '../types';
 import { RESERVING } from '../types';
-import { crewAmount, crewCostRate, fmtRange, functionRate, money, patch, round2, toLocalInput } from '../utils';
+import { crewAmount, crewCostProfile, crewCostShown, fmtRange, functionRate, money, patch, round2, toLocalInput } from '../utils';
 import { personIssue } from './project/shared';
 import { PostRequests, closeFilledRequests, requestsFor, useCrewDialogs } from './crewRequests';
 import type { CrewRequest } from '../types';
@@ -28,13 +28,12 @@ export function candidates(c: CrewAssignment, ctx: CrewContext) {
   const rank = (id: string) => (answers.get(id) === 'oui' ? 0 : answers.get(id) === 'non' ? 2 : 1);
   return ctx.people
     .filter((p) => !p.pending || p.id === c.personId)
-    .map((p) => ({ p, issue: personIssue(p.id, c.start, c.end, c.id, ctx.allCrew, ctx.subs, ctx.unav), cost: crewCostRate({ rateUnit: c.rateUnit, function: c.function }, p), answer: answers.get(p.id) }))
-    .sort((a, b) => rank(a.p.id) - rank(b.p.id) || (a.issue ? 1 : 0) - (b.issue ? 1 : 0) || a.cost - b.cost || a.p.name.localeCompare(b.p.name));
+    .map((p) => ({ p, issue: personIssue(p.id, c.start, c.end, c.id, ctx.allCrew, ctx.subs, ctx.unav), cost: crewCostShown({ rateUnit: c.rateUnit }, crewCostProfile(c, p)), answer: answers.get(p.id) }))
+    .sort((a, b) => rank(a.p.id) - rank(b.p.id) || (a.issue ? 1 : 0) - (b.issue ? 1 : 0) || a.cost.value - b.cost.value || a.p.name.localeCompare(b.p.name));
 }
 
 /** Choix du technicien d'un poste. Le tarif client ne bouge pas ; le coût suit la personne. */
 export function PersonSelect({ c, ctx }: { c: CrewAssignment; ctx: CrewContext }) {
-  const unit = c.rateUnit === 'heure' ? '/h' : '/j';
   const issue = personIssue(c.personId, c.start, c.end, c.id, ctx.allCrew, ctx.subs, ctx.unav);
   return (
     <>
@@ -45,7 +44,7 @@ export function PersonSelect({ c, ctx }: { c: CrewAssignment; ctx: CrewContext }
       }}>
         <option value="">— à pourvoir —</option>
         {candidates(c, ctx).map(({ p, issue: why, cost, answer }) => (
-          <option key={p.id} value={p.id}>{p.name}{p.external ? ' (ext.)' : ''} — {cost ? `${money(cost)}${unit}` : 'coût ?'}{why ? ` — ${why}` : ''}{answer === 'oui' ? ' — dispo' : answer === 'non' ? ' — pas dispo' : ''}</option>
+          <option key={p.id} value={p.id}>{p.name}{p.external ? ' (ext.)' : ''} — {cost.value ? `${money(cost.value)}${cost.unit === 'heure' ? '/h' : '/j'}` : 'coût ?'}{why ? ` — ${why}` : ''}{answer === 'oui' ? ' — dispo' : answer === 'non' ? ' — pas dispo' : ''}</option>
         ))}
       </select>
       {issue && <div className="avail ko">{issue === 'indisponible' ? 'Indisponible' : 'Déjà planifié ailleurs'}</div>}
@@ -55,13 +54,16 @@ export function PersonSelect({ c, ctx }: { c: CrewAssignment; ctx: CrewContext }
 
 /** Coût du poste (celui de la personne, modifiable), avec retour au coût de la personne. */
 export function CostCell({ c, person }: { c: CrewAssignment; person?: Person }) {
-  const personCost = crewCostRate({ rateUnit: c.rateUnit, function: c.function }, person);
-  const unit = c.rateUnit === 'heure' ? '/h' : '/j';
+  // coût de la personne dans son unité : seulement un prix horaire → à l'heure, seulement un forfait → à la journée
+  const own = crewCostShown({ rateUnit: c.rateUnit }, crewCostProfile(c, person));
+  const shown = crewCostShown(c, crewCostProfile(c, person));
+  const unit = shown.unit === 'heure' ? '/h' : '/j';
   return (
     <>
-      <NumInput className="w-price" value={c.cost ?? personCost} onChange={(n) => patch(db.crew, c.id, { cost: n })} aria-label="Coût" />
-      {c.cost != null && c.cost !== personCost && (
-        <button className="ghost small" title={`Revenir au coût de la personne (${money(personCost)}${unit})`} onClick={() => patch(db.crew, c.id, { cost: undefined })} aria-label="Revenir au coût de la personne"><Icon name="reset" /></button>
+      <NumInput className="w-price" value={shown.value} onChange={(n) => patch(db.crew, c.id, { cost: n, costUnit: shown.unit })} aria-label="Coût" />
+      <span className="muted cost-unit">{unit}</span>
+      {c.cost != null && (c.cost !== own.value || shown.unit !== own.unit) && (
+        <button className="ghost small" title={`Revenir au coût de la personne (${money(own.value)}${own.unit === 'heure' ? '/h' : '/j'})`} onClick={() => patch(db.crew, c.id, { cost: undefined, costUnit: undefined })} aria-label="Revenir au coût de la personne"><Icon name="reset" /></button>
       )}
     </>
   );
@@ -148,7 +150,7 @@ export default function CrewAssignmentPage() {
 }
 
 function AssignRow({ c, project, sp, person, ctx, travelMinutes, settings, actions }: { c: CrewAssignment; project: Project; sp: Subproject; person?: Person; ctx: CrewContext; travelMinutes?: number; settings: ReturnType<typeof useSettings>; actions: { onAsk: () => void; onReplace: () => void; onDetails: () => void } }) {
-  const a = crewAmount(c, settings, travelMinutes, crewCostRate(c, person));
+  const a = crewAmount(c, settings, travelMinutes, crewCostProfile(c, person));
   const margin = (c.billable ? a.billed : 0) - a.cost;
   const pe = sp.periods?.find((x) => x.id === c.periodId);
   return (

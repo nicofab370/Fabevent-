@@ -1,5 +1,5 @@
 import { DOC_CSS } from '../../components/DocRender';
-import { crewAmount, crewCostRate, fmtDate, money, round2 } from '../../utils';
+import { crewAmount, crewCostProfile, fmtDate, money, round2 } from '../../utils';
 import { printHtml, type ProjectData } from './shared';
 
 export interface HrOrder {
@@ -27,7 +27,7 @@ export function hrOrders(d: ProjectData): HrOrder[] {
       address: company ? [company.address, [company.postalCode, company.city].filter(Boolean).join(' ')].filter(Boolean).join(', ') : undefined,
       lines: [], total: 0,
     };
-    const a = crewAmount(c, d.settings, d.project.travelMinutes, crewCostRate(c, p));
+    const a = crewAmount(c, d.settings, d.project.travelMinutes, crewCostProfile(c, p));
     g.lines.push({ function: c.function, person: p.name, start: c.start, end: c.end, qty: a.unit === 'heure' ? `${a.hours} h${a.overtime ? ` (dont ${a.overtime} h sup.)` : ''}` : `${a.qty} j`, cost: a.cost, final: c.final !== false });
     g.total = round2(g.total + a.cost);
     groups.set(key, g);

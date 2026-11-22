@@ -102,7 +102,7 @@ export default function Crew() {
                       <td>{p.role}{p.skills?.filter((x) => x !== p.role).length ? <div className="muted" style={{ fontSize: 11 }}>{p.skills.filter((x) => x !== p.role).join(', ')}</div> : null}</td>
                       <td><span className="badge">{p.external ? 'Sous-traitant' : 'Interne'}</span>{p.contactId && <div className="muted" style={{ fontSize: 11 }}>{companies.find((c) => c.id === p.contactId)?.company}</div>}</td>
                       <td>{p.phone}</td>
-                      <td className="n">{p.costRate ? money(p.costRate) : <span className="muted">—</span>}{p.rates?.filter((r) => r.function && r.cost).map((r) => <div key={r.function} className="muted" style={{ fontSize: 11 }}>{r.function} {money(r.cost!)}</div>)}</td>
+                      <td className="n">{p.costRate ? money(p.costRate) : <span className="muted">—</span>}{p.dayHours ? <div className="muted" style={{ fontSize: 11 }}>forfait {p.dayHours} h</div> : null}{p.rates?.filter((r) => r.function && r.cost).map((r) => <div key={r.function} className="muted" style={{ fontSize: 11 }}>{r.function} {money(r.cost!)}</div>)}</td>
                       <td className="n">{p.hourlyCost ? money(p.hourlyCost) : <span className="muted">—</span>}</td>
                       <td>{next.length === 0 ? <span className="muted">—</span> : next.slice(0, 3).map((c) => (
                         <div key={c.id} style={{ fontSize: 12 }}>{pMap.get(c.projectId)?.name} · {fmtRange(c.start, c.end)}</div>
@@ -136,6 +136,16 @@ export default function Crew() {
             <Field label="Ville"><input value={edit.city || ''} onChange={(e) => setEdit({ ...edit, city: e.target.value })} /></Field>
             <Field label="Ce qu'il te coûte / jour (€ HT)"><NumInput value={edit.costRate || 0} onChange={(n) => setEdit({ ...edit, costRate: n })} /></Field>
             <Field label="Ce qu'il te coûte / heure (€ HT)"><NumInput value={edit.hourlyCost || 0} onChange={(n) => setEdit({ ...edit, hourlyCost: n || undefined })} /></Field>
+            <Field label="Heures comprises dans son forfait journalier">
+              <NumInput step="0.5" value={edit.dayHours || 0} placeholder={String(settings.overtimeAfter ?? 10)} aria-label="Heures du forfait journalier"
+                onChange={(n) => setEdit({ ...edit, dayHours: n || undefined })} />
+            </Field>
+            <p className="muted field full cost-help">
+              {edit.hourlyCost && !edit.costRate ? 'Seulement un prix horaire : tous ses postes sont comptés à l\'heure (heures sup. majorées au-delà du forfait d\'heures).'
+                : edit.costRate && !edit.hourlyCost ? `Seulement un forfait : au-delà de ${edit.dayHours || settings.overtimeAfter || 10} h, chaque heure sup. vaut ${money(edit.costRate / (edit.dayHours || settings.overtimeAfter || 10))} + ${settings.overtimeRate ?? 50} %.`
+                : edit.costRate && edit.hourlyCost ? 'Forfait pour les postes à la journée, prix horaire pour les postes à l\'heure et pour les heures sup.'
+                : `Forfait journalier et / ou prix horaire. Laisse les heures du forfait vides pour utiliser le réglage général (${settings.overtimeAfter ?? 10} h).`}
+            </p>
             <div className="field full person-rates">
               <span>Tarifs selon la fonction (s'appliquent aux postes de cette fonction ; sinon le coût ci-dessus)</span>
               {(edit.rates || []).map((r, i) => {
