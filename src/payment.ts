@@ -32,10 +32,10 @@ export function epcPayload(p: { name: string; iban: string; bic?: string; amount
 }
 
 /** QR code en SVG (synchrone, sans dépendance réseau). */
-export function qrSvg(text: string, sizePx = 120): string {
+/** `margin` : zone blanche autour du QR, en modules (0 sur une étiquette : sa marge sert de zone blanche) */
+export function qrSvg(text: string, sizePx = 120, margin = 2): string {
   const qr = QRCode.create(text, { errorCorrectionLevel: 'M' });
   const n = qr.modules.size;
-  const margin = 2;
   let d = '';
   for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.modules.get(r, c)) d += `M${c + margin},${r + margin}h1v1h-1z`;
   const v = n + margin * 2;

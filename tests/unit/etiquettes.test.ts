@@ -108,18 +108,51 @@ describe('rubans d’étiqueteuse (Brother PT-P750W, Dymo)', async () => {
   });
 });
 
-describe('taille du QR au-delà de 100 %', async () => {
+describe('taille du QR et place perdue', async () => {
   const { qrSizeMm } = await import('../../src/labelTemplates');
   const big = { id: 'b', name: 'B', sheet: 'rouleau' as const, w: 102, h: 51, layout: 'qr-dessus' as const, fields: ['title'] as LabelField[] };
-  it('le QR grandit jusqu’à 200 %, sans jamais dépasser l’étiquette', () => {
-    const n = qrSizeMm(big).mm, x150 = qrSizeMm({ ...big, symbolSize: 150 }).mm, x200 = qrSizeMm({ ...big, symbolSize: 200 });
-    expect(x150).toBeGreaterThan(n);
-    expect(x200.mm).toBeLessThanOrEqual(51 - 3 + 0.01);
-    expect(x200.capped).toBe(true);
+  it('QR au-dessus du texte : il remplit dès 100 % la hauteur laissée par le texte ; au-delà plafonné, en dessous plus petit', () => {
+    const n = qrSizeMm(big);
+    expect(n.mm).toBeGreaterThan(40); // ~ 48 mm intérieurs moins une ligne de texte
+    expect(qrSizeMm({ ...big, symbolSize: 150 }).capped).toBe(true);
+    expect(qrSizeMm({ ...big, symbolSize: 60 }).mm).toBeLessThan(n.mm);
+    const css = labelCss(big);
+    expect(css).toContain('.lab.qr-dessus .qr{flex:1 1 0');
+    expect(css).toContain('.lab.qr-dessus .qr svg{width:auto;height:100%');
   });
-  it('mise en page libre, QR au-dessus sur une étiquette haute : 160 % plus grand que 100 %', () => {
-    const t = { ...big, layout: 'libre' as const, symbol: 'qr' as const, symbolPos: 'dessus' as const };
-    expect(qrSizeMm({ ...t, symbolSize: 160 }).mm).toBeGreaterThan(qrSizeMm(t).mm);
-    expect(labelCss({ ...t, symbolSize: 160 })).toContain('.lab.libre .qr svg{width:');
+  it('QR à gauche du texte : agrandissable au-delà de 100 % tant qu’il y a de la place', () => {
+    const t = { ...big, w: 100, h: 30, layout: 'qr-gauche' as const };
+    expect(qrSizeMm({ ...t, symbolSize: 130 }).mm).toBeGreaterThanOrEqual(qrSizeMm(t).mm);
+    expect(qrSizeMm({ ...t, symbolSize: 200 }).mm).toBeLessThanOrEqual(30 - 3 + 0.01);
+  });
+  it('pas de bordure blanche dans le QR d’une étiquette (la marge de l’étiquette en tient lieu)', () => {
+    const html = labelHtml({ ...big, layout: 'qr-gauche' }, { code: 'X-1', title: 'T' }, '');
+    const vb = html.match(/viewBox="0 0 (\d+) \1"/);
+    expect(vb && Number(vb[1])).toBe(21); // QR version 1 : 21 modules, sans marge
+  });
+});
+
+describe('texte à côté et sous le QR, texte tourné', () => {
+  const t = { id: 'm', name: 'Mixte', sheet: 'rouleau' as const, w: 40, h: 40, layout: 'libre' as const, symbol: 'qr' as const, symbolPos: 'gauche' as const,
+    fields: ['title', 'code', 'serial'] as LabelField[], styles: { code: { place: 'dessous' as const }, serial: { place: 'dessous' as const } } };
+  const l = { code: 'F-S-0010-03', title: 'Table de mix #3', serial: 'SN1' };
+  it('nom à côté du QR, code et n° de série dessous sur toute la largeur', () => {
+    const html = labelHtml(t, l, '');
+    const top = html.slice(html.indexOf('class="top"'), html.indexOf('tx-bas'));
+    const bas = html.slice(html.indexOf('tx-bas'));
+    expect(top).toContain('Table de mix #3');
+    expect(top).not.toContain('F-S-0010-03</div>');
+    expect(bas).toContain('F-S-0010-03');
+    expect(bas).toContain('n° SN1');
+    expect(labelCss(t)).toContain('.lab.libre .top{display:flex');
+  });
+  it('texte d’à côté tourné (lettres couchées, pas empilées)', () => {
+    const css = labelCss({ ...t, sideRotate: 270 });
+    expect(css).toContain('writing-mode:vertical-rl;text-orientation:mixed');
+    expect(css).toContain('transform:rotate(180deg)');
+    expect(labelCss({ ...t, sideRotate: 90 })).not.toContain('rotate(180deg)');
+  });
+  it('sans réglage de position : tout à côté du code, comme avant', () => {
+    expect(labelHtml({ ...t, styles: undefined }, l, '')).not.toContain('tx-bas');
   });
 });
