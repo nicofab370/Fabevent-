@@ -802,3 +802,5 @@ td:not(.n) .hours-cell { align-items: flex-start; }
 .lt-card .lt-preview { margin-bottom: 0; }
 .lt-card-info { display: flex; flex-direction: column; font-size: 13px; }
 @media (max-width: 640px) { .lt-preview-wrap { position: static; } .lt-part { padding-left: 8px; } }
+.lt-card.is-hidden { opacity: .55; border-style: dashed; }
+.danger-txt { color: var(--danger, #b91c1c); }

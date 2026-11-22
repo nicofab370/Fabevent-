@@ -36,6 +36,9 @@ export default function Labels() {
   const cats = useLiveQuery(() => db.categories.toArray(), []) || [];
   const mine = settings.labelTemplates || [];
   const templates = [...BUILTIN_TEMPLATES, ...mine];
+  // modèles standard masqués (Modèles de documents → Étiquettes) : absents de la liste, sauf celui en cours
+  const hiddenSet = new Set(settings.labelHidden || []);
+  const shown = (l: LabelTemplate[]) => l.filter((t) => !hiddenSet.has(t.id) || t.id === format);
   const tpl = format === 'ptouch' ? undefined : templates.find((t) => t.id === format) || BUILTIN_TEMPLATES[0];
   const saveTemplates = async (list: LabelTemplate[]) => { const s = await getSettings(); await db.settings.put({ ...s, labelTemplates: list }); };
   const qrLink = !!settings.qrLink;
@@ -89,10 +92,10 @@ export default function Labels() {
       <PageHead title="Étiquettes QR">
         <select aria-label="Format d'étiquette" value={tpl ? tpl.id : 'ptouch'} onChange={(e) => pickFormat(e.target.value as Format)} style={{ width: 'auto', maxWidth: '100%' }}>
           {mine.length > 0 && <optgroup label="Mes modèles">{mine.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</optgroup>}
-          <optgroup label="Planches A4 et rouleaux">{BUILTIN_TEMPLATES.filter((t) => !t.device).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</optgroup>
-          <optgroup label="Brother PT-P750W (ruban TZe)">{BUILTIN_TEMPLATES.filter((t) => t.device === 'ptouch').map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          {shown(BUILTIN_TEMPLATES.filter((t) => !t.device)).length > 0 && <optgroup label="Planches A4 et rouleaux">{shown(BUILTIN_TEMPLATES.filter((t) => !t.device)).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</optgroup>}
+          <optgroup label="Brother PT-P750W (ruban TZe)">{shown(BUILTIN_TEMPLATES.filter((t) => t.device === 'ptouch')).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             <option value="ptouch">PT-P750W — réglages simples (ancien mode)</option></optgroup>
-          <optgroup label="Dymo">{BUILTIN_TEMPLATES.filter((t) => t.device === 'dymo-lm' || t.device === 'dymo-lw').map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</optgroup>
+          {shown(BUILTIN_TEMPLATES.filter((t) => t.device === 'dymo-lm' || t.device === 'dymo-lw')).length > 0 && <optgroup label="Dymo">{shown(BUILTIN_TEMPLATES.filter((t) => t.device === 'dymo-lm' || t.device === 'dymo-lw')).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</optgroup>}
         </select>
         {tpl && <button disabled={!total} onClick={print}>Imprimer {total || ''} étiquette(s)</button>}
       </PageHead>
