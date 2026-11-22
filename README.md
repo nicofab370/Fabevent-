@@ -71,8 +71,15 @@ remises par défaut du client.
 
 **Planning avancé** : décaler un projet (durée ou nouvelle date), modèles de projet, projets récurrents.
 
-**Matériel** : étiquettes QR imprimables (planches A4, rouleau), articles de remplacement proposés en cas de manque,
+**Matériel** : étiquettes imprimables (planches A4, rouleau), articles de remplacement proposés en cas de manque,
 archivage, photos, inventaire par scan avec mise à jour du stock, valeur du parc.
+Dans l'inventaire d'un kit, les articles à numéro de série se comptent aussi à la main (+ / −, ou en touchant le numéro de l'unité).
+
+**Étiquettes** : 11 formats standard (planches A4 de 8 à 65 étiquettes, rouleaux 50 × 25, 62 × 29, 57 × 32, 102 × 51 mm,
+drapeau pour câble) et 6 mises en page : QR à gauche, QR au-dessus, QR seul, code-barres Code 128 pour douchette,
+texte en grand, drapeau pour câble. Modèles personnels : taille, colonnes, lignes, marges, espaces, champs imprimés et
+leur ordre (nom, code, n° de série, catégorie, emplacement, contenu, société), taille du texte, cadre et texte libre, avec un aperçu
+à taille réelle. Les modèles sont enregistrés dans les paramètres (synchronisés). « Commencer à l'étiquette n° » réutilise une planche entamée.
 
 **Fichiers** : PDF, images et textes joints s'ouvrent dans FabEvent (aperçu page par page, aussi sur iPhone), sans téléchargement.
 

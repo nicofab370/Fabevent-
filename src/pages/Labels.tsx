@@ -1,21 +1,18 @@
+import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
 import { Empty, NumInput, PageHead, useSettings } from '../components/ui';
 import { useAvailability } from '../data';
-import { db } from '../db';
-import { qrSvg } from '../payment';
-import { save } from '../utils';
+import { db, getSettings } from '../db';
+import { save, uid } from '../utils';
 import { appBaseUrl } from '../db';
 import { contentsText, labelCode } from '../codes';
+import { categoryLabel } from '../categories';
 import PtouchPanel, { type LabelData } from '../components/PtouchPanel';
+import { LabelPreview, LabelTemplateEditor } from '../components/LabelTemplateEditor';
+import { BUILTIN_TEMPLATES, LAYOUT_LABELS, emptyTemplate, labelSheetHtml, perSheet, type LabelTemplate, type SheetLabel } from '../labelTemplates';
 
-const FORMATS = {
-  'a4-24': { label: 'Planche A4 — 24 étiquettes 70 × 37 mm', page: 'A4', cols: 3, w: 70, h: 37, qr: 26 },
-  'a4-65': { label: 'Planche A4 — 65 étiquettes 38 × 21 mm', page: 'A4', cols: 5, w: 38.1, h: 21.2, qr: 17 },
-  rouleau: { label: 'Rouleau — 50 × 25 mm (une étiquette par page)', page: '50mm 25mm', cols: 1, w: 50, h: 25, qr: 21 },
-} as const;
-type Format = keyof typeof FORMATS | 'ptouch';
-
-const esc = (v: unknown) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+/** identifiant d'un modèle (standard ou personnel), ou l'étiqueteuse PT-P750W */
+type Format = string;
 
 /** Code imprimé : code-barres existant, sinon un code généré et enregistré sur l'article. */
 const codeFor = labelCode;
@@ -29,6 +26,13 @@ export default function Labels() {
   const [q, setQ] = useState('');
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [showContents, setShowContents] = useState(true);
+  const [skip, setSkip] = useState(0);
+  const [editing, setEditing] = useState<{ t: LabelTemplate; existing: boolean } | null>(null);
+  const cats = useLiveQuery(() => db.categories.toArray(), []) || [];
+  const mine = settings.labelTemplates || [];
+  const templates = [...BUILTIN_TEMPLATES, ...mine];
+  const tpl = format === 'ptouch' ? undefined : templates.find((t) => t.id === format) || BUILTIN_TEMPLATES[0];
+  const saveTemplates = async (list: LabelTemplate[]) => { const s = await getSettings(); await db.settings.put({ ...s, labelTemplates: list }); };
   const qrLink = !!settings.qrLink;
   /** contenu du QR : le code seul, ou un lien vers la fiche (lisible par l'appareil photo de tout téléphone) */
   const payload = (code: string) => (qrLink ? `${appBaseUrl(settings)}#/q/${encodeURIComponent(code)}` : code);
@@ -36,52 +40,85 @@ export default function Labels() {
   const total = Object.values(counts).reduce((a, b) => a + (b || 0), 0);
 
   /** Étiquettes à imprimer ; `persist` enregistre le code sur les articles / unités qui n'en ont pas encore. */
-  const collect = async (persist: boolean): Promise<LabelData[]> => {
-    const labels: LabelData[] = [];
+  const collect = async (persist: boolean): Promise<(LabelData & SheetLabel)[]> => {
+    const labels: (LabelData & SheetLabel)[] = [];
     for (const e of av.equipment) {
       if (e.trackSerials) {
         for (const u of av.units.filter((x) => x.equipmentId === e.id && x.status === 'ok')) {
           if (!counts['u:' + u.id]) continue;
           const code = u.barcode || u.serial;
           if (persist && !u.barcode) await save(db.units, { ...u, barcode: code });
-          for (let i = 0; i < counts['u:' + u.id]; i++) labels.push({ code, title: e.name, sub: u.serial === code ? code : `${code} · n° ${u.serial}`, serial: u.serial === code ? undefined : u.serial, contents: showContents ? contentsText(e) : undefined });
+          for (let i = 0; i < counts['u:' + u.id]; i++) labels.push({ code, title: e.name, sub: u.serial === code ? code : `${code} · n° ${u.serial}`, serial: u.serial === code ? undefined : u.serial, contents: showContents ? contentsText(e) : undefined, category: categoryLabel(cats, e.categoryId) || undefined, location: e.location });
         }
       } else if (counts[e.id]) {
         const code = codeFor(e);
         if (persist && !e.barcode) { const raw = await db.equipment.get(e.id); if (raw) await save(db.equipment, { ...raw, barcode: code }); }
-        for (let i = 0; i < counts[e.id]; i++) labels.push({ code, title: e.name, sub: e.code || code, contents: showContents ? contentsText(e) : undefined });
+        for (let i = 0; i < counts[e.id]; i++) labels.push({ code, title: e.name, sub: e.code || code, contents: showContents ? contentsText(e) : undefined, category: categoryLabel(cats, e.categoryId) || undefined, location: e.location });
       }
     }
     return labels;
   };
 
   const print = async () => {
-    if (format === 'ptouch') return;
+    if (!tpl) return;
     const labels = await collect(true);
-    const f = FORMATS[format];
-    const css = `@page{size:${f.page};margin:${format === 'rouleau' ? 0 : '8mm 0 0 4mm'}}body{margin:0;font-family:system-ui,sans-serif}
-      .sheet{display:grid;grid-template-columns:repeat(${f.cols},${f.w}mm)}
-      .lab{width:${f.w}mm;height:${f.h}mm;box-sizing:border-box;padding:1.5mm;display:flex;gap:1.5mm;align-items:center;overflow:hidden;${format === 'rouleau' ? 'page-break-after:always' : ''}}
-      .lab svg{width:${f.qr}mm;height:${f.qr}mm;flex:none}.t{font-weight:700;font-size:${f.h < 25 ? 6.5 : 8.5}pt;line-height:1.1}
-      .s{font-size:${f.h < 25 ? 6 : 7.5}pt;color:#333}.c{font-size:6pt;color:#666}.k{font-size:${f.h < 25 ? 5 : 6.5}pt;line-height:1.1;color:#111}
-      @media screen{.lab{outline:1px dashed #ccc}}`;
-    const body = `<div class="sheet">${labels.map((l) => `<div class="lab">${qrSvg(payload(l.code), 100)}<div><div class="t">${esc(l.title)}</div><div class="s">${esc(l.sub)}</div>${l.contents ? `<div class="k">+ ${esc(l.contents)}</div>` : ''}<div class="c">${esc(settings.company.name)}</div></div></div>`).join('')}</div>`;
     const w = window.open('', '_blank');
     if (!w) return alert('Autorise les fenêtres pop-up pour imprimer.');
-    w.document.write(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Étiquettes</title><style>${css}</style></head><body>${body}</body></html>`);
+    w.document.write(labelSheetHtml(tpl, labels, settings.company.name, payload, tpl.sheet === 'a4' ? skip : 0));
     w.document.close();
     setTimeout(() => w.print(), 300);
   };
 
+  /** article pour l'aperçu : le premier coché, sinon un exemple */
+  const sample: SheetLabel = (() => {
+    const e = av.equipment.find((x) => counts[x.id] || av.units.some((u) => u.equipmentId === x.id && counts['u:' + u.id]));
+    if (!e) return { code: 'F-S-0010-03', title: 'Table de mix (exemple)', serial: 'SN 4521', category: 'Son › Console', location: 'Flight F2', contents: showContents ? 'Alimentation, housse' : undefined };
+    const u = e.trackSerials ? av.units.find((x) => x.equipmentId === e.id && counts['u:' + x.id]) : undefined;
+    return { code: u ? u.barcode || u.serial : codeFor(e), title: e.name, serial: u && u.serial !== (u.barcode || u.serial) ? u.serial : undefined, category: categoryLabel(cats, e.categoryId) || undefined, location: e.location, contents: showContents ? contentsText(e) : undefined };
+  })();
+
   return (
     <>
       <PageHead title="Étiquettes QR">
-        <select aria-label="Format d'étiquette" value={format} onChange={(e) => pickFormat(e.target.value as Format)} style={{ width: 'auto' }}>
-          {Object.entries(FORMATS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-          <option value="ptouch">Étiqueteuse Brother PT-P750W — ruban TZe</option>
+        <select aria-label="Format d'étiquette" value={tpl ? tpl.id : 'ptouch'} onChange={(e) => pickFormat(e.target.value as Format)} style={{ width: 'auto', maxWidth: '100%' }}>
+          <optgroup label="Formats standard">{BUILTIN_TEMPLATES.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</optgroup>
+          {mine.length > 0 && <optgroup label="Mes modèles">{mine.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</optgroup>}
+          <optgroup label="Étiqueteuse"><option value="ptouch">Brother PT-P750W — ruban TZe</option></optgroup>
         </select>
-        {format !== 'ptouch' && <button disabled={!total} onClick={print}>Imprimer {total || ''} étiquette(s)</button>}
+        {tpl && <button disabled={!total} onClick={print}>Imprimer {total || ''} étiquette(s)</button>}
       </PageHead>
+      {tpl && (
+        <div className="card label-template">
+          <div className="lt-head">
+            <div>
+              <strong>{tpl.name}</strong>
+              <div className="muted">{LAYOUT_LABELS[tpl.layout]} · {tpl.w} × {tpl.h} mm{tpl.sheet === 'a4' ? ` · ${perSheet(tpl)} par planche A4` : ' · rouleau'}</div>
+            </div>
+            <div className="toolbar" style={{ marginBottom: 0 }}>
+              {tpl.builtin
+                ? <button className="secondary small" onClick={() => setEditing({ t: { ...tpl, id: '', name: `${tpl.name} (copie)` }, existing: false })}>Dupliquer et modifier</button>
+                : <button className="secondary small" onClick={() => setEditing({ t: tpl, existing: true })}>Modifier le modèle</button>}
+              <button className="secondary small" onClick={() => setEditing({ t: emptyTemplate(), existing: false })}>+ Nouveau modèle</button>
+            </div>
+          </div>
+          <LabelPreview t={tpl} label={sample} company={settings.company.name} qrPayload={payload} />
+          {tpl.sheet === 'a4' && (
+            <label className="check-row">Commencer à l'étiquette n°
+              <NumInput className="w-qty" step="1" min={1} value={skip + 1} onChange={(n) => setSkip(Math.max(0, Math.min(perSheet(tpl) - 1, Math.round(n) - 1)))} aria-label="Commencer à l'étiquette n°" />
+              <span className="muted">(planche déjà entamée : les {skip || 'premières'} étiquette(s) restent vides)</span>
+            </label>
+          )}
+        </div>
+      )}
+      {editing && (
+        <LabelTemplateEditor initial={editing.t} sample={sample} company={settings.company.name} onClose={() => setEditing(null)}
+          onDelete={editing.existing ? async () => { await saveTemplates(mine.filter((x) => x.id !== editing.t.id)); pickFormat(BUILTIN_TEMPLATES[0].id); setEditing(null); } : undefined}
+          onSave={async (t) => {
+            const saved = { ...t, id: editing.existing ? t.id : uid(), builtin: undefined };
+            await saveTemplates(editing.existing ? mine.map((x) => (x.id === saved.id ? saved : x)) : [...mine, saved]);
+            pickFormat(saved.id); setEditing(null);
+          }} />
+      )}
       {format === 'ptouch' && <PtouchPanel total={total} collect={collect} linkFor={qrLink ? payload : undefined} company={settings.company.name} />}
       <div className="info">
         Le QR code se scanne à la douchette ou à la caméra dans l'entrepôt. Les articles sans code-barres en reçoivent un automatiquement à l'impression.

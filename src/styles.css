@@ -750,3 +750,13 @@ td:not(.n) .hours-cell { align-items: flex-start; }
 .hours-sub { font-size: 11px; font-weight: 400; }
 .crew-hours { margin-top: 4px; font-size: 12px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .crew-total { margin: 6px 0 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.kit-uchips { margin: 6px 0 0; }
+.kit-uchips .uchip { padding: 3px 8px; font-size: 12px; }
+.uchip:disabled { opacity: .45; cursor: default; }
+/* étiquettes : modèle choisi, aperçu à taille réelle, éditeur */
+.label-template .lt-head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: flex-start; margin-bottom: 10px; }
+.lt-preview { overflow-x: auto; padding: 10px; background: color-mix(in srgb, var(--muted, #888) 12%, transparent); border-radius: 8px; margin-bottom: 8px; }
+.lt-preview .lab { box-shadow: 0 1px 4px rgba(0, 0, 0, .25); }
+.lt-fields { display: flex; flex-direction: column; gap: 2px; }
+.lt-field { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 6px; border-radius: 6px; }
+.lt-field.on { background: color-mix(in srgb, var(--ok) 10%, transparent); }

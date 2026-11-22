@@ -895,6 +895,8 @@ export interface Settings {
   projectTypes?: { name: string; color: string; moments?: ID[] }[];
   /** QR des étiquettes = lien vers la fiche (lisible avec l'appareil photo de n'importe quel téléphone) */
   qrLink?: boolean;
+  /** modèles d'étiquettes créés par l'utilisateur (planches A4, rouleaux) */
+  labelTemplates?: import('./labelTemplates').LabelTemplate[];
   /** lettre des codes du matériel quand aucun dépôt n'est déclaré (F par défaut) */
   codeLetter?: string;
   /** moments de facturation (au plus 3 par projet) */
