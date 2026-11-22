@@ -87,7 +87,7 @@ export interface LabelTemplate {
   /* ----- mise en page libre ----- */
   symbol?: 'qr' | 'code-barres' | 'les-deux' | 'aucun';
   symbolPos?: 'gauche' | 'droite' | 'dessus' | 'dessous';
-  /** taille du code en % de la place disponible */
+  /** taille du code (QR, code-barres) en % de sa taille normale (30 à 200), plafonnée à la place disponible */
   symbolSize?: number;
   builtin?: boolean;
 }
@@ -239,9 +239,29 @@ function freeSizes(t: LabelTemplate) {
   const side = t.symbolPos === 'dessus' || t.symbolPos === 'dessous' ? 'col' : 'row';
   const iw = t.w - 2 * pad, ih = t.h - 2 * pad;
   const both = t.symbol === 'les-deux';
+  // taille normale × réglage, plafonnée à la place réelle (le code ne déborde jamais de l'étiquette)
   return side === 'row'
-    ? { side, qr: Math.min(ih * (both ? 0.62 : 1), iw * 0.55) * k, bcW: iw * 0.55 * k, bcH: ih * (both ? 0.3 : 0.8) * k }
-    : { side, qr: Math.min(iw, ih * 0.62) * k * (both ? 0.75 : 1), bcW: iw * k, bcH: ih * 0.42 * k * (both ? 0.6 : 1) };
+    ? { side, qr: Math.min(Math.min(ih * (both ? 0.62 : 1), iw * 0.55) * k, ih * (both ? 0.68 : 1), iw * 0.95), bcW: Math.min(iw * 0.55 * k, iw * 0.95), bcH: Math.min(ih * (both ? 0.3 : 0.8) * k, ih * (both ? 0.32 : 1)) }
+    : { side, qr: Math.min(Math.min(iw, ih * 0.62) * k * (both ? 0.75 : 1), iw, ih * (both ? 0.6 : 0.95)), bcW: Math.min(iw * k, iw), bcH: Math.min(ih * 0.42 * k * (both ? 0.6 : 1), ih * (both ? 0.35 : 0.95)) };
+}
+
+/**
+ * taille réelle du QR (mm) d'un modèle, et si le réglage est plafonné par la place disponible
+ * (pour l'éditeur : « limité par la hauteur de l'étiquette »)
+ */
+export function qrSizeMm(t0: LabelTemplate): { mm: number; capped: boolean } {
+  const t = { ...t0, h: printableHeight(t0) };
+  const pad = t.padding ?? 1.5, k = (t.symbolSize ?? 100) / 100;
+  const iw = t.w - 2 * pad, ih = t.h - 2 * pad;
+  if (t.layout === 'libre') {
+    const f = freeSizes(t);
+    const want = (f.side === 'row' ? Math.min(ih * (t.symbol === 'les-deux' ? 0.62 : 1), iw * 0.55) : Math.min(iw, ih * 0.62) * (t.symbol === 'les-deux' ? 0.75 : 1)) * k;
+    return { mm: f.qr, capped: want > f.qr + 0.05 };
+  }
+  const base = t.layout === 'qr-dessus' ? Math.min(t.w * 0.6, t.h * 0.58) : t.layout === 'qr-seul' ? Math.min(t.w, t.h) * 0.72 : t.layout === 'cable' ? t.h * 0.86 : Math.min(t.h - 3, t.w * 0.45);
+  const max = t.layout === 'qr-dessus' ? Math.min(iw, ih * 0.8) : t.layout === 'qr-seul' ? Math.min(iw, ih * 0.85) : t.layout === 'cable' ? Math.min(ih, iw * 0.3) : Math.min(ih, iw * 0.8);
+  const want = base * k;
+  return { mm: Math.max(1, Math.min(want, Math.max(max, base))), capped: want > Math.max(max, base) + 0.05 };
 }
 
 /** taille normale d'une zone, en multiple de la taille de base */
@@ -291,7 +311,8 @@ export function labelCss(t0: LabelTemplate): string {
   const my = (t0.h - t.h) / 2;
   const k = (t.textScale || 100) / 100;
   const base = Math.max(5, Math.min(16, t.h * 0.23)) * k; // pt, selon la hauteur
-  const qr = t.layout === 'qr-dessus' ? Math.min(t.w * 0.6, t.h * 0.58) : t.layout === 'qr-seul' ? Math.min(t.w, t.h) * 0.72 : t.layout === 'cable' ? t.h * 0.86 : Math.min(t.h - 3, t.w * 0.45);
+  const qr = qrSizeMm(t).mm;
+  const bk = Math.min(2, (t.symbolSize ?? 100) / 100);
   const big = t.layout === 'texte';
   return `.lab{width:${t.w}mm;height:${t0.h}mm;box-sizing:border-box;padding:1.5mm;overflow:hidden;display:flex;gap:1.5mm;font-family:system-ui,sans-serif;color:#000;background:#fff;${t.border ? 'border:0.3mm solid #000;' : ''}}
 .lab .qr svg{width:${qr.toFixed(1)}mm;height:${qr.toFixed(1)}mm;display:block}.lab .qr{flex:none}
@@ -302,7 +323,7 @@ export function labelCss(t0: LabelTemplate): string {
 .lab.qr-gauche{align-items:center}
 .lab.qr-dessus,.lab.qr-seul{flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:0.8mm}
 .lab.qr-seul .tx div:not(.f-code){display:none}.lab.qr-seul .f-code{font-size:${(Math.max(5, t.h * 0.17) * k).toFixed(1)}pt}
-.lab.code-barres{flex-direction:column;justify-content:center;gap:0.8mm}.lab.code-barres .bc svg{width:100%;height:${(t.h * 0.42).toFixed(1)}mm;display:block}
+.lab.code-barres{flex-direction:column;justify-content:center;gap:0.8mm}.lab.code-barres .bc svg{width:100%;height:${Math.min(t.h * 0.42 * bk, t.h - 2 * (t.padding ?? 1.5) - 2).toFixed(1)}mm;display:block}
 .lab.code-barres .tx{text-align:center}
 .lab.texte{flex-direction:column;justify-content:center}
 .lab.cable{align-items:center;justify-content:space-between}.lab.cable .tx{flex:1;text-align:center}.lab.cable .fold{border-left:0.3mm dashed #999;align-self:stretch}
