@@ -12,6 +12,8 @@ import type { Equipment, SerialUnit } from '../types';
 import { fmtDate, fmtRange, money, patch, save, stockIn, toLocalInput } from '../utils';
 import { AssociateModal, stockMove } from './Checklist';
 import { Icon } from '../components/Icon';
+import { CategoryOptions } from '../components/CategoryOptions';
+import { categoryLabel, inCategory } from '../categories';
 
 /*
  * Inventaire — repris de l'Inventaire FABRI.live (sitefab/inventaire), désormais natif :
@@ -189,14 +191,14 @@ export default function Inventory() {
 
   /* ---------- liste ---------- */
   const qn = norm(q);
-  const inScope = (e: Equipment) => !ui.cat || e.categoryId === ui.cat;
+  const inScope = (e: Equipment) => inCategory(cats, e.categoryId, ui.cat);
   const scope = items.filter(inScope);
   const counted = scope.filter((e) => countOf(e) !== undefined);
   const diffs = items.filter((e) => stateOf(e) === 'diff');
   const scopeDiffs = scope.filter((e) => stateOf(e) === 'diff').length;
   const match = (e: Equipment) => !qn || norm([e.name, e.code, e.barcode, e.location, ...(e.extraCodes || [])].join(' ')).includes(qn);
   const rows = [...scope.filter((e) => ui.view === 'all' || stateOf(e) === ui.view), ...(ui.view === 'all' ? kits.filter(inScope) : [])].filter(match);
-  const catName = (id?: string) => cats.find((c) => c.id === id)?.name || 'Sans catégorie';
+  const catName = (id?: string) => categoryLabel(cats, id) || 'Sans catégorie';
   rows.sort((a, b) => catName(a.categoryId).localeCompare(catName(b.categoryId), 'fr') || Number(!!a.isKit) - Number(!!b.isKit)
     || (a.code || '').localeCompare(b.code || '', 'fr', { numeric: true }) || a.name.localeCompare(b.name, 'fr'));
   const groups: { name: string; list: Equipment[] }[] = [];
@@ -240,7 +242,7 @@ export default function Inventory() {
           <input type="search" placeholder="Nom, code, emplacement…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Rechercher" />
           <select value={ui.cat} onChange={(e) => setUiP({ cat: e.target.value })} aria-label="Catégorie">
             <option value="">Toutes les catégories</option>
-            {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            <CategoryOptions cats={cats} />
           </select>
           <div className="seg" role="group" aria-label="Vue">
             {([['all', 'Tout'], ['todo', 'À compter'], ['diff', 'Écarts']] as [View, string][]).map(([v, l]) => (
@@ -615,7 +617,7 @@ function NewItemModal({ items, onClose, onExisting, onCreated }: { items: Equipm
           <div className="full inv-dupes"><b>Déjà au parc ?</b> {hits.map((h) => <button key={h.id} type="button" className="secondary small" onClick={() => onExisting(h.id)}>{h.name}{h.code ? ` · ${h.code}` : ''} → {h.trackSerials ? 'ajouter des unités' : 'ajouter du stock'}</button>)}</div>
         )}
         <Field label="Catégorie">
-          <select value={cat} onChange={(ev) => setCat(ev.target.value)}><option value="">—</option>{cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+          <select value={cat} onChange={(ev) => setCat(ev.target.value)}><option value="">—</option><CategoryOptions cats={cats} /></select>
         </Field>
         <Field label={serials ? 'Nombre d\'unités trouvées' : 'Quantité trouvée'}><NumInput step="1" min={0} value={qty} onChange={setQty} /></Field>
         <Field label="Prix location / jour HT (€)"><NumInput value={price} onChange={setPrice} /></Field>

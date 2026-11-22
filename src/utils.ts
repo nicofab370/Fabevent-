@@ -492,8 +492,22 @@ export function lineDays(l: Pick<EquipmentLine, 'groupId' | 'periodIds'>, sp: Su
 
 /* ---------- Personnel : montants, heures supplémentaires, trajet ---------- */
 
-export interface CrewAmount { unit: 'jour' | 'heure'; qty: number; hours: number; overtime: number; billed: number; cost: number }
+export interface CrewAmount {
+  unit: 'jour' | 'heure'; qty: number; hours: number; overtime: number; billed: number; cost: number;
+  /** heures sup. du technicien (au-delà de son forfait journalier) */
+  costOvertime: number;
+  /** heures prestées par le technicien (trajet compris) */
+  worked: number;
+  /** heures estimées (poste à la journée sur plusieurs jours : même horaire chaque jour) */
+  estimated: boolean;
+}
 
+/**
+ * Ce que coûte la personne : forfait journalier et / ou prix horaire, et heures comprises dans
+ * son forfait. Seulement un prix horaire : tout est compté à l'heure. Seulement un forfait :
+ * les heures sup. valent forfait ÷ heures du forfait.
+ */
+export interface CostProfile { day?: number; hour?: number; dayHours?: number }
 /** Heures par jour calendaire d'un intervalle. */
 export function hoursPerDay(start: string, end: string): number[] {
   const out: number[] = [];
@@ -514,24 +528,63 @@ export function hoursPerDay(start: string, end: string): number[] {
  * des heures au-delà du seuil journalier. Le trajet est compté s'il est inclus.
  */
 export function crewAmount(
-  c: { start: string; end: string; rate: number; cost?: number; rateUnit?: 'jour' | 'heure'; travel?: boolean },
-  s: Pick<Settings, 'overtimeAfter' | 'overtimeRate'>, travelMinutes = 0, costFallback = 0,
+  c: { start: string; end: string; rate: number; cost?: number; costUnit?: 'jour' | 'heure'; rateUnit?: 'jour' | 'heure'; travel?: boolean },
+  s: Pick<Settings, 'overtimeAfter' | 'overtimeRate'>, travelMinutes = 0, costFallback: number | CostProfile = 0,
 ): CrewAmount {
-  const costRate = c.cost ?? costFallback;
-  if (c.rateUnit !== 'heure') {
-    const days = daysBetween(c.start, c.end);
-    return { unit: 'jour', qty: days, hours: 0, overtime: 0, billed: round2(days * c.rate), cost: round2(days * costRate) };
-  }
+  const k = 1 + (s.overtimeRate ?? 50) / 100;
   const [a, b] = crewWindow(c, travelMinutes);
   // un service de 24 h maximum (même à cheval sur minuit) compte comme une seule journée de travail
   const total = (new Date(b).getTime() - new Date(a).getTime()) / 3600000;
-  const perDay = total <= 24 ? [total] : hoursPerDay(a, b);
-  const limit = s.overtimeAfter ?? 10;
-  const k = 1 + (s.overtimeRate ?? 50) / 100;
+  const single = total <= 24;
+  const perDay = single ? [total] : hoursPerDay(a, b);
+  const over = (limit: number) => round2(perDay.reduce((x, h) => x + Math.max(0, h - limit), 0));
   const hours = round2(perDay.reduce((x, h) => x + h, 0));
-  const overtime = round2(perDay.reduce((x, h) => x + Math.max(0, h - limit), 0));
+  const days = daysBetween(c.start, c.end);
+
+  // coût : saisi sur le poste, sinon le profil de la personne
+  const unitOf = c.costUnit ?? c.rateUnit ?? 'jour';
+  const prof: CostProfile = c.cost != null ? (unitOf === 'heure' ? { hour: c.cost } : { day: c.cost })
+    : typeof costFallback === 'number' ? ((c.rateUnit ?? 'jour') === 'heure' ? { hour: costFallback } : { day: costFallback }) : { ...costFallback };
+  if (c.cost != null && typeof costFallback === 'object') prof.dayHours = costFallback.dayHours;
+  const limitCost = prof.dayHours || s.overtimeAfter || 10;
+
+  // heures prestées : à l'heure, la durée réelle ; à la journée sur plusieurs jours, le même horaire chaque jour
+  // (ex. 8 h → 18 h pendant 3 jours = 30 h), trajet compris
+  // (estimation : les heures sup. ne sont alors pas comptées, l'horaire réel de chaque jour n'étant pas connu)
+  let worked = hours, workedOver = over(limitCost), estimated = false;
+  if (c.rateUnit !== 'heure' && !single) {
+    const clock = (d: string) => { const x = new Date(d); return x.getHours() + x.getMinutes() / 60; };
+    const span = clock(b) - clock(a);
+    worked = round2((span > 0 ? span : limitCost) * days);
+    workedOver = 0;
+    estimated = true;
+  }
+
+  const day = prof.day || 0, hour = prof.hour || 0;
+  let cost = 0;
+  if (hour && (!day || c.rateUnit === 'heure')) {
+    // payé à l'heure (seulement un prix horaire, ou poste à l'heure)
+    cost = (worked - workedOver) * hour + workedOver * hour * k;
+  } else if (day) {
+    // payé au forfait : par jour (poste à la journée) ou par journée de service (poste à l'heure) + heures sup.
+    const n = c.rateUnit === 'heure' ? perDay.filter((h) => h > 0).length : days;
+    cost = n * day + workedOver * (hour || day / limitCost) * k;
+  }
+  cost = round2(cost);
+  const extra = { cost, costOvertime: workedOver, worked, estimated };
+
+  if (c.rateUnit !== 'heure') return { unit: 'jour', qty: days, hours: 0, overtime: 0, billed: round2(days * c.rate), ...extra };
+  const overtime = over(s.overtimeAfter ?? 10);
   const normal = hours - overtime;
-  return { unit: 'heure', qty: hours, hours, overtime, billed: round2(normal * c.rate + overtime * c.rate * k), cost: round2(normal * costRate + overtime * costRate * k) };
+  return { unit: 'heure', qty: hours, hours, overtime, billed: round2(normal * c.rate + overtime * c.rate * k), ...extra };
+}
+
+/** 12,5 → « 12 h 30 » */
+export function fmtHours(x: number): string {
+  const h = Math.floor(x + 1e-9), m = Math.round((x - h) * 60);
+  if (m === 60) return `${h + 1} h`;
+  if (!h && m) return `${m} min`;
+  return m ? `${h} h ${String(m).padStart(2, '0')}` : `${h} h`;
 }
 
 /** Horaires communiqués : trajet aller avant le début et retour après la fin. */
@@ -552,6 +605,28 @@ export function crewCostRate(
   const own = c.rateUnit === 'heure' ? r?.hourCost : r?.cost;
   if (own != null && own > 0) return own;
   return (c.rateUnit === 'heure' ? person?.hourlyCost : person?.costRate) ?? 0;
+}
+
+/** Profil de coût d'un poste : tarif propre à la fonction, sinon forfait et prix horaire de la personne. */
+export function crewCostProfile(
+  c: { function?: string },
+  person?: { costRate?: number; hourlyCost?: number; dayHours?: number; rates?: { function: string; cost?: number; hourCost?: number }[] },
+): CostProfile {
+  const fn = c.function?.trim().toLowerCase();
+  const r = fn ? person?.rates?.find((x) => x.function.trim().toLowerCase() === fn) : undefined;
+  const own = r && ((r.cost || 0) > 0 || (r.hourCost || 0) > 0);
+  return {
+    day: (own ? r!.cost : person?.costRate) || undefined,
+    hour: (own ? r!.hourCost : person?.hourlyCost) || undefined,
+    dayHours: person?.dayHours || undefined,
+  };
+}
+
+/** Coût affiché pour un poste : la valeur et son unité (celle que la personne a, ou celle du poste). */
+export function crewCostShown(c: { cost?: number; costUnit?: 'jour' | 'heure'; rateUnit?: 'jour' | 'heure' }, prof: CostProfile): { value: number; unit: 'jour' | 'heure' } {
+  if (c.cost != null) return { value: c.cost, unit: c.costUnit ?? c.rateUnit ?? 'jour' };
+  if (prof.hour && (!prof.day || c.rateUnit === 'heure')) return { value: prof.hour, unit: 'heure' };
+  return { value: prof.day || 0, unit: 'jour' };
 }
 
 /** Tarif client d'une fonction du catalogue (sinon le tarif par défaut de la personne). */

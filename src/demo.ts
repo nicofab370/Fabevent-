@@ -121,13 +121,21 @@ async function seedAll() {
     await db.categories.put(c);
     cats[name] = c.id;
   }
+  // sous-catégories (Son › Micro…) : « Son/Micro » dans la liste ci-dessous
+  const catOf = async (path: string) => {
+    if (cats[path]) return cats[path];
+    const [main, sub] = path.split('/');
+    const c = { ...base(), name: sub, parentId: cats[main] };
+    await db.categories.put(c);
+    return (cats[path] = c.id);
+  };
   const eq: Record<string, string> = {};
   const eqCode: Record<string, string> = {};
   let num = 1;
   // codes F-S-0001… (dépôt F = Liège) ; l'ancienne étiquette DEMO-… reste lisible au scan
   const item = async (key: string, cat: string, name: string, quantity: number, dailyPrice: number, extra: Partial<Equipment> = {}) => {
-    const code = articleCode('F', extra.isKit ? 'K' : LETTERS[cat], num++);
-    const e: Equipment = { ...base(), name, categoryId: cats[cat], quantity, dailyPrice, isKit: false, kitItems: [], code, barcode: 'DEMO-' + key.toUpperCase(), ...extra };
+    const code = articleCode('F', extra.isKit ? 'K' : LETTERS[cat.split('/')[0]], num++);
+    const e: Equipment = { ...base(), name, categoryId: await catOf(cat), quantity, dailyPrice, isKit: false, kitItems: [], code, barcode: 'DEMO-' + key.toUpperCase(), ...extra };
     eqCode[key] = e.code || code;
     await db.equipment.put(e);
     eq[key] = e.id;
@@ -142,24 +150,24 @@ async function seedAll() {
   await item('p17', 'Énergie', 'Rallonge P17 32 A tétra 25 m', 8, 12, { weight: 9, location: 'Rack E2', inspectionMonths: 12 });
   await item('distro', 'Énergie', 'Armoire de distribution 63 A', 3, 45, { weight: 28, location: 'Rack E3', inspectionMonths: 12, replacementValue: 1800 });
   // Son
-  await item('x12', 'Son', 'Enceinte L-Acoustics X12', 8, 45, { weight: 20, replacementValue: 3200, location: 'Rack S1', inspectionMonths: 12, accessories: [{ equipmentId: eq.nl4, qty: 1, free: true }] });
-  await item('dxr', 'Son', 'Enceinte Yamaha DXR12 (remplacement)', 4, 30, { weight: 19, replacementValue: 900, location: 'Rack S5' });
+  await item('x12', 'Son/Diffusion', 'Enceinte L-Acoustics X12', 8, 45, { weight: 20, replacementValue: 3200, location: 'Rack S1', inspectionMonths: 12, accessories: [{ equipmentId: eq.nl4, qty: 1, free: true }] });
+  await item('dxr', 'Son/Diffusion', 'Enceinte Yamaha DXR12 (remplacement)', 4, 30, { weight: 19, replacementValue: 900, location: 'Rack S5' });
   await db.equipment.update(eq.x12, { alternatives: [eq.dxr] });
-  await item('mg', 'Son', 'Console analogique Mackie (ancienne)', 1, 20, { archived: true });
-  await item('sub', 'Son', 'Caisson SB18', 4, 60, { weight: 52, replacementValue: 4100, location: 'Rack S2', accessories: [{ equipmentId: eq.nl4, qty: 1, free: true }] });
-  await item('ampli', 'Son', 'Amplificateur LA4X', 3, 70, { weight: 13, replacementValue: 5500, location: 'Rack S3', inspectionMonths: 12, trackSerials: true });
-  await item('cl5', 'Son', 'Console Yamaha CL5', 1, 250, { weight: 36, replacementValue: 22000, location: 'Flight F1', trackSerials: true, inspectionMonths: 12 });
-  await item('qu16', 'Son', 'Console Allen & Heath Qu-16', 2, 80, { weight: 12, replacementValue: 2300, location: 'Flight F2', trackSerials: true });
-  await item('sm58', 'Son', 'Micro Shure SM58', 16, 5, { weight: 0.3, location: 'Valise M1', accessories: [{ equipmentId: eq.xlr10, qty: 1, free: true }] });
-  await item('hf', 'Son', 'Micro HF Shure ULX-D main', 6, 35, { weight: 1.2, replacementValue: 1400, location: 'Valise M2', trackSerials: true });
-  await item('di', 'Son', 'Boîte de direct DI passive', 10, 4, { weight: 0.5, location: 'Valise M1' });
-  await item('pied', 'Son', 'Pied de micro perche', 20, 3, { weight: 2.5, location: 'Bac S4' });
+  await item('mg', 'Son/Console', 'Console analogique Mackie (ancienne)', 1, 20, { archived: true });
+  await item('sub', 'Son/Diffusion', 'Caisson SB18', 4, 60, { weight: 52, replacementValue: 4100, location: 'Rack S2', accessories: [{ equipmentId: eq.nl4, qty: 1, free: true }] });
+  await item('ampli', 'Son/Diffusion', 'Amplificateur LA4X', 3, 70, { weight: 13, replacementValue: 5500, location: 'Rack S3', inspectionMonths: 12, trackSerials: true });
+  await item('cl5', 'Son/Console', 'Console Yamaha CL5', 1, 250, { weight: 36, replacementValue: 22000, location: 'Flight F1', trackSerials: true, inspectionMonths: 12 });
+  await item('qu16', 'Son/Console', 'Console Allen & Heath Qu-16', 2, 80, { weight: 12, replacementValue: 2300, location: 'Flight F2', trackSerials: true });
+  await item('sm58', 'Son/Micro', 'Micro Shure SM58', 16, 5, { weight: 0.3, location: 'Valise M1', accessories: [{ equipmentId: eq.xlr10, qty: 1, free: true }] });
+  await item('hf', 'Son/Micro', 'Micro HF Shure ULX-D main', 6, 35, { weight: 1.2, replacementValue: 1400, location: 'Valise M2', trackSerials: true });
+  await item('di', 'Son/Micro', 'Boîte de direct DI passive', 10, 4, { weight: 0.5, location: 'Valise M1' });
+  await item('pied', 'Son/Micro', 'Pied de micro perche', 20, 3, { weight: 2.5, location: 'Bac S4' });
   // Lumière
-  await item('par', 'Lumière', 'Projecteur PAR LED 18×10 W', 32, 8.5, { weight: 3.2, location: 'Rack L1', inspectionMonths: 12, accessories: [{ equipmentId: eq.dmx, qty: 1, free: true }, { equipmentId: eq.pc16, qty: 1, free: true }] });
-  await item('lyre', 'Lumière', 'Lyre wash Robe LEDWash 600', 8, 55, { weight: 15, replacementValue: 4500, location: 'Flight L2', inspectionMonths: 12, trackSerials: true, accessories: [{ equipmentId: eq.dmx, qty: 1, free: true }] });
-  await item('spot', 'Lumière', 'Lyre spot Robe Esprite', 4, 95, { weight: 28, replacementValue: 9000, location: 'Flight L3', inspectionMonths: 12, trackSerials: true });
-  await item('grandma', 'Lumière', 'Console grandMA3 compact', 1, 220, { weight: 25, replacementValue: 18000, location: 'Flight L4', trackSerials: true });
-  await item('fumee', 'Lumière', 'Machine à brouillard', 4, 30, { weight: 8, location: 'Bac L5', inspectionMonths: 12 });
+  await item('par', 'Lumière/Projecteurs', 'Projecteur PAR LED 18×10 W', 32, 8.5, { weight: 3.2, location: 'Rack L1', inspectionMonths: 12, accessories: [{ equipmentId: eq.dmx, qty: 1, free: true }, { equipmentId: eq.pc16, qty: 1, free: true }] });
+  await item('lyre', 'Lumière/Projecteurs', 'Lyre wash Robe LEDWash 600', 8, 55, { weight: 15, replacementValue: 4500, location: 'Flight L2', inspectionMonths: 12, trackSerials: true, accessories: [{ equipmentId: eq.dmx, qty: 1, free: true }] });
+  await item('spot', 'Lumière/Projecteurs', 'Lyre spot Robe Esprite', 4, 95, { weight: 28, replacementValue: 9000, location: 'Flight L3', inspectionMonths: 12, trackSerials: true });
+  await item('grandma', 'Lumière/Console', 'Console grandMA3 compact', 1, 220, { weight: 25, replacementValue: 18000, location: 'Flight L4', trackSerials: true });
+  await item('fumee', 'Lumière/Effets', 'Machine à brouillard', 4, 30, { weight: 8, location: 'Bac L5', inspectionMonths: 12 });
   // Vidéo
   await item('vp', 'Vidéo', 'Vidéoprojecteur 10 000 lm', 2, 180, { weight: 18, replacementValue: 9500, location: 'Flight V1', trackSerials: true, contents: [{ name: 'Télécommande', qty: 1 }, { name: 'Câble HDMI 5 m', qty: 1 }, { name: 'Câble secteur', qty: 1 }] });
   await item('ecran', 'Vidéo', 'Écran de projection 4 × 3 m', 3, 60, { weight: 22, location: 'Rack V2' });

@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:e2e": "npm run build && node tests/e2e/run.mjs",
+    "test:parcours": "npm run build && node tests/e2e/parcours.mjs",
     "test:mobile": "npm run build && node tests/e2e/mobile-audit.mjs --strict"
   },
   "dependencies": {

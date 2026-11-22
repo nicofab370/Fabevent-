@@ -10,6 +10,7 @@ import { TRANSFER_LABELS } from '../types';
 import { availableQty, fmtDate, fmtRange, save, toLocalInput } from '../utils';
 import { printHtml } from './project/shared';
 import { Icon } from '../components/Icon';
+import { EquipmentChooser } from '../components/EquipmentChooser';
 
 const esc = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -76,7 +77,7 @@ function TransferModal({ initial, onClose }: { initial: Partial<Transfer>; onClo
   const settings = useSettings();
   const [t, setT] = useState(initial);
   const [temporary, setTemporary] = useState(!!initial.end || !initial.id);
-  const [pick, setPick] = useState('');
+  const [choosing, setChoosing] = useState(false);
   const lines = t.lines || [];
   const start = t.start || toLocalInput(new Date());
   const end = temporary ? t.end || start : start;
@@ -149,13 +150,14 @@ function TransferModal({ initial, onClose }: { initial: Partial<Transfer>; onClo
             </table>
           )}
           <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-            <select value={pick} onChange={(e) => setPick(e.target.value)}>
-              <option value="">Choisir un article…</option>
-              {av.equipment.filter((e) => !e.isKit && !e.accessoryOnly && !lines.some((l) => l.equipmentId === e.id)).map((e) => (
-                <option key={e.id} value={e.id}>{e.name} ({t.fromDepotId ? e._stock?.[t.fromDepotId] ?? e.quantity : e.quantity} au départ)</option>
-              ))}
-            </select>
-            <button type="button" className="secondary small" disabled={!pick} onClick={() => { set({ lines: [...lines, { equipmentId: pick, qty: 1 }] }); setPick(''); }}>+ Ajouter</button>
+            <button type="button" className="secondary small" onClick={() => setChoosing(true)}>+ Ajouter du matériel…</button>
+            {choosing && (
+              <EquipmentChooser title="Matériel à transférer" withQty equipment={av.equipment.filter((e) => !e.isKit)}
+                exclude={lines.map((l) => l.equipmentId)}
+                info={(e) => `${t.fromDepotId ? e._stock?.[t.fromDepotId] ?? e.quantity : e.quantity} au départ`}
+                onClose={() => setChoosing(false)}
+                onConfirm={(picked) => set({ lines: [...lines, ...picked] })} />
+            )}
           </div>
         </div>
         <Field label="Notes" full><textarea value={t.notes || ''} onChange={(e) => set({ notes: e.target.value })} /></Field>

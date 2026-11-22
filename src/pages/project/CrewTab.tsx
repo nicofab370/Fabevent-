@@ -8,7 +8,7 @@ import { EmailModal } from '../../components/EmailModal';
 import { appBaseUrl, db } from '../../db';
 import type { CrewAssignment, CrewPreset, Person, Subproject, VehicleAssignment } from '../../types';
 import { RESERVING } from '../../types';
-import { blockPeriod, buildIcs, crewAmount, crewCostRate, crewWindow, functionRate, daysBetween, download, fmtRange, money, overlaps, round2, save, sortPeriods, patch, uid } from '../../utils';
+import { blockPeriod, buildIcs, crewAmount, crewCostProfile, fmtHours, crewWindow, functionRate, daysBetween, download, fmtRange, money, overlaps, round2, save, sortPeriods, patch, uid } from '../../utils';
 import { personIssue, type ProjectData } from './shared';
 import { PostRequests, useCrewDialogs } from '../crewRequests';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -32,6 +32,13 @@ export default function CrewTab({ d }: { d: ProjectData }) {
   const assigned = people.filter((p) => projectCrew.some((c) => c.personId === p.id));
   const open = projectCrew.filter((c) => !c.personId && subMap.get(c.subprojectId)?.status !== 'annule');
   const provisional = projectCrew.filter((c) => c.final === false).length;
+  /** heures prestées par une personne sur le projet (trajet compris), et ses heures sup. selon son forfait */
+  const hoursOf = (p: Person) => projectCrew.filter((c) => c.personId === p.id && subMap.get(c.subprojectId)?.status !== 'annule').reduce((t, c) => {
+    const a = crewAmount(c, settings, project.travelMinutes, crewCostProfile(c, p));
+    return { worked: t.worked + a.worked, over: t.over + a.costOvertime, est: t.est || a.estimated, posts: t.posts + 1 };
+  }, { worked: 0, over: 0, est: false, posts: 0 });
+  const totalHours = projectCrew.filter((c) => subMap.get(c.subprojectId)?.status !== 'annule')
+    .reduce((t, c) => t + crewAmount(c, settings, project.travelMinutes, crewCostProfile(c, c.personId ? people.find((x) => x.id === c.personId) : undefined)).worked, 0);
 
   /** postes d'une personne ; finalOnly = ce qu'elle a le droit de voir (planification finale) */
   const schedule = (p: Person, finalOnly = false) => projectCrew
@@ -99,6 +106,7 @@ export default function CrewTab({ d }: { d: ProjectData }) {
           <div className="stat"><b style={{ color: open.length ? 'var(--danger)' : 'var(--ok)' }}>{open.length}</b><span>à pourvoir</span></div>
           <div className="stat"><b>{assigned.length}</b><span>personnes affectées</span></div>
           <div className="stat"><b style={{ color: provisional ? 'var(--accent)' : undefined }}>{provisional}</b><span>postes provisoires</span></div>
+          <div className="stat"><b>{fmtHours(totalHours)}</b><span>heures prestées</span></div>
         </div>
         <div className="toolbar planning-send">
           {provisional > 0 && <button className="secondary small" onClick={async () => { for (const c of projectCrew.filter((x) => x.final === false)) await save(db.crew, { ...c, final: true }); }}>Rendre toute la planification finale</button>}
@@ -110,7 +118,14 @@ export default function CrewTab({ d }: { d: ProjectData }) {
             <tbody>
               {assigned.map((p) => (
                 <tr key={p.id}>
-                  <td style={{ width: 200 }}><strong>{p.name}</strong><div className="muted">{p.role}{p.external ? ' · externe' : ''}</div></td>
+                  <td style={{ width: 200 }}><strong>{p.name}</strong><div className="muted">{p.role}{p.external ? ' · externe' : ''}</div>
+                    {(() => { const h = hoursOf(p); return (
+                      <div className="crew-hours" title={`Heures prestées sur le projet, trajet compris${h.est ? ' (estimées pour les postes à la journée sur plusieurs jours)' : ''}`}>
+                        <Icon name="clock" />{h.est ? '≈ ' : ''}{fmtHours(h.worked)}{h.over ? <span className="avail ko"> dont {fmtHours(h.over)} sup.</span> : null}
+                        <span className="muted"> · {h.posts} poste{h.posts > 1 ? 's' : ''}</span>
+                      </div>
+                    ); })()}
+                  </td>
                   <td>{schedule(p).map((i) => {
                     const ch = changeOf(i.c);
                     return (
@@ -213,11 +228,11 @@ function RoomCrew({ d, sp, pMap, mode, ctx, actionsFor }: { d: ProjectData; sp: 
         {crew.length > 0 && mode === 'postes' && (
           <div className="table-wrap">
             <table className="list crew-posts cards-sm">
-              <thead><tr><th>Fonction</th>{periods.length > 0 && <th>Créneau</th>}<th>Début</th><th>Fin</th><th>Unité</th><th title="Prix facturé au client pour la fonction">Tarif client</th><th title="Ajouter le temps de trajet du projet avant et après">Trajet</th><th>Facturé</th><th className="n">Total client</th><th>Technicien</th><th /></tr></thead>
+              <thead><tr><th>Fonction</th>{periods.length > 0 && <th>Créneau</th>}<th>Début</th><th>Fin</th><th className="n" title="Heures prestées par le technicien, trajet compris">Heures</th><th>Unité</th><th title="Prix facturé au client pour la fonction">Tarif client</th><th title="Ajouter le temps de trajet du projet avant et après">Trajet</th><th>Facturé</th><th className="n">Total client</th><th>Technicien</th><th /></tr></thead>
               <tbody>
                 {crew.map((c) => {
                   const person = c.personId ? pMap.get(c.personId) : undefined;
-                  const a = crewAmount(c, d.settings, d.project.travelMinutes, crewCostRate(c, person));
+                  const a = crewAmount(c, d.settings, d.project.travelMinutes, crewCostProfile(c, person));
                   return (
                     <tr key={c.id} className={c.personId ? '' : 'post-open'}>
                       <td>
@@ -230,6 +245,7 @@ function RoomCrew({ d, sp, pMap, mode, ctx, actionsFor }: { d: ProjectData; sp: 
                       {periods.length > 0 && <td><PeriodSelect value={c.periodId} onChange={(v) => updCrew(c, slot(v))} /></td>}
                       <td><input type="datetime-local" value={c.start} onChange={(e) => updCrew(c, { start: e.target.value, periodId: undefined })} /></td>
                       <td><input type="datetime-local" value={c.end} onChange={(e) => updCrew(c, { end: e.target.value, periodId: undefined })} /></td>
+                      <td className="n nowrap"><HoursCell a={a} travel={!!c.travel && !!d.project.travelMinutes} /></td>
                       <td>
                         <select value={c.rateUnit || 'jour'} onChange={(e) => {
                           const unit = e.target.value as 'jour' | 'heure';
@@ -261,18 +277,18 @@ function RoomCrew({ d, sp, pMap, mode, ctx, actionsFor }: { d: ProjectData; sp: 
               <tbody>
                 {crew.map((c) => {
                   const person = c.personId ? pMap.get(c.personId) : undefined;
-                  const a = crewAmount(c, d.settings, d.project.travelMinutes, crewCostRate(c, person));
+                  const a = crewAmount(c, d.settings, d.project.travelMinutes, crewCostProfile(c, person));
                   const margin = (c.billable ? a.billed : 0) - a.cost;
                   const pe = periods.find((x) => x.id === c.periodId);
                   return (
                     <tr key={c.id} className={c.personId ? '' : 'post-open'}>
                       <td>{!c.personId && <span className="open-flag"><Icon name="warning" />À pourvoir</span>}<strong>{c.function}</strong>{pe && <div className="muted">{pe.name}</div>}</td>
-                      <td className="nowrap">{fmtRange(c.start, c.end)}</td>
+                      <td className="nowrap">{fmtRange(c.start, c.end)}<div><HoursCell a={a} travel={!!c.travel && !!d.project.travelMinutes} /></div></td>
                       <td><PersonSelect c={c} ctx={ctx} /><PostRequests c={c} people={ctx.people} requests={ctx.requests || []} {...actionsFor(c)} /></td>
                       <td className="nowrap"><CostCell c={c} person={person} /></td>
                       <td><input type="checkbox" aria-label="Planification finale" checked={c.final !== false} onChange={(e) => updCrew(c, { final: e.target.checked })} /></td>
                       <td className="n">{c.billable ? money(a.billed) : <span className="muted">non facturé</span>}</td>
-                      <td className="n">{!c.personId && c.cost == null ? <span className="muted">à pourvoir</span> : <><span className={'avail ' + (margin < 0 ? 'ko' : 'ok')}>{money(round2(margin))}</span><div className="muted" style={{ fontSize: 11 }}>coût {money(a.cost)}</div></>}</td>
+                      <td className="n">{!c.personId && c.cost == null ? <span className="muted">à pourvoir</span> : <><span className={'avail ' + (margin < 0 ? 'ko' : 'ok')}>{money(round2(margin))}</span><div className="muted" style={{ fontSize: 11 }}>coût {money(a.cost)}{a.costOvertime ? ` dont ${a.costOvertime} h sup.` : ''}</div></>}</td>
                     </tr>
                   );
                 })}
@@ -280,6 +296,14 @@ function RoomCrew({ d, sp, pMap, mode, ctx, actionsFor }: { d: ProjectData; sp: 
             </table>
           </div>
         )}
+        {crew.length > 0 && (() => {
+          const all = crew.map((c) => crewAmount(c, d.settings, d.project.travelMinutes, crewCostProfile(c, c.personId ? pMap.get(c.personId) : undefined)));
+          const worked = all.reduce((t, a) => t + a.worked, 0), over = all.reduce((t, a) => t + a.costOvertime, 0);
+          return (
+            <p className="muted crew-total"><Icon name="clock" />Total prévu : <strong>{all.some((a) => a.estimated) ? '≈ ' : ''}{fmtHours(worked)}</strong> prestées sur {crew.length} poste{crew.length > 1 ? 's' : ''}
+              {over > 0 && <>, dont <span className="avail ko">{fmtHours(over)} sup.</span></>}</p>
+          );
+        })()}
         {mode === 'postes' && (
           <form className="toolbar add-posts" style={{ marginTop: 8 }} onSubmit={async (e) => {
             e.preventDefault();
@@ -460,5 +484,16 @@ function SendPlanningAll({ people, withProv, items, mail, ics, onSent, onClose }
         }}>{busy ? 'Envoi…' : `Envoyer à ${pick.size} personne(s)`}</button>}
       </div>
     </Modal>
+  );
+}
+
+/** heures prestées d'un poste : « 12 h », dont heures sup. (selon le forfait du technicien), trajet compris */
+function HoursCell({ a, travel }: { a: ReturnType<typeof crewAmount>; travel: boolean }) {
+  return (
+    <span className="hours-cell" title={`${a.estimated ? 'Estimation : même horaire chaque jour. ' : ''}${travel ? 'Trajet aller et retour compris.' : ''}`}>
+      <strong>{a.estimated ? '≈ ' : ''}{fmtHours(a.worked)}</strong>
+      {a.costOvertime > 0 && <span className="avail ko hours-sub">dont {fmtHours(a.costOvertime)} sup.</span>}
+      {travel && <span className="muted hours-sub">trajet compris</span>}
+    </span>
   );
 }

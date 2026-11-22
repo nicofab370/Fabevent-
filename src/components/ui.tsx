@@ -10,18 +10,26 @@ export function useSettings(): Settings {
   return { ...defaultSettings, ...s, company: { ...defaultSettings.company, ...s?.company } };
 }
 
+/** fenêtres ouvertes, la dernière au-dessus : Échap ne ferme que celle du dessus */
+const openModals: object[] = [];
+
 export function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
+  const self = useRef({}).current;
   useEffect(() => {
-    const h = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    openModals.push(self);
+    return () => { openModals.splice(openModals.indexOf(self), 1); };
+  }, [self]);
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => e.key === 'Escape' && openModals[openModals.length - 1] === self && onClose();
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
-  }, [onClose]);
+  }, [onClose, self]);
   return (
     <div className="modal-bg" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className={'modal' + (wide ? ' wide' : '')} role="dialog" aria-label={title}>
         <div className="modal-head">
           <h3>{title}</h3>
-          <button className="ghost" onClick={onClose} aria-label="Fermer"><Icon name="x" /></button>
+          <button type="button" className="ghost" onClick={onClose} aria-label="Fermer"><Icon name="x" /></button>
         </div>
         <div className="modal-body">{children}</div>
       </div>

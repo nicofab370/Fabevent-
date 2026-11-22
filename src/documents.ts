@@ -5,7 +5,7 @@ import { DEFAULT_VAT_MENTIONS, structuredCommunication } from './payment';
 import { INVOICE_TYPES, VENUE_INFO_LABELS, type VenueInfo } from './types';
 import { contentsText } from './codes';
 import { deptOf, ownAddress, placeAddress, placeName, projectPerson, spotOf } from './places';
-import { crewAmount, crewWindow, daysBetween, factorFor, lineDays, lineTotal, round2, save, sortPeriods } from './utils';
+import { crewAmount, crewCostProfile, crewWindow, daysBetween, factorFor, lineDays, lineTotal, round2, save, sortPeriods } from './utils';
 
 const PREFIX: Record<DocType, 'D' | 'F' | 'AV' | 'BS' | 'FR' | 'RP'> = {
   devis: 'D', facture: 'F', acompte: 'F', avoir: 'AV', rappel: 'RP', bon_sortie: 'BS', feuille_route: 'FR',
@@ -114,7 +114,7 @@ export async function buildSnapshot(projectId: string, type: DocType, only?: { i
         .filter((c) => c.subprojectId === sp.id)
         .sort((a, b) => a.start.localeCompare(b.start))
         .map((c) => {
-          const a = crewAmount(c, s, project.travelMinutes, c.personId ? pMap.get(c.personId)?.costRate : undefined);
+          const a = crewAmount(c, s, project.travelMinutes, crewCostProfile(c, c.personId ? pMap.get(c.personId) : undefined));
           const [dep, back] = crewWindow(c, project.travelMinutes);
           const p = c.personId ? pMap.get(c.personId) : undefined;
           return {

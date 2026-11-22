@@ -144,6 +144,8 @@ export interface ContactPerson {
 
 export interface Category extends Base {
   name: string;
+  /** sous-catégorie : catégorie principale (Son › Micro) ; un seul niveau */
+  parentId?: ID;
   /** lettre(s) dans les codes du matériel : S son, V vidéo, L lumière, IT informatique, R rigging… */
   letter?: string;
 }
@@ -476,6 +478,8 @@ export interface Person extends Base {
   /** tarifs horaires (facturé / coût) */
   hourlyRate?: number;
   hourlyCost?: number;
+  /** heures comprises dans son forfait journalier (au-delà : heures sup.) ; sinon le réglage général */
+  dayHours?: number;
   external: boolean;
   /** société de sous-traitance (contact) qui facture ses prestations */
   contactId?: ID;
@@ -512,6 +516,8 @@ export interface CrewAssignment extends Base {
   rate: number;
   /** coût saisi à la main pour ce poste ; sinon celui de la personne affectée */
   cost?: number;
+  /** unité du coût saisi à la main (sinon celle du poste) */
+  costUnit?: 'jour' | 'heure';
   billable: boolean;
   notes?: string;
   /** détails du poste envoyés au technicien confirmé */

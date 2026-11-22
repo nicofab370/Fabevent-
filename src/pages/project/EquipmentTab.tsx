@@ -8,6 +8,9 @@ import { availableQty, blockPeriod, confirmDeleteSubproject, factorFor, fmtRange
 import { isPerPiece, type ProjectData } from './shared';
 import { codeFromScan, findByCode } from '../../codes';
 import { Icon } from '../../components/Icon';
+import { CategoryOptions } from '../../components/CategoryOptions';
+import { OtherUsesList, otherUses, usedElsewhere } from '../../components/Reservations';
+import { categoryLabel, inCategory, mainCategories, subCategories } from '../../categories';
 
 const EQ_MIME = 'application/x-fabevent-equipment';
 const LINE_MIME = 'application/x-fabevent-line';
@@ -85,7 +88,7 @@ function Catalogue({ d, qty, setQty, targetLabel, onAdd }: { d: ProjectData; qty
   const cats = useLiveQuery(() => db.categories.orderBy('name').toArray(), []) || [];
   const [b0, b1] = d.subs.length ? [d.subs.map((x) => blockPeriod(x)[0]).sort()[0], d.subs.map((x) => blockPeriod(x)[1]).sort().slice(-1)[0]] : [d.project.start, d.project.end];
   const list = d.av.equipment
-    .filter((e) => !e.archived && !e.accessoryOnly && (!cat || e.categoryId === cat) && [e.name, e.code, e.barcode, ...(e.tags || [])].join(' ').toLowerCase().includes(q.toLowerCase()))
+    .filter((e) => !e.archived && !e.accessoryOnly && inCategory(cats, e.categoryId, cat) && [e.name, e.code, e.barcode, ...(e.tags || [])].join(' ').toLowerCase().includes(q.toLowerCase()))
     .slice(0, 200);
   return (
     <aside className="eq-catalogue card">
@@ -93,7 +96,7 @@ function Catalogue({ d, qty, setQty, targetLabel, onAdd }: { d: ProjectData; qty
       <input placeholder="Rechercher…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Rechercher dans le catalogue" />
       <select value={cat} onChange={(e) => setCat(e.target.value)} style={{ marginTop: 6 }}>
         <option value="">Toutes catégories</option>
-        {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        <CategoryOptions cats={cats} />
       </select>
       <label className="check-row" style={{ marginTop: 6 }}>Quantité déposée <NumInput className="w-qty" value={qty} onChange={setQty} aria-label="Quantité déposée" /></label>
       <p className="muted" style={{ fontSize: 12, margin: '6px 0' }}>Glisse vers un groupe, ou « + » pour ajouter à : <strong>{targetLabel || '—'}</strong>. Dispo sur la durée du projet.</p>
@@ -121,8 +124,10 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
   const nav = useNavigate();
   const { settings, av, eqMap } = d;
   const [picking, setPicking] = useState<string | null | undefined>(undefined);
+  const [pickQ, setPickQ] = useState('');
   const [editGroup, setEditGroup] = useState<Partial<EquipGroup> | null>(null);
   const [editLine, setEditLine] = useState<EquipmentLine | null>(null);
+  const [usesOf, setUsesOf] = useState<{ eq: Equipment; uses: ReturnType<typeof otherUses>; name: string; range: string } | null>(null);
   const lines = d.lines.filter((l) => l.subprojectId === sp.id).sort((a, b) => a.order - b.order);
   const groups = sp.groups || [];
   const periods = sortPeriods(sp.periods || []);
@@ -180,14 +185,14 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
                 <span className="muted">{gp.length ? gp.map((p) => p.name).join(', ') : 'tout le sous-projet'}{gl[0] && ` · ${lineDays(gl[0], sp)} j facturé(s)`}</span>
                 {group && <button className="ghost small" onClick={() => setEditGroup(group)}>Modifier</button>}
                 <span style={{ flex: 1 }} />
-                <button className="small" onClick={() => setPicking(group?.id ?? null)}>+ Matériel</button>
+                <button className="small" onClick={() => { setPickQ(''); setPicking(group?.id ?? null); }}>+ Matériel</button>
                 <button className="secondary small" onClick={() => save(db.lines, { projectId: sp.projectId, subprojectId: sp.id, groupId: group?.id, name: 'Prestation', qty: 1, unitPrice: 0, discount: 0, order: lines.length })}>+ Ligne libre</button>
               </div>
               {ordered.length === 0 && <div className="drop-hint">Glisse du matériel ici, ou tape-le ci-dessous</div>}
               {ordered.length > 0 && (
                 <div className="table-wrap">
                   <table className="list eq-table">
-                    <thead><tr><th aria-label="Déplacer" /><th>Qté</th><th>Désignation</th><th className="n">Dispo</th><th className="hide-sm">P.U.</th><th className="hide-sm">Rem. %</th><th className="n">Total HT</th><th /></tr></thead>
+                    <thead><tr><th aria-label="Déplacer" /><th>Qté</th><th>Désignation</th><th className="n" title="Stock disponible restant sur la période, après cette ligne">Reste</th><th className="hide-sm">P.U.</th><th className="hide-sm">Rem. %</th><th className="n">Total HT</th><th /></tr></thead>
                     <tbody>
                       {ordered.map((l) => {
                         const eq = l.equipmentId ? eqMap.get(l.equipmentId) : undefined;
@@ -223,7 +228,20 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
                               ) : null;
                             })}
                             </td>
-                            <td className="n eq-avail">{avail === null ? '—' : <span className={'avail ' + (avail >= l.qty || l.optional ? 'ok' : 'ko')}><span className="show-sm">dispo </span>{avail}</span>}</td>
+                            <td className="n eq-avail">{avail === null || !eq ? '—' : (() => {
+                              const left = l.optional ? avail : avail - l.qty;
+                              const uses = otherUses(eq, av.equipment, av.res, b0, b1, sp.projectId);
+                              const elsewhere = usedElsewhere(uses);
+                              return (
+                                <>
+                                  <span className={'avail ' + (left >= 0 ? 'ok' : 'ko')} title={`Disponible ${avail} sur la période ; ${l.optional ? 'option : non décomptée' : `reste ${left} après cette ligne`}`}>
+                                    <span className="show-sm">reste </span>{left >= 0 ? left : `manque ${-left}`}
+                                  </span>
+                                  {elsewhere > 0 && <button type="button" className="link-btn uses-btn" title="Voir les autres projets qui l'utilisent à ces dates" aria-label={`Réservations ailleurs : ${l.name}`}
+                                    onClick={() => setUsesOf({ eq, uses, name: l.name, range: fmtRange(b0, b1) })}>{elsewhere} ailleurs</button>}
+                                </>
+                              );
+                            })()}</td>
                             <td className="hide-sm"><NumInput className="w-price" value={l.unitPrice} onChange={(n) => updLine(l, { unitPrice: n })} aria-label="Prix unitaire" /></td>
                             <td className="hide-sm"><NumInput className="w-qty" value={l.discount} onChange={(n) => updLine(l, { discount: n })} aria-label="Remise" /></td>
                             <td className="n">{money(lineTotal(l, lineDays(l, sp), settings, perPiece))}</td>
@@ -238,7 +256,7 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
                   </table>
                 </div>
               )}
-              <QuickAdd equipment={av.equipment} units={av.units} availOf={(e) => { const [b0, b1] = lineBlock({ groupId: group?.id }, sp); return availableQty(e, av.equipment, av.res, b0, b1, undefined, d.depot); }}
+              <QuickAdd onBrowse={(q) => { setPickQ(q); setPicking(group?.id ?? null); }} equipment={av.equipment} units={av.units} availOf={(e) => { const [b0, b1] = lineBlock({ groupId: group?.id }, sp); return availableQty(e, av.equipment, av.res, b0, b1, undefined, d.depot); }}
                 onAdd={(eqId, n) => addEquipmentToSub(sp, av.equipment, lines, { [eqId]: n }, group?.id, d.client?.discounts?.equipment || 0)} />
             </div>
           );
@@ -246,9 +264,15 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
         <p className="muted" style={{ marginBottom: 0 }}>Coefficient de durée : {lineDays({}, sp)} j → ×{factorFor(lineDays({}, sp), settings)} (hors groupes rattachés à des créneaux).</p>
       </div>
       {picking !== undefined && (
-        <EquipmentPicker sp={sp} groupId={picking || undefined} depot={d.depot} discount={d.client?.discounts?.equipment || 0} equipment={av.equipment} res={av.res} existing={lines} onClose={() => setPicking(undefined)} />
+        <EquipmentPicker sp={sp} groupId={picking || undefined} initialQ={pickQ} depot={d.depot} discount={d.client?.discounts?.equipment || 0} equipment={av.equipment} res={av.res} existing={lines} onClose={() => setPicking(undefined)} />
       )}
       {editGroup && <GroupModal sp={sp} group={editGroup} onClose={() => setEditGroup(null)} />}
+      {usesOf && (
+        <Modal title={`${usesOf.name} : réservé ailleurs`} onClose={() => setUsesOf(null)}>
+          <p className="muted" style={{ marginTop: 0 }}>Autres projets, réparations et transferts qui utilisent cet article pendant {usesOf.range}.</p>
+          <OtherUsesList uses={usesOf.uses} kit={usesOf.eq.isKit} />
+        </Modal>
+      )}
       {editLine && <LineModal sp={sp} line={editLine} accessories={lines.filter((c) => c.parentLineId === editLine.id)} onClose={() => setEditLine(null)} />}
     </div>
   );
@@ -388,8 +412,8 @@ export async function addEquipmentToSub(sp: Subproject, equipment: Equipment[], 
  * Fenêtre « + Matériel » : chercher, filtrer (catégorie, disponible, étiquette), mettre des quantités
  * avec − / + (ou un clic sur la ligne = +1), voir la sélection, puis ajouter (et continuer si besoin).
  */
-function EquipmentPicker({ sp, groupId, depot, discount, equipment, res, existing, onClose }: { sp: Subproject; groupId?: string; depot?: string; discount: number; equipment: Equipment[]; res: Reservation[]; existing: EquipmentLine[]; onClose: () => void }) {
-  const [q, setQ] = useState('');
+function EquipmentPicker({ sp, groupId, initialQ = '', depot, discount, equipment, res, existing, onClose }: { sp: Subproject; groupId?: string; initialQ?: string; depot?: string; discount: number; equipment: Equipment[]; res: Reservation[]; existing: EquipmentLine[]; onClose: () => void }) {
+  const [q, setQ] = useState(initialQ);
   const [qty, setQty] = useState<Record<string, number>>({});
   const [cat, setCat] = useState('');
   const [onlyAvail, setOnlyAvail] = useState(false);
@@ -397,9 +421,10 @@ function EquipmentPicker({ sp, groupId, depot, discount, equipment, res, existin
   const [sort, setSort] = useState<'nom' | 'dispo' | 'prix'>('nom');
   const [target, setTarget] = useState(groupId || '');
   const [added, setAdded] = useState('');
+  const [openUses, setOpenUses] = useState('');
   const cats = useLiveQuery(() => db.categories.orderBy('name').toArray(), []) || [];
   const units = useLiveQuery(() => db.units.toArray(), []) || [];
-  const catName = new Map(cats.map((c) => [c.id, c.name]));
+  const catName = new Map(cats.map((c) => [c.id, categoryLabel(cats, c.id)]));
   const [bStart, bEnd] = lineBlock({ groupId: target || undefined }, sp);
   const groups = sp.groups || [];
   const avail = new Map(equipment.map((e) => [e.id, availableQty(e, equipment, res, bStart, bEnd, undefined, depot)]));
@@ -409,7 +434,7 @@ function EquipmentPicker({ sp, groupId, depot, discount, equipment, res, existin
   const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const base = equipment.filter((e) => !e.archived && !e.accessoryOnly && words.every((w) => [e.name, e.code, e.barcode, ...(e.extraCodes || []), e.categoryId && catName.get(e.categoryId), ...(e.tags || [])].join(' ').toLowerCase().includes(w)));
   const list = base
-    .filter((e) => (!cat || e.categoryId === cat) && (!tag || e.tags?.includes(tag)) && (!onlyAvail || (avail.get(e.id) || 0) > 0))
+    .filter((e) => inCategory(cats, e.categoryId, cat) && (!tag || e.tags?.includes(tag)) && (!onlyAvail || (avail.get(e.id) || 0) > 0))
     .sort((a, b) => sort === 'dispo' ? (avail.get(b.id) || 0) - (avail.get(a.id) || 0) : sort === 'prix' ? a.dailyPrice - b.dailyPrice : a.name.localeCompare(b.name));
   const selected = equipment.filter((e) => (qty[e.id] || 0) > 0);
   const count = selected.reduce((a, e) => a + (qty[e.id] || 0), 0);
@@ -434,11 +459,27 @@ function EquipmentPicker({ sp, groupId, depot, discount, equipment, res, existin
             }} />
           <div className="chips">
             <button className={'chip' + (!cat ? ' on' : '')} onClick={() => setCat('')}>Tout ({base.length})</button>
-            {cats.map((c) => {
-              const n = base.filter((e) => e.categoryId === c.id).length;
-              return n ? <button key={c.id} className={'chip' + (cat === c.id ? ' on' : '')} onClick={() => setCat(cat === c.id ? '' : c.id)}>{c.name} ({n})</button> : null;
+            {mainCategories(cats).map((c) => {
+              const n = base.filter((e) => inCategory(cats, e.categoryId, c.id)).length;
+              const on = cat === c.id || cats.find((x) => x.id === cat)?.parentId === c.id;
+              return n ? <button key={c.id} className={'chip' + (on ? ' on' : '')} onClick={() => setCat(cat === c.id ? '' : c.id)}>{c.name} ({n})</button> : null;
             })}
           </div>
+          {(() => {
+            // sous-catégories de la catégorie choisie
+            const main = cats.find((x) => x.id === cat);
+            const parentId = main?.parentId || main?.id;
+            const subs = parentId ? subCategories(cats, parentId) : [];
+            if (!subs.length) return null;
+            return (
+              <div className="chips sub-chips" aria-label="Sous-catégories">
+                {subs.map((c) => {
+                  const n = base.filter((e) => e.categoryId === c.id).length;
+                  return n ? <button key={c.id} className={'chip' + (cat === c.id ? ' on' : '')} onClick={() => setCat(cat === c.id ? parentId! : c.id)}>{c.name} ({n})</button> : null;
+                })}
+              </div>
+            );
+          })()}
           <div className="toolbar" style={{ marginBottom: 0 }}>
             <label className="check-row"><input type="checkbox" checked={onlyAvail} onChange={(e) => setOnlyAvail(e.target.checked)} /> Disponibles seulement</label>
             {tags.length > 0 && (
@@ -462,20 +503,35 @@ function EquipmentPicker({ sp, groupId, depot, discount, equipment, res, existin
         <div className="pick-list">
           {list.length === 0 ? <Empty>Aucun article.</Empty> : list.map((e) => {
             const a = avail.get(e.id) || 0, n = qty[e.id] || 0;
+            const uses = otherUses(e, equipment, res, bStart, bEnd, sp.projectId);
+            const elsewhere = usedElsewhere(uses);
             return (
-              <div key={e.id} className={'pick-row' + (n ? ' on' : '')} onClick={(ev) => { if (!(ev.target as HTMLElement).closest('input,button')) bump(e.id, 1); }} title="Clic : +1">
+              <div key={e.id} className="pick-item">
+              <div className={'pick-row' + (n ? ' on' : '')} onClick={(ev) => { if (!(ev.target as HTMLElement).closest('input,button,a')) bump(e.id, 1); }} title="Clic : +1">
                 {e.photo ? <img src={e.photo} alt="" className="thumb" /> : <span className="thumb" />}
                 <div className="pick-name">
                   <div><strong>{e.name}</strong> {e.isKit && <span className="badge">Kit</span>} {e.kind === 'vente' && <span className="badge">vente</span>}</div>
                   <div className="muted" style={{ fontSize: 11 }}>{[e.code, e.categoryId && catName.get(e.categoryId), inProject.get(e.id) ? `déjà ${inProject.get(e.id)} dans le projet` : '', e.contents?.length ? `avec ${e.contents.map((c) => c.name).join(', ')}` : ''].filter(Boolean).join(' · ')}</div>
                 </div>
-                <span className={'avail ' + (a - n >= 0 ? 'ok' : 'ko')} title="Disponible">{a}</span>
+                <div className="pick-stock">
+                  <span className={'avail ' + (a - n >= 0 ? 'ok' : 'ko')} title={n ? `Disponible ${a}, reste ${a - n} après cet ajout` : 'Disponible sur la période'}>
+                    {n ? (a - n >= 0 ? `reste ${a - n}` : `manque ${n - a}`) : `${a} dispo`}
+                  </span>
+                  {elsewhere > 0 && (
+                    <button type="button" className={'link-btn uses-btn' + (openUses === e.id ? ' on' : '')} aria-expanded={openUses === e.id}
+                      title="Voir les autres projets qui l'utilisent à ces dates" onClick={() => setOpenUses(openUses === e.id ? '' : e.id)}>
+                      {elsewhere} réservé{elsewhere > 1 ? 's' : ''} ailleurs
+                    </button>
+                  )}
+                </div>
                 <span className="muted pick-price">{money(e.dailyPrice)}{e.kind === 'vente' ? '' : '/j'}</span>
                 <div className="stepper">
                   <button type="button" className="ghost" aria-label={`Moins ${e.name}`} disabled={!n} onClick={() => bump(e.id, -1)}>−</button>
                   <NumInput className="w-qty" value={n} placeholder="0" onChange={(v) => setQty((x) => ({ ...x, [e.id]: v }))} aria-label={`Quantité ${e.name}`} />
                   <button type="button" className="ghost" aria-label={`Plus ${e.name}`} onClick={() => bump(e.id, 1)}>+</button>
                 </div>
+              </div>
+              {openUses === e.id && <div className="pick-uses"><OtherUsesList uses={uses} kit={e.isKit} /></div>}
               </div>
             );
           })}
@@ -503,7 +559,9 @@ function EquipmentPicker({ sp, groupId, depot, discount, equipment, res, existin
  * « 12 sm58 » + Entrée ajoute directement 12 micros ; un code-barres scanné ajoute l'article.
  * Les flèches choisissent un autre résultat ; la quantité peut aussi se mettre dans la petite case.
  */
-export function QuickAdd({ equipment, units, availOf, onAdd }: {
+export function QuickAdd({ equipment, units, availOf, onAdd, onBrowse }: {
+  /** ouvre la fenêtre de choix avec filtres (avec le texte déjà tapé) */
+  onBrowse?: (q: string) => void;
   equipment: Equipment[]; units: { equipmentId: string; barcode?: string; serial: string; extraCodes?: string[] }[];
   availOf: (e: Equipment) => number; onAdd: (equipmentId: string, n: number) => Promise<void>;
 }) {
@@ -555,9 +613,11 @@ export function QuickAdd({ equipment, units, availOf, onAdd }: {
                 </li>
               );
             })}
+            {onBrowse && <li className="qa-browse" onMouseDown={(ev) => { ev.preventDefault(); onBrowse(term); setQ(''); }}>Voir tous les résultats avec filtres…</li>}
           </ul>
         )}
       </div>
+      {onBrowse && <button type="button" className="secondary small" title="Choisir dans une fenêtre avec filtres (catégories, disponibilité, étiquettes)" onClick={() => { onBrowse(term); setQ(''); }}>Filtres…</button>}
       {msg && <span className="avail ok">{msg}</span>}
     </div>
   );

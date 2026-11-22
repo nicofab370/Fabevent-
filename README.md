@@ -11,6 +11,7 @@ npm run dev       # développement : http://localhost:5173
 npm run build     # version de production dans dist/ (hébergeable sur n'importe quel hébergement statique)
 npm test          # tests unitaires des calculs (TVA, disponibilités, heures sup., Peppol…)
 npm run test:e2e  # parcours complet dans un navigateur (nécessite Playwright et Chromium)
+npm run test:parcours  # nouveautés en contexte : import Rentman, catégories, réservations ailleurs, coût et heures des techniciens
 ```
 
 ## Fonctionnalités

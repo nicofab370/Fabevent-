@@ -1,3 +1,4 @@
+import { ContactField } from '../../components/ContactField';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Fragment, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -126,10 +127,7 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
           <div className="form">
             <Field label="Client" full>
               <div style={{ display: 'flex', gap: 6 }}>
-                <select value={project.clientId || ''} onChange={(e) => changeClient(e.target.value || undefined)}>
-                  <option value="">—</option>
-                  {contacts.filter((c) => c.type === 'client' || c.id === project.clientId).map((c) => <option key={c.id} value={c.id}>{c.company}</option>)}
-                </select>
+                <ContactField label="client" contacts={contacts.filter((c) => c.type === 'client' || c.id === project.clientId)} value={project.clientId} onChange={(id) => changeClient(id)} />
                 <button type="button" className="secondary small" title="Nouveau client" onClick={() => setNewContact('client')}>+</button>
                 {client && <button type="button" className="secondary small" title="Modifier ce client" aria-label="Modifier le client" onClick={() => setEditContact(client)}><Icon name="edit" /></button>}
               </div>
@@ -164,13 +162,10 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
           <div className="form">
             <Field label="Lieu enregistré" full>
               <div style={{ display: 'flex', gap: 6 }}>
-                <select value={project.venueId || ''} onChange={(e) => {
-                  const v = contacts.find((c) => c.id === e.target.value);
-                  upd({ venueId: e.target.value || undefined, spotId: undefined, venue: v ? v.company : project.venue });
-                }}>
-                  <option value="">—</option>
-                  {contacts.filter((c) => c.type === 'lieu').map((c) => <option key={c.id} value={c.id}>{c.company}</option>)}
-                </select>
+                <ContactField label="lieu" contacts={contacts.filter((c) => c.type === 'lieu')} value={project.venueId} onChange={(id) => {
+                  const v = contacts.find((c) => c.id === id);
+                  upd({ venueId: id, spotId: undefined, venue: v ? v.company : project.venue });
+                }} />
                 <button type="button" className="secondary small" title="Nouveau lieu" onClick={() => setNewContact('lieu')}>+</button>
                 {venue && <button type="button" className="secondary small" title="Modifier ce lieu" aria-label="Modifier le lieu" onClick={() => setEditContact(venue)}><Icon name="edit" /></button>}
               </div>
