@@ -13,6 +13,7 @@ import PrintLabelModal from '../components/PrintLabelModal';
 import { Icon } from '../components/Icon';
 import { CategoryOptions } from '../components/CategoryOptions';
 import { CategoriesModal } from '../components/CategoriesModal';
+import { EquipmentChooser } from '../components/EquipmentChooser';
 import { categoryLabel, inCategory, mainCategories } from '../categories';
 
 type Draft = Omit<Equipment, 'id' | 'createdAt' | 'updatedAt'> & Partial<Equipment>;
@@ -23,6 +24,8 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
   const [newCat, setNewCat] = useState('');
   const [newLetter, setNewLetter] = useState('');
   const [newParent, setNewParent] = useState('');
+  const [choosing, setChoosing] = useState<'' | 'kit' | 'acc' | 'alt'>('');
+  const nameOf = (id: string) => all.find((a) => a.id === id)?.name || '?';
   const cats = useLiveQuery(() => db.categories.orderBy('name').toArray(), []) || [];
   const settings = useSettings();
   const depots = settings.depots || [];
@@ -133,15 +136,12 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
           {e.kitItems.map((k, i) => (
             <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
               <NumInput className="w-qty" value={k.qty} step="1" min={1} onChange={(n) => set('kitItems', e.kitItems.map((x, j) => (j === i ? { ...x, qty: n } : x)))} />
-              <select value={k.equipmentId} onChange={(x) => set('kitItems', e.kitItems.map((y, j) => (j === i ? { ...y, equipmentId: x.target.value } : y)))}>
-                {all.filter((a) => a.id !== e.id).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-              </select>
+              <span className="chosen-name">{nameOf(k.equipmentId)}</span>
               <button type="button" className="ghost" onClick={() => set('kitItems', e.kitItems.filter((_, j) => j !== i))}><Icon name="x" /></button>
             </div>
           ))}
           <div>
-            <button type="button" className="secondary small" disabled={!all.length}
-              onClick={() => set('kitItems', [...e.kitItems, { equipmentId: all.find((a) => a.id !== e.id)?.id || '', qty: 1 }])}>+ Composant</button>
+            <button type="button" className="secondary small" disabled={!all.length} onClick={() => setChoosing('kit')}>+ Composants…</button>
           </div>
         </div>
       )}
@@ -167,17 +167,14 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
           return (
             <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6, alignItems: 'center' }}>
               <NumInput className="w-qty" value={a.qty} step="1" min={1} onChange={(n) => upd({ qty: n })} />
-              <select value={a.equipmentId} onChange={(x) => upd({ equipmentId: x.target.value })}>
-                {all.filter((o) => o.id !== e.id).map((o) => <option key={o.id} value={o.id}>{o.name}{o.accessoryOnly ? ' (hors inventaire)' : ''}</option>)}
-              </select>
+              <span className="chosen-name">{nameOf(a.equipmentId)}{all.find((o) => o.id === a.equipmentId)?.accessoryOnly ? <span className="muted"> (hors inventaire)</span> : null}</span>
               <label className="check-row" style={{ whiteSpace: 'nowrap' }}><input type="checkbox" checked={a.free} onChange={(x) => upd({ free: x.target.checked })} /> gratuit</label>
               <button type="button" className="ghost" onClick={() => set('accessories', (e.accessories || []).filter((_, j) => j !== i))}><Icon name="x" /></button>
             </div>
           );
         })}
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          <button type="button" className="secondary small" disabled={all.length < 2 && !all.some((o) => o.id !== e.id)}
-            onClick={() => set('accessories', [...(e.accessories || []), { equipmentId: all.find((o) => o.id !== e.id)?.id || '', qty: 1, free: true }])}>+ Accessoire existant</button>
+          <button type="button" className="secondary small" disabled={!all.some((o) => o.id !== e.id)} onClick={() => setChoosing('acc')}>+ Accessoire existant…</button>
           <button type="button" className="secondary small" onClick={async () => {
             const name = prompt('Nom du nouvel élément d\'accessoire (ex. Chargeur 65 W, Dock USB-C) :')?.trim();
             if (!name) return;
@@ -194,10 +191,7 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
           {(e.alternatives || []).map((id) => (
             <span key={id} className="badge">{all.find((a) => a.id === id)?.name || '?'} <button type="button" className="ghost small" onClick={() => set('alternatives', (e.alternatives || []).filter((x) => x !== id))}><Icon name="x" /></button></span>
           ))}
-          <select value="" style={{ width: 'auto' }} onChange={(x) => x.target.value && set('alternatives', [...(e.alternatives || []), x.target.value])}>
-            <option value="">+ Ajouter…</option>
-            {all.filter((a) => a.id !== e.id && !a.archived && !(e.alternatives || []).includes(a.id)).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </select>
+          <button type="button" className="secondary small" onClick={() => setChoosing('alt')}>+ Ajouter…</button>
         </div>
       </div>
       <Field label="Photo">
@@ -211,6 +205,24 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
       <Field label="Étiquettes"><TagInput value={e.tags} onChange={(tags) => set('tags', tags)} /></Field>
       <CustomFieldsEditor entity="materiel" value={e.custom} onChange={(custom) => set('custom', custom)} />
       <Field label="Notes" full><textarea value={e.notes || ''} onChange={(x) => set('notes', x.target.value)} /></Field>
+      {choosing && (
+        <EquipmentChooser
+          title={choosing === 'kit' ? 'Composants du kit' : choosing === 'acc' ? 'Accessoires ajoutés automatiquement' : 'Articles de remplacement'}
+          equipment={all} withQty={choosing !== 'alt'} includeAccessoryOnly={choosing === 'acc'}
+          exclude={[...(e.id ? [e.id] : []), ...(choosing === 'alt' ? e.alternatives || [] : [])]}
+          onClose={() => setChoosing('')}
+          onConfirm={(picked) => {
+            if (choosing === 'kit') {
+              const items = [...e.kitItems];
+              for (const p of picked) { const k = items.find((x) => x.equipmentId === p.equipmentId); if (k) k.qty += p.qty; else items.push({ equipmentId: p.equipmentId, qty: p.qty }); }
+              set('kitItems', items.map((x) => ({ ...x })));
+            } else if (choosing === 'acc') {
+              const acc = [...(e.accessories || [])];
+              for (const p of picked) { const a = acc.find((x) => x.equipmentId === p.equipmentId); if (a) a.qty += p.qty; else acc.push({ equipmentId: p.equipmentId, qty: p.qty, free: true }); }
+              set('accessories', acc.map((x) => ({ ...x })));
+            } else set('alternatives', [...(e.alternatives || []), ...picked.map((p) => p.equipmentId)]);
+          }} />
+      )}
       <div className="form-actions">
         <button type="button" className="secondary" onClick={onDone}>Annuler</button>
         <button type="submit">Enregistrer</button>

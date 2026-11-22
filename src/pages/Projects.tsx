@@ -1,3 +1,4 @@
+import { ContactField } from '../components/ContactField';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -52,10 +53,8 @@ export function ProjectForm({ initial, onDone }: { initial?: Draft; onDone: (p?:
       <Field label="Nom du projet *" full><input required autoFocus value={p.name} onChange={(e) => set('name', e.target.value)} /></Field>
       <Field label="Client">
         <div style={{ display: 'flex', gap: 6 }}>
-          <select value={p.clientId || ''} onChange={(e) => setP({ ...p, clientId: e.target.value || undefined, contactPerson: undefined, contactPersonId: undefined, departmentId: undefined })}>
-            <option value="">—</option>
-            {clients.map((c) => <option key={c.id} value={c.id}>{c.company}</option>)}
-          </select>
+          <ContactField label="client" contacts={clients.filter((c) => c.type === 'client' || c.id === p.clientId)} value={p.clientId}
+            onChange={(id) => setP({ ...p, clientId: id, contactPerson: undefined, contactPersonId: undefined, departmentId: undefined })} />
           <button type="button" className="secondary small" onClick={() => setNewClient(true)}>+</button>
         </div>
       </Field>

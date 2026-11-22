@@ -101,7 +101,8 @@ await step('Création complète : contact, article, projet, horaires, matériel,
   await go('projets');
   await page.click('text=+ Nouveau projet');
   await page.fill('.modal input >> nth=0', 'Projet Test');
-  await page.locator('.modal select').first().selectOption({ label: 'Client Test' });
+  await page.locator('.modal input[aria-label="Rechercher un client"]').fill('client te');
+  await page.locator('.modal .quick-add-list li', { hasText: 'Client Test' }).click();
   await page.locator('.modal .field', { hasText: 'Statut' }).locator('select').selectOption('confirme');
   await page.click('.modal button[type=submit]');
   await page.waitForSelector('.project-tabs');
@@ -635,10 +636,12 @@ await step('Transfert manuel définitif : le stock change de dépôt', async () 
   await sel.nth(0).selectOption({ label: 'Dépôt Liège' });
   await sel.nth(1).selectOption({ label: 'Dépôt Namur' });
   await page.locator('.modal input[type=checkbox]').uncheck();
-  const pick = sel.last();
-  await pick.selectOption(await pick.locator('option', { hasText: 'Machine à brouillard' }).getAttribute('value'));
-  await page.click('.modal button:has-text("+ Ajouter")');
-  await page.locator('.modal table input').fill('2');
+  await page.click('.modal button:has-text("+ Ajouter du matériel")');
+  const chooser = page.locator('.modal', { hasText: 'Matériel à transférer' });
+  await chooser.locator('input[aria-label="Rechercher du matériel"]').fill('brouillard');
+  await chooser.locator('input[aria-label="Quantité Machine à brouillard"]').fill('2');
+  await chooser.locator('button:has-text("Ajouter (1)")').click();
+  expect((await page.locator('.modal table input').inputValue()) === '2', '2 machines dans le transfert');
   await page.click('.modal button[type=submit]');
   await page.waitForTimeout(400);
   await go('materiel');
