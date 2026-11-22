@@ -661,6 +661,28 @@ await step('Bases séparées : une nouvelle base est vide', async () => {
   await page.waitForTimeout(1000);
 });
 
+await step('Bases séparées : suppression d’une base', async () => {
+  await go('parametres');
+  const card = page.locator('.card', { hasText: 'Bases de données' });
+  expect(await card.locator('button:text-is("essai")').count() === 1, 'base « essai » listée');
+  expect(await card.locator('[aria-label="Supprimer la base principal"]').count() === 0, 'principale non supprimable');
+  // mauvais nom : rien n'est supprimé
+  const answers = ['autre', 'essai'];
+  page.removeAllListeners('dialog');
+  page.on('dialog', (d) => (d.type() === 'prompt' ? d.accept(answers.shift()) : d.accept()));
+  await card.locator('[aria-label="Supprimer la base essai"]').click();
+  await page.waitForTimeout(400);
+  expect(await card.locator('button:text-is("essai")').count() === 1, 'nom incorrect : base gardée');
+  await card.locator('[aria-label="Supprimer la base essai"]').click();
+  await page.waitForTimeout(800);
+  expect(await card.locator('button:text-is("essai")').count() === 0, 'base « essai » retirée de la liste');
+  const dbs = await page.evaluate(async () => (await indexedDB.databases()).map((d) => d.name));
+  expect(!dbs.includes('fabevent_essai'), 'base IndexedDB effacée');
+  expect((await page.locator('.ws').innerText()).includes('demo'), 'base démo toujours ouverte');
+  page.removeAllListeners('dialog');
+  page.on('dialog', (d) => (d.type() === 'prompt' ? d.accept(d.defaultValue()) : d.accept()));
+});
+
 await step('Entrepôt : scan d’un code-barres en sortie', async () => {
   await openProject('Mariage Dupont-Lemaire');
   await page.click('.sub-head button:has-text("Préparer")').catch(() => {});

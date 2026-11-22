@@ -1,9 +1,9 @@
 import Papa from 'papaparse';
 import { useState } from 'react';
-import { suggestCategoryLetter } from '../codegen';
+import { nextUnitCode, suggestCategoryLetter } from '../codegen';
 import { Field, PageHead } from '../components/ui';
 import { db, nextNumber } from '../db';
-import type { ContactType, ProjectStatus } from '../types';
+import type { ContactType, Equipment, ProjectStatus } from '../types';
 import { nowIso, parseDate, parseNumber, uid } from '../utils';
 
 type Target = 'equipment' | 'contacts' | 'people' | 'projects';
@@ -18,6 +18,7 @@ const FIELDS: Record<Target, { key: string; label: string; guess: string[] }[]> 
     { key: 'dailyPrice', label: 'Prix / jour', guess: ['prix', 'price', 'tarif', 'prix de location', 'rental price', 'prix/jour'] },
     { key: 'replacementValue', label: 'Valeur de remplacement', guess: ['valeur', 'replacement', 'valeur de remplacement', 'new price', 'prix achat'] },
     { key: 'weight', label: 'Poids', guess: ['poids', 'weight'] },
+    { key: 'serial', label: 'Numéro de série (une ligne par unité)', guess: ['numéro de série', 'numero de serie', 'n° de série', 'serial', 'serial number', 'serienummer', 'sn', 's/n'] },
     { key: 'barcode', label: 'Code-barres', guess: ['code-barres', 'barcode', 'code barre', 'qr'] },
     { key: 'notes', label: 'Notes', guess: ['notes', 'remarque', 'description', 'memo'] },
   ],
@@ -113,27 +114,58 @@ export default function ImportPage() {
     if (target === 'equipment') {
       const cats = await db.categories.toArray();
       const catByName = new Map(cats.map((c) => [c.name.toLowerCase(), c.id]));
+      // articles déjà connus (base ou lignes précédentes du fichier), retrouvés par référence ou par nom
+      const known = await db.equipment.toArray();
+      const byCode = new Map(known.filter((e) => e.code).map((e) => [e.code!.toLowerCase(), e]));
+      const byName = new Map(known.map((e) => [e.name.toLowerCase(), e]));
+      const units = await db.units.toArray();
+      let created = 0; let added = 0; let skipped = 0;
       for (const r of rows) {
         const name = get(r, 'name');
-        if (!name) continue;
-        const catName = get(r, 'category');
-        let categoryId: string | undefined;
-        if (catName) {
-          categoryId = catByName.get(catName.toLowerCase());
-          if (!categoryId) {
-            categoryId = uid();
-            await db.categories.put({ id: categoryId, name: catName, letter: suggestCategoryLetter(catName, (await db.categories.toArray()).map((c) => c.letter || '')), createdAt: t, updatedAt: t });
-            catByName.set(catName.toLowerCase(), categoryId);
+        const code = get(r, 'code');
+        const serial = get(r, 'serial');
+        if (!name && !(serial && code)) continue;
+        let e: Equipment | undefined = serial ? (code ? byCode.get(code.toLowerCase()) : undefined) ?? (name ? byName.get(name.toLowerCase()) : undefined) : undefined;
+        if (!e) {
+          const catName = get(r, 'category');
+          let categoryId: string | undefined;
+          if (catName) {
+            categoryId = catByName.get(catName.toLowerCase());
+            if (!categoryId) {
+              categoryId = uid();
+              await db.categories.put({ id: categoryId, name: catName, letter: suggestCategoryLetter(catName, (await db.categories.toArray()).map((c) => c.letter || '')), createdAt: t, updatedAt: t });
+              catByName.set(catName.toLowerCase(), categoryId);
+            }
           }
+          e = {
+            id: uid(), createdAt: t, updatedAt: t, name: name || code, code: code || undefined, categoryId,
+            quantity: serial ? 0 : map.quantity ? parseNumber(get(r, 'quantity')) : 1, dailyPrice: parseNumber(get(r, 'dailyPrice')),
+            replacementValue: parseNumber(get(r, 'replacementValue')) || undefined, weight: parseNumber(get(r, 'weight')) || undefined,
+            barcode: serial ? undefined : get(r, 'barcode') || undefined, notes: serial ? undefined : get(r, 'notes') || undefined,
+            isKit: false, kitItems: [], trackSerials: serial ? true : undefined,
+          };
+          await db.equipment.put(e);
+          if (e.code) byCode.set(e.code.toLowerCase(), e);
+          byName.set(e.name.toLowerCase(), e);
+          created++;
+        } else if (!e.trackSerials) {
+          await db.equipment.update(e.id, { trackSerials: true, updatedAt: t });
+          e.trackSerials = true;
         }
-        await db.equipment.put({
-          id: uid(), createdAt: t, updatedAt: t, name, code: get(r, 'code') || undefined, categoryId,
-          quantity: map.quantity ? parseNumber(get(r, 'quantity')) : 1, dailyPrice: parseNumber(get(r, 'dailyPrice')),
-          replacementValue: parseNumber(get(r, 'replacementValue')) || undefined, weight: parseNumber(get(r, 'weight')) || undefined,
-          barcode: get(r, 'barcode') || undefined, notes: get(r, 'notes') || undefined, isKit: false, kitItems: [],
-        });
-        n++;
+        if (!serial) continue;
+        const mine = units.filter((u) => u.equipmentId === e!.id);
+        if (mine.some((u) => u.serial.toLowerCase() === serial.toLowerCase())) { skipped++; continue; }
+        const unit = {
+          id: uid(), createdAt: t, updatedAt: t, equipmentId: e.id, serial, status: 'ok' as const,
+          barcode: get(r, 'barcode') || (e.code ? nextUnitCode(e, mine) : undefined), notes: get(r, 'notes') || undefined,
+        };
+        await db.units.put(unit);
+        units.push(unit);
+        added++;
       }
+      setResult(`${created} article(s) créé(s)` + (added ? `, ${added} numéro(s) de série ajouté(s)` : '') + (skipped ? `, ${skipped} numéro(s) déjà connu(s) ignoré(s)` : '') + '.');
+      setRows([]); setCols([]);
+      return;
     } else if (target === 'contacts') {
       for (const r of rows) {
         const company = get(r, 'company') || [get(r, 'firstName'), get(r, 'lastName')].filter(Boolean).join(' ');
@@ -187,6 +219,9 @@ export default function ImportPage() {
         Dans Rentman, exporte chaque liste (Matériel, Contacts, Équipe, Projets) en <strong>CSV</strong>, puis importe-les ici.
         Les colonnes sont reconnues automatiquement ; tu peux corriger la correspondance avant de valider.
         Conseil : importe les contacts avant les projets pour que les clients soient reliés.
+        Matériel suivi par numéro de série : une ligne par unité, avec la même désignation (ou référence) ; les lignes sont regroupées
+        en un seul article et chaque numéro de série devient une unité (le code-barres de la ligne va à l'unité). Un article déjà
+        existant reçoit les nouveaux numéros.
       </div>
       <div className="card">
         <div className="form">
@@ -196,7 +231,7 @@ export default function ImportPage() {
             </select>
           </Field>
           <Field label="Fichier CSV">
-            <input type="file" accept=".csv,text/csv" onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} />
+            <input type="file" accept=".csv,text/csv" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onFile(f); }} />
           </Field>
         </div>
         {result && <p className="avail ok">{result}</p>}

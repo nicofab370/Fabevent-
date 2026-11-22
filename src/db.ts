@@ -35,6 +35,22 @@ export function switchWorkspace(name: string) {
   location.reload();
 }
 
+/**
+ * Supprime définitivement une base de cet appareil (données, onglets, file de synchro).
+ * La base principale ne se supprime pas. Si c'est la base ouverte, on revient sur la principale.
+ */
+export async function deleteWorkspace(name: string) {
+  if (name === 'principal') throw new Error('La base principale ne peut pas être supprimée.');
+  const active = currentWorkspace() === name;
+  if (active) db.close();
+  await Dexie.delete('fabevent_' + name);
+  safeSet(WS_LIST_KEY, JSON.stringify(listWorkspaces().filter((w) => w !== name && w !== 'principal')));
+  try {
+    for (const k of Object.keys(localStorage)) if (k.endsWith('.' + name) && /^(fabevent\.tabs|fab\.sync\.(pending|seq|last))\./.test(k)) localStorage.removeItem(k);
+  } catch { /* stockage indisponible */ }
+  if (active) switchWorkspace('principal');
+}
+
 export class FabDB extends Dexie {
   contacts!: Table<Contact, string>;
   categories!: Table<Category, string>;

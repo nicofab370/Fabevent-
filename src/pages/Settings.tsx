@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Field, NumInput, PageHead, useSettings } from '../components/ui';
-import { currentWorkspace, db, DEFAULT_PROJECT_TYPES, listWorkspaces, switchWorkspace, TABLES } from '../db';
+import { currentWorkspace, db, DEFAULT_PROJECT_TYPES, deleteWorkspace, listWorkspaces, switchWorkspace, TABLES } from '../db';
 import { DEMO_WORKSPACE, seedDemo } from '../demo';
 import type { InvoiceMoment, Settings } from '../types';
 import { MOMENT_TRIGGERS, VAT_REGIME_LABELS } from '../types';
@@ -19,6 +19,7 @@ export default function SettingsPage() {
   const [msg, setMsg] = useState('');
   const [persisted, setPersisted] = useState<boolean | null>(null);
   const [newWs, setNewWs] = useState('');
+  const [wsList, setWsList] = useState(listWorkspaces);
 
   useEffect(() => {
     db.settings.get('main').then((x) => { if (x) setS({ ...current, ...x, company: { ...current.company, ...x.company } }); setLoaded(true); });
@@ -311,11 +312,24 @@ export default function SettingsPage() {
       <div className="card">
         <h2>Bases de données</h2>
         <p className="muted">Une base séparée par activité ou par collègue. Base active : <strong>{currentWorkspace()}</strong></p>
-        <div className="toolbar">
-          {listWorkspaces().map((w) => (
-            <button key={w} className={w === currentWorkspace() ? '' : 'secondary'} disabled={w === currentWorkspace()} onClick={() => switchWorkspace(w)}>{w}</button>
+        <ul className="ws-list">
+          {wsList.map((w) => (
+            <li key={w}>
+              <button className={w === currentWorkspace() ? '' : 'secondary'} disabled={w === currentWorkspace()} onClick={() => switchWorkspace(w)}>{w}</button>
+              {w === currentWorkspace() && <span className="muted">ouverte</span>}
+              {w !== 'principal' && (
+                <button className="danger ws-del" aria-label={`Supprimer la base ${w}`} onClick={async () => {
+                  const typed = prompt(`Supprimer définitivement la base « ${w} » et toutes ses données sur cet appareil ?\nFais d'abord une sauvegarde si besoin. Tape le nom de la base pour confirmer :`);
+                  if (typed === null) return;
+                  if (typed.trim() !== w) { alert('Nom incorrect : rien n\'a été supprimé.'); return; }
+                  await deleteWorkspace(w);
+                  setWsList(listWorkspaces());
+                }}>Supprimer</button>
+              )}
+            </li>
           ))}
-        </div>
+        </ul>
+        <p className="muted">La suppression efface la base de cet appareil seulement. La base principale ne peut pas être supprimée.</p>
         <div className="toolbar">
           <input placeholder="Nom de la nouvelle base" value={newWs} onChange={(e) => setNewWs(e.target.value)} />
           <button className="secondary" disabled={!newWs.trim()} onClick={() => switchWorkspace(newWs.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-'))}>Créer et ouvrir</button>
