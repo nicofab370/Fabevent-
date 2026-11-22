@@ -11,16 +11,26 @@ type Target = 'equipment' | 'contacts' | 'people' | 'projects';
 /** Champs cibles + noms de colonnes probables (exports Rentman FR/EN). */
 const FIELDS: Record<Target, { key: string; label: string; guess: string[] }[]> = {
   equipment: [
-    { key: 'name', label: 'Désignation *', guess: ['nom', 'name', 'désignation', 'designation', 'displayname', 'article'] },
-    { key: 'code', label: 'Référence', guess: ['code', 'référence', 'reference', 'ref', 'numéro', 'number'] },
-    { key: 'category', label: 'Catégorie', guess: ['catégorie', 'categorie', 'category', 'dossier', 'folder', 'groupe'] },
-    { key: 'quantity', label: 'Quantité', guess: ['quantité', 'quantite', 'quantity', 'stock', 'qté', 'qty', 'nombre'] },
-    { key: 'dailyPrice', label: 'Prix / jour', guess: ['prix', 'price', 'tarif', 'prix de location', 'rental price', 'prix/jour'] },
-    { key: 'replacementValue', label: 'Valeur de remplacement', guess: ['valeur', 'replacement', 'valeur de remplacement', 'new price', 'prix achat'] },
+    { key: 'name', label: 'Désignation *', guess: ['nom (dans la base de données)', 'nom', 'name', 'désignation', 'designation', 'displayname', 'article'] },
+    { key: 'code', label: 'Référence (code équipement)', guess: ['code', 'référence', 'reference', 'ref', 'numéro', 'number'] },
+    { key: 'category', label: 'Catégorie', guess: ['dossier (dossier)', 'catégorie', 'categorie', 'category', 'dossier', 'folder', 'groupe'] },
+    { key: 'quantity', label: 'Quantité', guess: ['quantité actuelle', 'quantité', 'quantite', 'quantity', 'stock', 'qté', 'qty', 'nombre'] },
+    { key: 'dailyPrice', label: 'Prix / jour', guess: ['prix de location/vente', 'prix', 'price', 'tarif', 'prix de location', 'rental price', 'prix/jour'] },
+    { key: 'replacementValue', label: 'Valeur de remplacement', guess: ['prix neuf', 'valeur de remplacement', 'replacement', 'new price', 'prix achat'] },
     { key: 'weight', label: 'Poids', guess: ['poids', 'weight'] },
-    { key: 'serial', label: 'Numéro de série (une ligne par unité)', guess: ['numéro de série', 'numero de serie', 'n° de série', 'serial', 'serial number', 'serienummer', 'sn', 's/n'] },
-    { key: 'barcode', label: 'Code-barres', guess: ['code-barres', 'barcode', 'code barre', 'qr'] },
-    { key: 'notes', label: 'Notes', guess: ['notes', 'remarque', 'description', 'memo'] },
+    { key: 'barcode', label: "Code-barres de l'article", guess: ['qr codes / rfid', 'code-barres', 'barcode', 'code barre', 'qr'] },
+    { key: 'notes', label: 'Notes', guess: ['remarque interne', 'notes', 'remarque', 'description', 'memo'] },
+    { key: 'tags', label: 'Étiquettes', guess: ['étiquettes', 'etiquettes', 'tags'] },
+    { key: 'kind', label: 'Location / vente', guess: ['location / vente', 'location/vente', 'rental / sale'] },
+    { key: 'type', label: 'Type (article / combinaison = kit)', guess: ["type d'équipement", 'type', 'equipment type'] },
+    { key: 'archived', label: 'Archivé', guess: ['archivé.e.s', 'archivé', 'archived'] },
+    { key: 'method', label: 'Suivi (sérialisé / en vrac)', guess: ['méthode de calcul des stocks', 'stock method', 'suivi'] },
+    { key: 'serial', label: 'Numéro de série (une ligne par unité)', guess: ['afficher nom (numéro de série)', 'numéro de série', 'numero de serie', 'n° de série', 'serial', 'serial number', 'serienummer', 'sn', 's/n'] },
+    { key: 'unitBarcode', label: "Code-barres de l'unité", guess: ['qr codes / rfid (numéro de série)'] },
+    { key: 'mfrSerial', label: "N° de série du fabricant (unité)", guess: ['numéro de série du fabricant (numéro de série)', 'numéro de série du fabricant'] },
+    { key: 'unitActive', label: 'Unité active', guess: ['actif/·ive (numéro de série)', 'actif'] },
+    { key: 'unitLost', label: 'Unité perdue', guess: ['perdu (numéro de série, perdu)'] },
+    { key: 'unitNotes', label: "Remarque de l'unité", guess: ['remarque (numéro de série)'] },
   ],
   contacts: [
     { key: 'company', label: 'Société / Nom *', guess: ['société', 'societe', 'company', 'nom', 'name', 'displayname', 'entreprise'] },
@@ -57,12 +67,18 @@ const TARGET_LABELS: Record<Target, string> = { equipment: 'Matériel', contacts
 
 function guessMap(target: Target, cols: string[]): Record<string, string> {
   const out: Record<string, string> = {};
-  const norm = (s: string) => s.toLowerCase().trim();
+  const norm = (s: string) => s.toLowerCase().replace(/[\u200b\s]+/g, ' ').trim();
+  const used = () => Object.values(out);
+  // d'abord les noms exacts (exports Rentman), ensuite les noms approchants parmi les colonnes restantes
   for (const f of FIELDS[target]) {
-    const exact = cols.find((c) => f.guess.includes(norm(c)));
-    const partial = cols.find((c) => f.guess.some((g) => norm(c).includes(g)));
-    const hit = exact || partial;
-    if (hit && !Object.values(out).includes(hit)) out[f.key] = hit;
+    const hit = f.guess.map((g) => cols.find((c) => norm(c) === g)).find((c) => c && !used().includes(c));
+    if (hit) out[f.key] = hit;
+  }
+  for (const f of FIELDS[target]) {
+    if (out[f.key] || f.guess.length < 2) continue;
+    const unitField = /^(serial|unit|mfr)/.test(f.key);
+    const hit = cols.find((c) => !used().includes(c) && (unitField || !/\(numéro de série/i.test(c)) && f.guess.some((g) => g.length > 2 && norm(c).includes(g)));
+    if (hit) out[f.key] = hit;
   }
   return out;
 }
@@ -112,20 +128,35 @@ export default function ImportPage() {
     const t = nowIso();
     let n = 0;
     if (target === 'equipment') {
+      const yes = (v: string) => /^(1|oui|yes|true|vrai|x)$/i.test(v);
+      const no = (v: string) => /^(0|non|no|false|faux)$/i.test(v);
+      const keyOf = (r: Record<string, string>) => (get(r, 'code') || get(r, 'name')).toLowerCase();
+      // par article du fichier : nombre de numéros de série, quantité, méthode de suivi
+      const groups = new Map<string, { serials: number; qty: number; serialized: boolean }>();
+      for (const r of rows) {
+        const k = keyOf(r);
+        if (!k) continue;
+        const g = groups.get(k) || { serials: 0, qty: parseNumber(get(r, 'quantity')), serialized: /s[ée]ri/i.test(get(r, 'method')) };
+        if (get(r, 'serial')) g.serials++;
+        groups.set(k, g);
+      }
       const cats = await db.categories.toArray();
       const catByName = new Map(cats.map((c) => [c.name.toLowerCase(), c.id]));
-      // articles déjà connus (base ou lignes précédentes du fichier), retrouvés par référence ou par nom
+      // articles déjà connus (base ou lignes précédentes du fichier) : par référence, ou par nom s'il n'y a pas de référence
       const known = await db.equipment.toArray();
       const byCode = new Map(known.filter((e) => e.code).map((e) => [e.code!.toLowerCase(), e]));
       const byName = new Map(known.map((e) => [e.name.toLowerCase(), e]));
+      const fresh = new Set<string>();
       const units = await db.units.toArray();
-      let created = 0; let added = 0; let skipped = 0;
+      let created = 0; let existing = 0; let added = 0; let skipped = 0;
+      const unitCols = !!map.unitBarcode;
       for (const r of rows) {
         const name = get(r, 'name');
         const code = get(r, 'code');
         const serial = get(r, 'serial');
-        if (!name && !(serial && code)) continue;
-        let e: Equipment | undefined = serial ? (code ? byCode.get(code.toLowerCase()) : undefined) ?? (name ? byName.get(name.toLowerCase()) : undefined) : undefined;
+        if (!name && !code) continue;
+        const g = groups.get(keyOf(r))!;
+        let e: Equipment | undefined = code ? byCode.get(code.toLowerCase()) : byName.get(name.toLowerCase());
         if (!e) {
           const catName = get(r, 'category');
           let categoryId: string | undefined;
@@ -137,33 +168,51 @@ export default function ImportPage() {
               catByName.set(catName.toLowerCase(), categoryId);
             }
           }
+          // suivi par numéro de série : article sérialisé, ou numéros pour tout le stock
+          const tracked = g.serialized || (g.serials > 0 && g.serials >= g.qty);
+          const tags = get(r, 'tags').split(/[,;]/).map((x) => x.trim()).filter(Boolean);
           e = {
             id: uid(), createdAt: t, updatedAt: t, name: name || code, code: code || undefined, categoryId,
-            quantity: serial ? 0 : map.quantity ? parseNumber(get(r, 'quantity')) : 1, dailyPrice: parseNumber(get(r, 'dailyPrice')),
+            quantity: tracked ? 0 : map.quantity ? g.qty : 1, dailyPrice: parseNumber(get(r, 'dailyPrice')),
             replacementValue: parseNumber(get(r, 'replacementValue')) || undefined, weight: parseNumber(get(r, 'weight')) || undefined,
-            barcode: serial ? undefined : get(r, 'barcode') || undefined, notes: serial ? undefined : get(r, 'notes') || undefined,
-            isKit: false, kitItems: [], trackSerials: serial ? true : undefined,
+            barcode: serial && !unitCols ? undefined : get(r, 'barcode') || undefined,
+            notes: serial && !unitCols ? undefined : get(r, 'notes') || undefined,
+            isKit: /combin|kit/i.test(get(r, 'type')), kitItems: [], trackSerials: tracked || undefined,
+            kind: /vente|sale/i.test(get(r, 'kind')) ? 'vente' : undefined,
+            archived: yes(get(r, 'archived')) || undefined, tags: tags.length ? tags : undefined,
           };
           await db.equipment.put(e);
           if (e.code) byCode.set(e.code.toLowerCase(), e);
           byName.set(e.name.toLowerCase(), e);
+          fresh.add(e.id);
           created++;
-        } else if (!e.trackSerials) {
-          await db.equipment.update(e.id, { trackSerials: true, updatedAt: t });
-          e.trackSerials = true;
+        } else if (!fresh.has(e.id)) {
+          if (!serial) { existing++; continue; }
+          if (!e.trackSerials) { await db.equipment.update(e.id, { trackSerials: true, updatedAt: t }); e.trackSerials = true; }
         }
         if (!serial) continue;
+        if (!e.trackSerials) {
+          // article en vrac avec quelques numéros : on les garde en note
+          e.notes = [e.notes, `N° de série : ${serial}`].filter(Boolean).join('\n');
+          await db.equipment.update(e.id, { notes: e.notes });
+          continue;
+        }
         const mine = units.filter((u) => u.equipmentId === e!.id);
         if (mine.some((u) => u.serial.toLowerCase() === serial.toLowerCase())) { skipped++; continue; }
+        const mfr = get(r, 'mfrSerial');
         const unit = {
-          id: uid(), createdAt: t, updatedAt: t, equipmentId: e.id, serial, status: 'ok' as const,
-          barcode: get(r, 'barcode') || (e.code ? nextUnitCode(e, mine) : undefined), notes: get(r, 'notes') || undefined,
+          id: uid(), createdAt: t, updatedAt: t, equipmentId: e.id, serial,
+          status: yes(get(r, 'unitLost')) ? 'perdu' as const : no(get(r, 'unitActive')) ? 'hs' as const : 'ok' as const,
+          barcode: (unitCols ? get(r, 'unitBarcode') : get(r, 'barcode')) || (e.code ? nextUnitCode(e, mine) : undefined),
+          extraCodes: mfr ? [mfr] : undefined,
+          notes: (unitCols ? get(r, 'unitNotes') : get(r, 'notes')) || undefined,
         };
         await db.units.put(unit);
         units.push(unit);
         added++;
       }
-      setResult(`${created} article(s) créé(s)` + (added ? `, ${added} numéro(s) de série ajouté(s)` : '') + (skipped ? `, ${skipped} numéro(s) déjà connu(s) ignoré(s)` : '') + '.');
+      setResult(`${created} article(s) créé(s)` + (added ? `, ${added} numéro(s) de série ajouté(s)` : '')
+        + (existing ? `, ${existing} article(s) déjà présent(s) ignoré(s)` : '') + (skipped ? `, ${skipped} numéro(s) déjà connu(s) ignoré(s)` : '') + '.');
       setRows([]); setCols([]);
       return;
     } else if (target === 'contacts') {
@@ -219,9 +268,9 @@ export default function ImportPage() {
         Dans Rentman, exporte chaque liste (Matériel, Contacts, Équipe, Projets) en <strong>CSV</strong>, puis importe-les ici.
         Les colonnes sont reconnues automatiquement ; tu peux corriger la correspondance avant de valider.
         Conseil : importe les contacts avant les projets pour que les clients soient reliés.
-        Matériel suivi par numéro de série : une ligne par unité, avec la même désignation (ou référence) ; les lignes sont regroupées
-        en un seul article et chaque numéro de série devient une unité (le code-barres de la ligne va à l'unité). Un article déjà
-        existant reçoit les nouveaux numéros.
+        Matériel suivi par numéro de série (comme l'export Équipement de Rentman avec les numéros de série) : une ligne par unité,
+        avec le même code équipement ; les lignes sont regroupées en un seul article et chaque numéro de série devient une unité,
+        avec son propre code-barres. Un article déjà présent (même code) n'est pas recréé et reçoit seulement les nouveaux numéros.
       </div>
       <div className="card">
         <div className="form">
