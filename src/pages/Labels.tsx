@@ -1,4 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks';
+import { unitNo } from '../unitNumbers';
 import { useState } from 'react';
 import { Empty, NumInput, PageHead, useSettings } from '../components/ui';
 import { useAvailability } from '../data';
@@ -48,7 +49,7 @@ export default function Labels() {
           if (!counts['u:' + u.id]) continue;
           const code = u.barcode || u.serial;
           if (persist && !u.barcode) await save(db.units, { ...u, barcode: code });
-          for (let i = 0; i < counts['u:' + u.id]; i++) labels.push({ code, title: e.name, sub: u.serial === code ? code : `${code} · n° ${u.serial}`, serial: u.serial === code ? undefined : u.serial, contents: showContents ? contentsText(e) : undefined, category: categoryLabel(cats, e.categoryId) || undefined, location: e.location });
+          for (let i = 0; i < counts['u:' + u.id]; i++) labels.push({ code, title: [e.name, unitNo(u)].filter(Boolean).join(' '), sub: u.serial === code ? code : `${code} · n° ${u.serial}`, serial: u.serial === code ? undefined : u.serial, contents: showContents ? contentsText(e) : undefined, category: categoryLabel(cats, e.categoryId) || undefined, location: e.location });
         }
       } else if (counts[e.id]) {
         const code = codeFor(e);
@@ -74,7 +75,7 @@ export default function Labels() {
     const e = av.equipment.find((x) => counts[x.id] || av.units.some((u) => u.equipmentId === x.id && counts['u:' + u.id]));
     if (!e) return { code: 'F-S-0010-03', title: 'Table de mix (exemple)', serial: 'SN 4521', category: 'Son › Console', location: 'Flight F2', contents: showContents ? 'Alimentation, housse' : undefined };
     const u = e.trackSerials ? av.units.find((x) => x.equipmentId === e.id && counts['u:' + x.id]) : undefined;
-    return { code: u ? u.barcode || u.serial : codeFor(e), title: e.name, serial: u && u.serial !== (u.barcode || u.serial) ? u.serial : undefined, category: categoryLabel(cats, e.categoryId) || undefined, location: e.location, contents: showContents ? contentsText(e) : undefined };
+    return { code: u ? u.barcode || u.serial : codeFor(e), title: u ? [e.name, unitNo(u)].filter(Boolean).join(' ') : e.name, serial: u && u.serial !== (u.barcode || u.serial) ? u.serial : undefined, category: categoryLabel(cats, e.categoryId) || undefined, location: e.location, contents: showContents ? contentsText(e) : undefined };
   })();
 
   return (
@@ -149,7 +150,7 @@ export default function Labels() {
               {items.flatMap((e) => e.trackSerials
                 ? av.units.filter((u) => u.equipmentId === e.id && u.status === 'ok').map((u) => (
                   <tr key={u.id}>
-                    <td>{e.name} <span className="muted">n° {u.serial}</span></td>
+                    <td>{e.name} {u.number ? <strong className="unit-no">#{u.number}</strong> : null} <span className="muted">n° {u.serial}</span></td>
                     <td><code>{u.barcode || u.serial}</code></td>
                     <td><NumInput className="w-qty" step="1" min={0} value={counts['u:' + u.id] || 0} onChange={(n) => setCounts({ ...counts, ['u:' + u.id]: n })} /></td>
                   </tr>

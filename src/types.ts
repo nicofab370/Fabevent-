@@ -579,6 +579,8 @@ export interface Unavailability extends Base {
 
 export interface SerialUnit extends Base {
   equipmentId: ID;
+  /** numéro de l'unité dans son article (#1, #2…), fixe : jamais réutilisé ni décalé */
+  number?: number;
   serial: string;
   barcode?: string;
   /** hs / perdu = sorti définitivement du stock */

@@ -10,6 +10,7 @@ import { serverNumber, startSync } from './sync';
 import { setNumberProvider } from './db';
 import { warmUpScanner } from './components/Scanner';
 import { installUndo } from './undo';
+import { ensureUnitNumbers } from './unitNumbers';
 
 installUndo();
 
@@ -19,6 +20,9 @@ registerSW({ immediate: true });
 if (currentWorkspace() === DEMO_WORKSPACE && (await db.projects.count()) === 0) {
   await seedDemo().catch((e) => console.error('Échec de la création des données de démo', e));
 }
+
+// unités sérialisées sans numéro #x (créées avant, importées) : on les numérote
+await ensureUnitNumbers().catch(() => 0);
 
 // iPhone : Safari ignore « user-scalable=no » ; on bloque le pincement (le double tap est coupé en CSS)
 document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });

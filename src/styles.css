@@ -785,3 +785,6 @@ td:not(.n) .hours-cell { align-items: flex-start; }
 .usage-sum tr.uk-reserve td:first-child { box-shadow: inset 3px 0 #ef4444; }
 .usage-sum tr.uk-ici td:first-child, .usage-sum tr.uk-sousprojet td:first-child { box-shadow: inset 3px 0 #3b82f6; }
 .usage-sum tr.usage-free td { border-bottom: 0; }
+/* numéro d'unité #x */
+.unit-no { font-variant-numeric: tabular-nums; color: var(--accent); }
+.uchip.on .unit-no { color: inherit; }

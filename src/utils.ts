@@ -20,6 +20,12 @@ export async function patch<T extends Base>(table: Table<T, string>, id: string,
 /** Crée ou met à jour un enregistrement (id + horodatage). */
 export async function save<T extends Base>(table: Table<T, string>, data: Omit<T, keyof Base> & Partial<Base>): Promise<T> {
   const rec = { ...data, id: data.id || uid(), createdAt: data.createdAt || nowIso(), updatedAt: nowIso() } as T;
+  // unité d'un article sérialisé : numéro #x suivant (le plus grand de l'article + 1)
+  const u = rec as unknown as { number?: number; equipmentId?: string };
+  if (table.name === 'units' && !u.number && u.equipmentId) {
+    const mine = (await (table as unknown as Table<{ id: string; number?: number }, string>).where('equipmentId').equals(u.equipmentId).toArray()).filter((x) => x.id !== rec.id);
+    u.number = mine.reduce((m, x) => Math.max(m, x.number || 0), 0) + 1;
+  }
   await table.put(rec);
   return rec;
 }

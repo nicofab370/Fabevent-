@@ -1,4 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks';
+import { unitNo } from '../unitNumbers';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Empty, Field, Modal, PageHead, StatusBadge } from '../components/ui';
@@ -143,7 +144,7 @@ export function ChecklistView({ src }: { src: ChecklistSource }) {
   const piecesDone = leaves.reduce((a, l) => a + Math.min(counted(l, ph), target(l, ph)), 0);
   const missing = src.lines.filter((l) => !isKit(l) && l.back < l.out);
   const nMissing = missing.reduce((a, l) => a + l.out - l.back, 0);
-  const unitLabel = (eqId: string | undefined, serial: string) => { const u = av.units.find((x) => x.equipmentId === eqId && x.serial === serial); return u?.barcode && u.barcode !== serial ? `${u.barcode}` : `n° ${serial}`; };
+  const unitLabel = (eqId: string | undefined, serial: string) => { const u = av.units.find((x) => x.equipmentId === eqId && x.serial === serial); return [u && unitNo(u), u?.barcode && u.barcode !== serial ? u.barcode : `n° ${serial}`].filter(Boolean).join(' '); };
 
   const setFold = (k: string, v: boolean) => setFoldState((f) => { const n = { ...f, [k]: v }; try { localStorage.setItem(FOLD, JSON.stringify(n)); } catch { /* sans stockage */ } return n; });
   const say = (f: Flash) => { setFlash(f); setLog((l) => [f, ...l].slice(0, 6)); beep(f.ok); };
@@ -167,8 +168,8 @@ export function ChecklistView({ src }: { src: ChecklistSource }) {
       return false;
     }
     const { equipment: eq, unit } = hit;
-    if (infoMode) { beep(true); setFlash({ ok: true, msg: `Infos : ${eq.name}${unit ? ` n° ${unit.serial}` : ''}` }); setSheet(eq.id); return true; }
-    const name = eq.name + (unit ? ` n° ${unit.serial}` : '');
+    if (infoMode) { beep(true); setFlash({ ok: true, msg: `Infos : ${eq.name}${unit ? ` ${unitNo(unit)} n° ${unit.serial}` : ''}` }); setSheet(eq.id); return true; }
+    const name = eq.name + (unit ? ` ${unitNo(unit)} n° ${unit.serial}`.replace('  ', ' ') : '');
     // unité perdue, en réparation ou à réparer
     if (unit) {
       const st = unitState(unit);
@@ -637,7 +638,7 @@ export function AssociateModal({ code, equipment, units, onClose }: { code: stri
             <Field label="Unité (facultatif)" full>
               <select value={unitId} onChange={(e) => setUnitId(e.target.value)}>
                 <option value="">L'article (toutes unités)</option>
-                {eqUnits.map((u) => <option key={u.id} value={u.id}>n° {u.serial}</option>)}
+                {eqUnits.map((u) => <option key={u.id} value={u.id}>{unitNo(u)} n° {u.serial}</option>)}
               </select>
             </Field>
           )}
@@ -666,7 +667,7 @@ function BrokenModal({ line, src, units, onClose }: { line: CLine; src: Checklis
         onClose();
       }}>
         <Field label="Unité" full>
-          <select value={unitId} onChange={(e) => setUnitId(e.target.value)}>{lineUnits.map((u) => <option key={u.id} value={u.id}>n° {u.serial}</option>)}</select>
+          <select value={unitId} onChange={(e) => setUnitId(e.target.value)}>{lineUnits.map((u) => <option key={u.id} value={u.id}>{unitNo(u)} n° {u.serial}</option>)}</select>
         </Field>
         <Field label="Défaut" full><input autoFocus value={note} onChange={(e) => setNote(e.target.value)} placeholder="ex. connecteur XLR qui grésille" /></Field>
         <label className="check-row"><input type="radio" checked={usable} onChange={() => setUsable(true)} /> À réparer, encore utilisable (signalé au prochain scan)</label>

@@ -1,4 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks';
+import { unitNo } from '../unitNumbers';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { contentsText, labelCode } from '../codes';
@@ -20,7 +21,7 @@ export default function PrintLabelModal({ equipmentId, unitIds, onClose }: { equ
   if (!eq) return null;
 
   const serial = !!eq.trackSerials;
-  const sorted = [...units].sort((a, b) => (a.barcode || a.serial).localeCompare(b.barcode || b.serial));
+  const sorted = [...units].sort((a, b) => (a.number || 1e9) - (b.number || 1e9) || (a.barcode || a.serial).localeCompare(b.barcode || b.serial));
   // par défaut : toutes les unités en service
   const sel = picked || new Set(sorted.filter((u) => u.status === 'ok').map((u) => u.id));
   const total = serial ? sorted.filter((u) => sel.has(u.id)).length * copies : copies;
@@ -33,7 +34,7 @@ export default function PrintLabelModal({ equipmentId, unitIds, onClose }: { equ
       for (const u of sorted.filter((x) => sel.has(x.id))) {
         const code = u.barcode || u.serial;
         if (persist && !u.barcode) await save(db.units, { ...u, barcode: code });
-        for (let i = 0; i < copies; i++) out.push({ code, title: eq.name, sub: code, serial: u.serial === code ? undefined : u.serial, contents });
+        for (let i = 0; i < copies; i++) out.push({ code, title: [eq.name, unitNo(u)].filter(Boolean).join(' '), sub: code, serial: u.serial === code ? undefined : u.serial, contents });
       }
     } else {
       const code = labelCode(eq);
@@ -60,7 +61,7 @@ export default function PrintLabelModal({ equipmentId, unitIds, onClose }: { equ
                 {sorted.map((u) => (
                   <label key={u.id} className="check-row">
                     <input type="checkbox" checked={sel.has(u.id)} onChange={() => toggle(u.id)} />
-                    <code>{u.barcode || u.serial}</code>{u.serial && u.serial !== (u.barcode || u.serial) && <span className="muted">n° {u.serial}</span>}
+                    {u.number ? <strong className="unit-no">#{u.number}</strong> : null}<code>{u.barcode || u.serial}</code>{u.serial && u.serial !== (u.barcode || u.serial) && <span className="muted">n° {u.serial}</span>}
                     {u.status !== 'ok' && <span className="badge">{u.status === 'hs' ? 'hors service' : 'perdue'}</span>}
                   </label>
                 ))}

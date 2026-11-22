@@ -1,4 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks';
+import { unitNo } from '../unitNumbers';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Empty, Field, Modal, NumInput, PageHead, StatusBadge, useSettings } from '../components/ui';
@@ -94,7 +95,7 @@ export default function Inventory() {
   const dep = multi ? depot : undefined;
   const inDepot = (u: SerialUnit) => !multi || (u.depotId || av.mainDepot) === depot;
   /** unités attendues au dépôt : en service ou à réparer (les unités en réparation et perdues n'y sont pas) */
-  const unitsHere = (eqId: string) => av.units.filter((u) => u.equipmentId === eqId && u.status === 'ok' && inDepot(u)).sort((a, b) => (a.barcode || a.serial).localeCompare(b.barcode || b.serial, 'fr', { numeric: true }));
+  const unitsHere = (eqId: string) => av.units.filter((u) => u.equipmentId === eqId && u.status === 'ok' && inDepot(u)).sort((a, b) => (a.number || 1e9) - (b.number || 1e9) || (a.barcode || a.serial).localeCompare(b.barcode || b.serial, 'fr', { numeric: true }));
   const items = av.equipment.filter((e) => !e.isKit && !e.archived && !e.accessoryOnly);
   const kits = av.equipment.filter((e) => e.isKit && !e.archived && e.kitItems.length);
   const byId = new Map(av.equipment.map((e) => [e.id, e]));
@@ -278,7 +279,7 @@ export default function Inventory() {
                   <button key={e.id} type="button" className={`inv-row st-${st}`} onClick={() => setOpen({ id: e.id })} aria-label={`Compter ${e.name}`}>
                     <span className="inv-main"><span className="inv-name">{e.name}</span>
                       <span className="inv-sub">{e.code && <span>{e.code}</span>}{e.location && <span className="loc"><Icon name="pin" />{e.location}</span>}{e.trackSerials && <span className="tag">n° de série</span>}{defects > 0 && <span className="tag"><Icon name="wrench" />{defects}</span>}
-                        {miss.length > 0 && <span className="warn-txt">manque {miss.length > 5 ? `${miss.length} unités` : miss.map((u) => u.barcode || u.serial).join(', ')}</span>}</span></span>
+                        {miss.length > 0 && <span className="warn-txt">manque {miss.length > 5 ? `${miss.length} unités` : miss.map((u) => unitNo(u) || u.barcode || u.serial).join(', ')}</span>}</span></span>
                     <span className="inv-exp"><small>attendu</small><b>{exp}</b></span>
                     <span className="inv-badge">{c === undefined ? <>—<small>à compter</small></> : <>{c}<small>{st === 'ok' ? 'conforme' : signed(c - exp)}</small></>}</span>
                   </button>
@@ -444,7 +445,7 @@ function UnitsModal({ e, here, all, found, flash, equipment, units, onToggle, on
       <div className="uchips">
         {here.map((u) => (
           <button key={u.id} type="button" className={'uchip' + (found.has(u.id) ? ' on' : '') + (u.id === hl ? ' hl' : '') + (u.defect ? ' fix' : '')}
-            title={u.serial !== label(u) ? `N° fabricant : ${u.serial}` : undefined} onClick={() => { setHl(undefined); onToggle(u.id); }}>{label(u)}</button>
+            title={u.serial !== label(u) ? `N° fabricant : ${u.serial}` : undefined} onClick={() => { setHl(undefined); onToggle(u.id); }}>{u.number ? <b className="unit-no">#{u.number} </b> : null}{label(u)}</button>
         ))}
       </div>
       <div className={'inv-umsg ' + (!started ? '' : miss.length ? 'ko' : 'ok')}>{!started ? 'Pas encore compté.' : miss.length ? `Manquent : ${miss.map(label).join(', ')}` : 'Toutes les unités sont là.'}</div>
@@ -567,7 +568,7 @@ function KitModal({ kit, byId, units, here, found, done, canUndo, onCommit, onUn
                         const on = mine.includes(u);
                         return <button key={u.id} type="button" className={'uchip' + (on ? ' on' : '')} aria-pressed={on}
                           disabled={!on && g >= r.k.qty} title={on ? 'Retirer du kit' : 'Cette unité est dans le kit'}
-                          onClick={() => check(cur, { ...curU, [r.i]: on ? (curU[r.i] || []).filter((x) => x !== u.id) : [...(curU[r.i] || []), u.id] })}>{u.barcode || u.serial}</button>;
+                          onClick={() => check(cur, { ...curU, [r.i]: on ? (curU[r.i] || []).filter((x) => x !== u.id) : [...(curU[r.i] || []), u.id] })}>{u.number ? <b className="unit-no">#{u.number} </b> : null}{u.barcode || u.serial}</button>;
                       })}
                     </span>
                   );
@@ -698,7 +699,7 @@ function SendDiffs({ diffs, countOf, expected, unitsHere, found, depot, multi, m
           <h3>Unités non vues (numéros de série)</h3>
           <p className="muted" style={{ marginTop: 0 }}>Choisis pour chacune : perdue (sort du stock, avec le dernier projet où elle est sortie), en réparation, ou ne rien faire.</p>
           <table className="list"><tbody>{unseen.map(({ e, u }) => (
-            <tr key={u.id}><td>{e.name} {u.barcode || u.serial}{u.serial !== (u.barcode || u.serial) && <span className="muted"> · n° {u.serial}</span>}</td><td>
+            <tr key={u.id}><td>{e.name} {unitNo(u)} {u.barcode || u.serial}{u.serial !== (u.barcode || u.serial) && <span className="muted"> · n° {u.serial}</span>}</td><td>
               <select value={choice[u.id]} onChange={(ev) => setChoice({ ...choice, [u.id]: ev.target.value as 'lost' | 'repair' | 'none' })} aria-label={`Unité ${u.serial}`}>
                 <option value="lost">Perdue</option><option value="repair">En réparation</option><option value="none">Ne rien faire</option>
               </select>
@@ -796,7 +797,7 @@ export function ItemSheet({ id, onClose }: { id: string; onClose: () => void }) 
             const st = unitState(u);
             return (
               <tr key={u.id}>
-                <td>n° <strong>{u.serial}</strong>{u.barcode && <span className="muted"> · {u.barcode}</span>}</td>
+                <td>{u.number ? <strong className="unit-no">#{u.number} </strong> : null}n° <strong>{u.serial}</strong>{u.barcode && <span className="muted"> · {u.barcode}</span>}</td>
                 <td><span className={'badge ' + (st === 'ok' ? 'st-confirme' : st === 'lost' ? 'st-annule' : 'st-option')}>{UNIT_STATE_LABELS[st]}</span>{u.defect && <div className="muted" style={{ fontSize: 12 }}>{u.defect}</div>}</td>
                 <td className="muted" style={{ fontSize: 12 }}>{(u.history || []).slice(-2).map((h, i) => <div key={i}>{h.text}</div>)}</td>
                 <td><button className="secondary small" onClick={() => setStateFor(u)}>Changer l'état…</button></td>

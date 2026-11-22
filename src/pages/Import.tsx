@@ -344,7 +344,7 @@ export default function ImportPage() {
         const bought = parseDate(get(r, 'unitBought'));
         const price = parseNumber(get(r, 'unitPrice'));
         const unit = {
-          id: uid(), createdAt: t, updatedAt: t, equipmentId: e.id, serial,
+          id: uid(), createdAt: t, updatedAt: t, equipmentId: e.id, serial, number: mine.reduce((m, u) => Math.max(m, u.number || 0), 0) + 1,
           status: yes(get(r, 'unitLost')) ? 'perdu' as const : no(get(r, 'unitActive')) ? 'hs' as const : 'ok' as const,
           barcode: (unitCols ? get(r, 'unitBarcode') : get(r, 'barcode')) || (e.code ? nextUnitCode(e, mine) : undefined),
           extraCodes: mfr ? [mfr] : undefined,
