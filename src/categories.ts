@@ -9,18 +9,44 @@ import type { Category } from './types';
 type Cat = Pick<Category, 'id' | 'name' | 'parentId'>;
 
 const byName = (a: Cat, b: Cat) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' });
-/** une sous-catégorie dont la catégorie principale a disparu redevient principale */
-const parentOf = <T extends Cat>(cats: T[], c: T): T | undefined => (c.parentId ? cats.find((x) => x.id === c.parentId && !x.parentId) : undefined);
+/**
+ * catégorie principale d'une sous-catégorie : on remonte jusqu'en haut (un import peut créer plus de deux niveaux) ;
+ * une sous-catégorie dont la catégorie principale a disparu redevient principale
+ */
+const parentOf = <T extends Cat>(cats: T[], c: T): T | undefined => {
+  let p = c.parentId ? cats.find((x) => x.id === c.parentId) : undefined;
+  const seen = new Set([c.id]);
+  while (p?.parentId && !seen.has(p.id)) {
+    seen.add(p.id);
+    const up = cats.find((x) => x.id === p!.parentId);
+    if (!up || seen.has(up.id)) break;
+    p = up;
+  }
+  return p && p.id !== c.id ? p : undefined;
+};
+/** catégorie principale de la catégorie `id` (elle-même si elle est principale) */
+export const topCategory = <T extends Cat>(cats: T[], id?: string): T | undefined => {
+  const c = id ? cats.find((x) => x.id === id) : undefined;
+  return c ? parentOf(cats, c) || c : undefined;
+};
+const norm = (s: string) => s.trim().toLocaleLowerCase('fr').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+/** garde une seule catégorie par nom (catégories en double après plusieurs imports ou appareils) */
+const uniqByName = <T extends Cat>(l: T[]): T[] => { const seen = new Set<string>(); return l.filter((c) => !seen.has(norm(c.name)) && !!seen.add(norm(c.name))); };
 
-export const mainCategories = <T extends Cat>(cats: T[]): T[] => cats.filter((c) => !parentOf(cats, c)).sort(byName);
-export const subCategories = <T extends Cat>(cats: T[], parentId: string): T[] => cats.filter((c) => c.parentId === parentId && parentOf(cats, c)).sort(byName);
+export const mainCategories = <T extends Cat>(cats: T[], dedupe = false): T[] => { const l = cats.filter((c) => !parentOf(cats, c)).sort(byName); return dedupe ? uniqByName(l) : l; };
+export const subCategories = <T extends Cat>(cats: T[], parentId: string, dedupe = false): T[] => {
+  const top = cats.find((c) => c.id === parentId);
+  // avec dedupe : les sous-catégories de toutes les catégories principales du même nom
+  const l = cats.filter((c) => { const p = parentOf(cats, c); return !!p && (dedupe && top ? norm(p.name) === norm(top.name) : p.id === parentId); }).sort(byName);
+  return dedupe ? uniqByName(l) : l;
+};
 
 /** liste ordonnée : chaque catégorie principale suivie de ses sous-catégories */
-export function categoryTree<T extends Cat>(cats: T[]): { cat: T; sub: boolean; label: string }[] {
+export function categoryTree<T extends Cat>(cats: T[], dedupe = false): { cat: T; sub: boolean; label: string }[] {
   const out: { cat: T; sub: boolean; label: string }[] = [];
-  for (const m of mainCategories(cats)) {
+  for (const m of mainCategories(cats, dedupe)) {
     out.push({ cat: m, sub: false, label: m.name });
-    for (const s of subCategories(cats, m.id)) out.push({ cat: s, sub: true, label: `${m.name} › ${s.name}` });
+    for (const s of subCategories(cats, m.id, dedupe)) out.push({ cat: s, sub: true, label: `${m.name} › ${s.name}` });
   }
   return out;
 }
@@ -34,9 +60,22 @@ export function categoryLabel(cats: Cat[], id?: string): string {
 }
 
 /** l'article (catégorie categoryId) entre-t-il dans le filtre ? une catégorie principale inclut ses sous-catégories */
-export function inCategory(cats: Cat[], categoryId: string | undefined, filter: string): boolean {
+export function inCategory(cats: Cat[], categoryId: string | undefined, filter: string, strict = false): boolean {
   if (!filter) return true;
   if (categoryId === filter) return true;
   const c = categoryId ? cats.find((x) => x.id === categoryId) : undefined;
-  return !!c && parentOf(cats, c)?.id === filter;
+  if (filter === NO_CATEGORY) return !c;
+  if (!c) return false;
+  const p = parentOf(cats, c);
+  if (p?.id === filter) return true;
+  if (strict) return false;
+  // même nom = même catégorie (doublons créés par plusieurs imports ou appareils)
+  const f = cats.find((x) => x.id === filter);
+  if (!f) return false;
+  const fp = parentOf(cats, f);
+  if (!fp) return norm((p || c).name) === norm(f.name);
+  return !!p && norm(p.name) === norm(fp.name) && norm(c.name) === norm(f.name);
 }
+
+/** filtre « sans catégorie » (ou catégorie supprimée) */
+export const NO_CATEGORY = '__sans';

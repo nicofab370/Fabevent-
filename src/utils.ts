@@ -131,6 +131,21 @@ export function effectiveEquipment(equipment: Equipment[], units: SerialUnit[], 
   });
 }
 
+/** L'article est-il dans ce dépôt ? du stock y est, ou c'est son dépôt d'attache (kits, articles à 0). */
+export function inDepot(eq: Equipment, depotId: string | undefined, depots: { id: string }[], res?: Reservation[]): boolean {
+  if (!depotId) return true;
+  if (!eq.isKit && !eq.accessoryOnly && stockAt(eq, depotId, res) > 0) return true;
+  const home = eq.homeDepotId && depots.some((d) => d.id === eq.homeDepotId) ? eq.homeDepotId : depots[0]?.id;
+  return home === depotId;
+}
+
+/** Quantité dans un dépôt maintenant, transferts en cours compris (arrivés ou partis). */
+export function stockAt(eq: Equipment, depotId: string, res?: Reservation[], at = toLocalInput(new Date())): number {
+  let n = stockIn(eq, depotId);
+  for (const r of res || []) if (r.source === 'transfert' && r.equipmentId === eq.id && r.depotId === depotId && r.start <= at && at < r.end) n -= r.qty;
+  return Math.max(0, n);
+}
+
 /** Quantité d'un article dans un dépôt (sans dépôt = tout le parc). */
 export function stockIn(eq: Equipment, depotId?: string): number {
   if (!depotId || !eq._stock) return eq.quantity;

@@ -4,13 +4,13 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Empty, Field, Modal, NumInput, StatusBadge } from '../../components/ui';
 import { db } from '../../db';
 import type { EquipGroup, Equipment, EquipmentLine, Subproject } from '../../types';
-import { availableQty, blockPeriod, confirmDeleteSubproject, factorFor, fmtRange, lineBlock, lineDays, lineTotal, money, nowIso, round2, save, sortPeriods, uid, type Reservation, patch } from '../../utils';
+import { availableQty, blockPeriod, inDepot, confirmDeleteSubproject, factorFor, fmtRange, lineBlock, lineDays, lineTotal, money, nowIso, round2, save, sortPeriods, uid, type Reservation, patch } from '../../utils';
 import { isPerPiece, type ProjectData } from './shared';
 import { codeFromScan, findByCode } from '../../codes';
 import { Icon } from '../../components/Icon';
 import { CategoryOptions } from '../../components/CategoryOptions';
 import { OtherUsesList, otherUses, usedElsewhere } from '../../components/Reservations';
-import { categoryLabel, inCategory, mainCategories, subCategories } from '../../categories';
+import { NO_CATEGORY, categoryLabel, inCategory, mainCategories, subCategories, topCategory } from '../../categories';
 
 const EQ_MIME = 'application/x-fabevent-equipment';
 const LINE_MIME = 'application/x-fabevent-line';
@@ -96,7 +96,7 @@ function Catalogue({ d, qty, setQty, targetLabel, onAdd }: { d: ProjectData; qty
       <input placeholder="Rechercher…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Rechercher dans le catalogue" />
       <select value={cat} onChange={(e) => setCat(e.target.value)} style={{ marginTop: 6 }}>
         <option value="">Toutes catégories</option>
-        <CategoryOptions cats={cats} />
+        <CategoryOptions cats={cats} filter />
       </select>
       <label className="check-row" style={{ marginTop: 6 }}>Quantité déposée <NumInput className="w-qty" value={qty} onChange={setQty} aria-label="Quantité déposée" /></label>
       <p className="muted" style={{ fontSize: 12, margin: '6px 0' }}>Glisse vers un groupe, ou « + » pour ajouter à : <strong>{targetLabel || '—'}</strong>. Dispo sur la durée du projet.</p>
@@ -264,7 +264,7 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
         <p className="muted" style={{ marginBottom: 0 }}>Coefficient de durée : {lineDays({}, sp)} j → ×{factorFor(lineDays({}, sp), settings)} (hors groupes rattachés à des créneaux).</p>
       </div>
       {picking !== undefined && (
-        <EquipmentPicker sp={sp} groupId={picking || undefined} initialQ={pickQ} depot={d.depot} discount={d.client?.discounts?.equipment || 0} equipment={av.equipment} res={av.res} existing={lines} onClose={() => setPicking(undefined)} />
+        <EquipmentPicker sp={sp} groupId={picking || undefined} initialQ={pickQ} depot={d.depot} depots={av.depots} discount={d.client?.discounts?.equipment || 0} equipment={av.equipment} res={av.res} existing={lines} onClose={() => setPicking(undefined)} />
       )}
       {editGroup && <GroupModal sp={sp} group={editGroup} onClose={() => setEditGroup(null)} />}
       {usesOf && (
@@ -412,7 +412,7 @@ export async function addEquipmentToSub(sp: Subproject, equipment: Equipment[], 
  * Fenêtre « + Matériel » : chercher, filtrer (catégorie, disponible, étiquette), mettre des quantités
  * avec − / + (ou un clic sur la ligne = +1), voir la sélection, puis ajouter (et continuer si besoin).
  */
-function EquipmentPicker({ sp, groupId, initialQ = '', depot, discount, equipment, res, existing, onClose }: { sp: Subproject; groupId?: string; initialQ?: string; depot?: string; discount: number; equipment: Equipment[]; res: Reservation[]; existing: EquipmentLine[]; onClose: () => void }) {
+function EquipmentPicker({ sp, groupId, initialQ = '', depot, depots = [], discount, equipment, res, existing, onClose }: { sp: Subproject; groupId?: string; initialQ?: string; depot?: string; depots?: { id: string; name: string }[]; discount: number; equipment: Equipment[]; res: Reservation[]; existing: EquipmentLine[]; onClose: () => void }) {
   const [q, setQ] = useState(initialQ);
   const [qty, setQty] = useState<Record<string, number>>({});
   const [cat, setCat] = useState('');
@@ -422,17 +422,19 @@ function EquipmentPicker({ sp, groupId, initialQ = '', depot, discount, equipmen
   const [target, setTarget] = useState(groupId || '');
   const [added, setAdded] = useState('');
   const [openUses, setOpenUses] = useState('');
+  /** dépôt filtré : seulement le matériel qui s'y trouve, dispo calculée dans ce dépôt */
+  const [where, setWhere] = useState('');
   const cats = useLiveQuery(() => db.categories.orderBy('name').toArray(), []) || [];
   const units = useLiveQuery(() => db.units.toArray(), []) || [];
   const catName = new Map(cats.map((c) => [c.id, categoryLabel(cats, c.id)]));
   const [bStart, bEnd] = lineBlock({ groupId: target || undefined }, sp);
   const groups = sp.groups || [];
-  const avail = new Map(equipment.map((e) => [e.id, availableQty(e, equipment, res, bStart, bEnd, undefined, depot)]));
+  const avail = new Map(equipment.map((e) => [e.id, availableQty(e, equipment, res, bStart, bEnd, undefined, where || depot)]));
   const inProject = new Map<string, number>();
   for (const l of existing) if (l.equipmentId && !l.parentLineId) inProject.set(l.equipmentId, (inProject.get(l.equipmentId) || 0) + l.qty);
   const tags = Array.from(new Set(equipment.flatMap((e) => e.tags || []))).sort();
   const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  const base = equipment.filter((e) => !e.archived && !e.accessoryOnly && words.every((w) => [e.name, e.code, e.barcode, ...(e.extraCodes || []), e.categoryId && catName.get(e.categoryId), ...(e.tags || [])].join(' ').toLowerCase().includes(w)));
+  const base = equipment.filter((e) => !e.archived && !e.accessoryOnly && inDepot(e, where, depots, res) && words.every((w) => [e.name, e.code, e.barcode, ...(e.extraCodes || []), e.categoryId && catName.get(e.categoryId), ...(e.tags || [])].join(' ').toLowerCase().includes(w)));
   const list = base
     .filter((e) => inCategory(cats, e.categoryId, cat) && (!tag || e.tags?.includes(tag)) && (!onlyAvail || (avail.get(e.id) || 0) > 0))
     .sort((a, b) => sort === 'dispo' ? (avail.get(b.id) || 0) - (avail.get(a.id) || 0) : sort === 'prix' ? a.dailyPrice - b.dailyPrice : a.name.localeCompare(b.name));
@@ -458,24 +460,24 @@ function EquipmentPicker({ sp, groupId, initialQ = '', depot, discount, equipmen
               if (hit) { bump(hit.id, 1); setQ(''); }
             }} />
           <div className="chips">
-            <button className={'chip' + (!cat ? ' on' : '')} onClick={() => setCat('')}>Tout ({base.length})</button>
-            {mainCategories(cats).map((c) => {
+            <button type="button" className={'chip' + (!cat ? ' on' : '')} onClick={() => setCat('')}>Tout ({base.length})</button>
+            {mainCategories(cats, true).map((c) => {
               const n = base.filter((e) => inCategory(cats, e.categoryId, c.id)).length;
-              const on = cat === c.id || cats.find((x) => x.id === cat)?.parentId === c.id;
-              return n ? <button key={c.id} className={'chip' + (on ? ' on' : '')} onClick={() => setCat(cat === c.id ? '' : c.id)}>{c.name} ({n})</button> : null;
+              const on = !!cat && inCategory(cats, cat, c.id);
+              return n ? <button type="button" key={c.id} className={'chip' + (on ? ' on' : '')} onClick={() => setCat(cat === c.id ? '' : c.id)}>{c.name} ({n})</button> : null;
             })}
+            {(() => { const n = base.filter((e) => inCategory(cats, e.categoryId, NO_CATEGORY)).length; return n ? <button type="button" className={'chip' + (cat === NO_CATEGORY ? ' on' : '')} onClick={() => setCat(cat === NO_CATEGORY ? '' : NO_CATEGORY)}>Sans catégorie ({n})</button> : null; })()}
           </div>
           {(() => {
             // sous-catégories de la catégorie choisie
-            const main = cats.find((x) => x.id === cat);
-            const parentId = main?.parentId || main?.id;
-            const subs = parentId ? subCategories(cats, parentId) : [];
+            const parentId = cat === NO_CATEGORY ? undefined : topCategory(cats, cat)?.id;
+            const subs = parentId ? subCategories(cats, parentId, true) : [];
             if (!subs.length) return null;
             return (
               <div className="chips sub-chips" aria-label="Sous-catégories">
                 {subs.map((c) => {
-                  const n = base.filter((e) => e.categoryId === c.id).length;
-                  return n ? <button key={c.id} className={'chip' + (cat === c.id ? ' on' : '')} onClick={() => setCat(cat === c.id ? parentId! : c.id)}>{c.name} ({n})</button> : null;
+                  const n = base.filter((e) => inCategory(cats, e.categoryId, c.id)).length;
+                  return n ? <button type="button" key={c.id} className={'chip' + (cat === c.id ? ' on' : '')} onClick={() => setCat(cat === c.id ? parentId! : c.id)}>{c.name} ({n})</button> : null;
                 })}
               </div>
             );
@@ -486,6 +488,12 @@ function EquipmentPicker({ sp, groupId, initialQ = '', depot, discount, equipmen
               <select value={tag} onChange={(e) => setTag(e.target.value)} style={{ width: 'auto' }} aria-label="Étiquette">
                 <option value="">Toutes étiquettes</option>
                 {tags.map((t) => <option key={t}>{t}</option>)}
+              </select>
+            )}
+            {depots.length > 1 && (
+              <select value={where} onChange={(e) => setWhere(e.target.value)} style={{ width: 'auto' }} aria-label="Filtrer par dépôt">
+                <option value="">Tous les dépôts</option>
+                {depots.map((dp) => <option key={dp.id} value={dp.id}>{dp.id === depot ? `${dp.name} (dépôt du projet)` : dp.name}</option>)}
               </select>
             )}
             <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} style={{ width: 'auto' }} aria-label="Trier">

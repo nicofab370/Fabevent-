@@ -142,7 +142,8 @@ par fournisseur (impression, email), coûts par fournisseur dans les finances. P
 
 **Documents en français, néerlandais ou anglais** selon le client ou le projet. **Facture d'un sous-projet** (facture partielle),
 la facture finale excluant les sous-projets déjà facturés. **Champs personnalisés** (projets, contacts, matériel) utilisables dans les documents,
-**étiquettes** et filtres, **rendez-vous** hors projet dans le planning, **export CSV** de toutes les listes, **modification groupée** du matériel.
+**étiquettes** et filtres, **rendez-vous** hors projet dans le planning, **export CSV** de toutes les listes, **modification groupée** du matériel (les informations communes aux articles cochés sont pré-remplies, seules celles qu'on change sont appliquées : catégorie, dépôt, type, prix ou variation en %, prix d'achat, valeur de remplacement, poids, contrôle, emplacement, archivage, étiquettes à ajouter ou retirer, photo, contenu fourni, notes, champs personnalisés).
+Filtre **par dépôt** dans la liste du matériel et dans « + Matériel » d'un projet (seul le matériel présent dans ce dépôt, disponibilité calculée dans ce dépôt). Les filtres de catégorie regroupent les catégories en double (même nom, créées par deux imports ou deux appareils), rangent un troisième niveau sous sa catégorie principale et proposent « Sans catégorie ».
 
 **Équipe** : postes à la journée ou à l'heure avec heures supplémentaires majorées, temps de trajet dans les horaires
 communiqués, documents du personnel avec date d'expiration.
