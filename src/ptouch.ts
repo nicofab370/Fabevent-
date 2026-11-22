@@ -242,10 +242,13 @@ export function renderLabel(spec: LabelSpec, o: LayoutOptions, qr: QrMatrix | nu
   const maxText = mm(o.maxTextMm ?? 70);
   const fit = (l: { text: string; size: number; bold: boolean }) => {
     ctx.font = font(l);
-    let t = l.text;
-    if (ctx.measureText(t).width <= maxText) return t;
-    while (t.length > 1 && ctx.measureText(t + '…').width > maxText) t = t.slice(0, -1);
-    return t + '…';
+    if (ctx.measureText(l.text).width <= maxText) return l.text;
+    // « Table de mix très longue #3 » : on raccourcit le nom, jamais le numéro d'unité #x
+    const m = l.text.match(/^(.*\S)(\s+#\d+)$/);
+    let t = m ? m[1] : l.text;
+    const end = m ? m[2] : '';
+    while (t.length > 1 && ctx.measureText(t + '…' + end).width > maxText) t = t.slice(0, -1);
+    return t.trimEnd() + '…' + end;
   };
   const texts = lines.map((l) => ({ ...l, text: fit(l) }));
   const textW = Math.ceil(Math.max(...texts.map((l) => { ctx.font = font(l); return ctx.measureText(l.text).width; })));

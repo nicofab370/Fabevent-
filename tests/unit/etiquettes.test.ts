@@ -73,7 +73,8 @@ describe('mise en page libre et réglages fins', () => {
       styles: { serial: { prefix: 'S/N : ', upper: true, size: 150 }, title: { bold: false, wrap: false } } };
     const html = labelHtml(t, l, '', undefined, 'data:image/png;base64,AAAA');
     expect(html).toContain('S/N : SN1');
-    expect(html.indexOf('LOCATION')).toBeLessThan(html.indexOf('Lyre #3'));
+    const txt = html.replace(/<[^>]+>/g, '');
+    expect(txt.indexOf('LOCATION')).toBeLessThan(txt.indexOf('Lyre #3'));
     expect(html).toContain('class="logo"');
     const css = labelCss(t);
     expect(css).toContain('.lab .f-serial{font-size:');
@@ -140,7 +141,7 @@ describe('texte à côté et sous le QR, texte tourné', () => {
     const html = labelHtml(t, l, '');
     const top = html.slice(html.indexOf('class="top"'), html.indexOf('tx-bas'));
     const bas = html.slice(html.indexOf('tx-bas'));
-    expect(top).toContain('Table de mix #3');
+    expect(top.replace(/<[^>]+>/g, '')).toContain('Table de mix #3');
     expect(top).not.toContain('F-S-0010-03</div>');
     expect(bas).toContain('F-S-0010-03');
     expect(bas).toContain('n° SN1');
@@ -154,5 +155,20 @@ describe('texte à côté et sous le QR, texte tourné', () => {
   });
   it('sans réglage de position : tout à côté du code, comme avant', () => {
     expect(labelHtml({ ...t, styles: undefined }, l, '')).not.toContain('tx-bas');
+  });
+});
+
+describe('nom raccourci : le #x reste visible', async () => {
+  const { splitUnitNo } = await import('../../src/labelTemplates');
+  it('sépare le nom et le numéro d’unité', () => {
+    expect(splitUnitNo('Table de mix Allen & Heath #12')).toEqual(['Table de mix Allen & Heath', ' #12']);
+    expect(splitUnitNo('Câble XLR 10 m')).toEqual(['Câble XLR 10 m', '']);
+    expect(splitUnitNo('Kit #2 complet')).toEqual(['Kit #2 complet', '']);
+  });
+  it('le « … » coupe le nom, avant le #x', () => {
+    const t = { id: 'r', name: 'R', sheet: 'ruban' as const, device: 'ptouch' as const, w: 30, h: 12, layout: 'libre' as const, symbol: 'qr' as const, fields: ['title'] as LabelField[], styles: { title: { wrap: false } } };
+    const html = labelHtml(t, { code: 'X', title: 'Console Allen & Heath Qu-16 #3' }, '');
+    expect(html).toContain('<span class="nm">Console Allen &amp; Heath Qu-16</span><span class="no"> #3</span>');
+    expect(labelCss(t)).toContain('.lab .f-title .nm{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis');
   });
 });
