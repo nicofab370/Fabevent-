@@ -37,6 +37,20 @@ export default function LabelTemplatesTab() {
   const saveTemplates = async (list: LabelTemplate[], extra: Partial<typeof settings> = {}) => { const s = await getSettings(); await db.settings.put({ ...s, labelTemplates: list, ...extra }); };
   const setDefault = async (id: string) => { const s = await getSettings(); await db.settings.put({ ...s, labelDefault: id }); };
   const def = settings.labelDefault || BUILTIN_TEMPLATES[0].id;
+  /** modèles standard masqués : ils ne s'affichent plus ici ni sur la page Étiquettes (réaffichables) */
+  const hidden = new Set(settings.labelHidden || []);
+  const [showHidden, setShowHidden] = useState(false);
+  const setHidden = async (ids: string[], hide: boolean) => {
+    const s = await getSettings();
+    const h = new Set(s.labelHidden || []);
+    for (const id of ids) { if (hide) h.add(id); else h.delete(id); }
+    // un modèle masqué n'est plus « par défaut »
+    await db.settings.put({ ...s, labelHidden: [...h], ...(hide && s.labelDefault && ids.includes(s.labelDefault) ? { labelDefault: undefined } : {}) });
+  };
+  const removeMine = async (t: LabelTemplate) => {
+    if (!confirm(`Supprimer le modèle « ${t.name} » ?`)) return;
+    await saveTemplates(mine.filter((x) => x.id !== t.id), settings.labelDefault === t.id ? { labelDefault: undefined } : {});
+  };
 
   /** aperçu : un vrai article (ou une de ses unités), sinon un exemple */
   const sample: SheetLabel = (() => {
@@ -50,7 +64,7 @@ export default function LabelTemplatesTab() {
   })();
 
   const groups = new Map<string, LabelTemplate[]>();
-  for (const t of [...all].sort((a, b) => fmtSort(a).localeCompare(fmtSort(b)))) groups.set(formatKey(t), [...(groups.get(formatKey(t)) || []), t]);
+  for (const t of [...all].filter((x) => showHidden || !hidden.has(x.id)).sort((a, b) => fmtSort(a).localeCompare(fmtSort(b)))) groups.set(formatKey(t), [...(groups.get(formatKey(t)) || []), t]);
 
   if (editing) {
     return (
@@ -87,20 +101,29 @@ export default function LabelTemplatesTab() {
         <button className="secondary" onClick={() => setEditing({ t: { ...emptyTemplate(), name: 'Mon modèle libre', layout: 'libre', symbol: 'qr', symbolPos: 'gauche' }, existing: false })}>+ Modèle libre</button>
         <button className="secondary" onClick={() => setEditing({ t: { ...emptyTemplate(), name: 'PT-P750W — mon ruban 12 mm', sheet: 'ruban', device: 'ptouch', w: 45, h: 12, layout: 'libre', symbol: 'qr', symbolPos: 'gauche', padding: 0.6, fields: ['code', 'title'] }, existing: false })}>+ Modèle Brother P-touch</button>
         <button className="secondary" onClick={() => setEditing({ t: { ...emptyTemplate(), name: 'Dymo — mon modèle 89 × 36 mm', sheet: 'rouleau', device: 'dymo-lw', w: 89, h: 36, cols: undefined, rows: undefined, fields: ['title', 'code', 'serial'] }, existing: false })}>+ Modèle Dymo</button>
+        {hidden.size > 0 && <>
+          <label className="check-row" style={{ marginLeft: 'auto' }}><input type="checkbox" checked={showHidden} onChange={(e) => setShowHidden(e.target.checked)} /> Afficher les modèles masqués ({hidden.size})</label>
+          <button className="ghost small" onClick={() => setHidden([...hidden], false)}>Tout réafficher</button>
+        </>}
       </div>
       {[...groups.entries()].map(([key, list]) => (
         <div key={key} className="card lt-group">
           <div className="page-head" style={{ marginBottom: 6 }}>
             <h3 style={{ margin: 0 }}>{formatName(list[0])}</h3>
-            <button className="secondary small" onClick={() => setEditing({ t: { ...list[0], id: '', name: `${formatName(list[0])} — mon modèle`, builtin: undefined }, existing: false })}>+ Modèle pour ce format</button>
+            <div className="toolbar" style={{ marginBottom: 0 }}>
+              <button className="secondary small" onClick={() => setEditing({ t: { ...list[0], id: '', name: `${formatName(list[0])} — mon modèle`, builtin: undefined }, existing: false })}>+ Modèle pour ce format</button>
+              {list.some((t) => t.builtin && !hidden.has(t.id)) && (
+                <button className="ghost small" title="Masque les modèles standard de ce format (tes modèles restent)" onClick={() => setHidden(list.filter((t) => t.builtin).map((t) => t.id), true)}>Masquer ce format</button>
+              )}
+            </div>
           </div>
           <div className="lt-cards">
             {list.map((t) => (
-              <div key={t.id} className={'lt-card' + (t.id === def ? ' is-default' : '')}>
+              <div key={t.id} className={'lt-card' + (t.id === def ? ' is-default' : '') + (hidden.has(t.id) ? ' is-hidden' : '')}>
                 <LabelPreview t={t} label={sample} company={settings.company.name} logo={settings.company.logo} />
                 <div className="lt-card-info">
                   <strong>{t.name}</strong>
-                  <span className="muted">{LAYOUT_LABELS[t.layout]}{t.builtin ? ' · standard' : ''}</span>
+                  <span className="muted">{LAYOUT_LABELS[t.layout]}{t.builtin ? ' · standard' : ''}{hidden.has(t.id) ? ' · masqué' : ''}</span>
                 </div>
                 <div className="toolbar" style={{ marginBottom: 0 }}>
                   {t.builtin
@@ -109,9 +132,12 @@ export default function LabelTemplatesTab() {
                       <button className="secondary small" onClick={() => setEditing({ t, existing: true })}>Modifier</button>
                       <button className="ghost small" onClick={() => setEditing({ t: { ...t, id: '', name: `${t.name} (copie)` }, existing: false })}>Dupliquer</button>
                     </>}
-                  {t.id === def
+                  {hidden.has(t.id) ? null : t.id === def
                     ? <span className="badge st-confirme"><Icon name="check" />Par défaut</span>
                     : <button className="ghost small" onClick={() => setDefault(t.id)} title="Proposé d'office sur la page Étiquettes">Par défaut</button>}
+                  {t.builtin
+                    ? <button className="ghost small" onClick={() => setHidden([t.id], !hidden.has(t.id))} title={hidden.has(t.id) ? 'Le remettre dans les listes' : "Modèle standard : il ne s'affiche plus (réaffichable)"}>{hidden.has(t.id) ? 'Réafficher' : 'Masquer'}</button>
+                    : <button className="ghost small danger-txt" onClick={() => removeMine(t)} aria-label={`Supprimer ${t.name}`}><Icon name="x" />Supprimer</button>}
                 </div>
               </div>
             ))}

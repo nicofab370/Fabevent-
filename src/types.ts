@@ -904,6 +904,8 @@ export interface Settings {
   labelTemplates?: import('./labelTemplates').LabelTemplate[];
   /** modèle d'étiquette proposé d'office sur la page Étiquettes */
   labelDefault?: string;
+  /** modèles d'étiquettes standard masqués (inutiles pour cette société) */
+  labelHidden?: string[];
   /** lettre des codes du matériel quand aucun dépôt n'est déclaré (F par défaut) */
   codeLetter?: string;
   /** moments de facturation (au plus 3 par projet) */
