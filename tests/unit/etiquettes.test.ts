@@ -131,3 +131,28 @@ describe('taille du QR et place perdue', async () => {
     expect(vb && Number(vb[1])).toBe(21); // QR version 1 : 21 modules, sans marge
   });
 });
+
+describe('texte à côté et sous le QR, texte tourné', () => {
+  const t = { id: 'm', name: 'Mixte', sheet: 'rouleau' as const, w: 40, h: 40, layout: 'libre' as const, symbol: 'qr' as const, symbolPos: 'gauche' as const,
+    fields: ['title', 'code', 'serial'] as LabelField[], styles: { code: { place: 'dessous' as const }, serial: { place: 'dessous' as const } } };
+  const l = { code: 'F-S-0010-03', title: 'Table de mix #3', serial: 'SN1' };
+  it('nom à côté du QR, code et n° de série dessous sur toute la largeur', () => {
+    const html = labelHtml(t, l, '');
+    const top = html.slice(html.indexOf('class="top"'), html.indexOf('tx-bas'));
+    const bas = html.slice(html.indexOf('tx-bas'));
+    expect(top).toContain('Table de mix #3');
+    expect(top).not.toContain('F-S-0010-03</div>');
+    expect(bas).toContain('F-S-0010-03');
+    expect(bas).toContain('n° SN1');
+    expect(labelCss(t)).toContain('.lab.libre .top{display:flex');
+  });
+  it('texte d’à côté tourné (lettres couchées, pas empilées)', () => {
+    const css = labelCss({ ...t, sideRotate: 270 });
+    expect(css).toContain('writing-mode:vertical-rl;text-orientation:mixed');
+    expect(css).toContain('transform:rotate(180deg)');
+    expect(labelCss({ ...t, sideRotate: 90 })).not.toContain('rotate(180deg)');
+  });
+  it('sans réglage de position : tout à côté du code, comme avant', () => {
+    expect(labelHtml({ ...t, styles: undefined }, l, '')).not.toContain('tx-bas');
+  });
+});

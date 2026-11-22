@@ -1,6 +1,6 @@
 import { useId, useState } from 'react';
 import {
-  ALL_FIELDS, DEVICE_LABELS, DEVICE_TAPES, FIELD_LABELS, FONT_LABELS, printableHeight, qrSizeMm, type LabelDevice, LAYOUT_LABELS, PART_LABELS, fitsA4, labelCss, labelHtml, perSheet,
+  ALL_FIELDS, DEVICE_LABELS, DEVICE_TAPES, FIELD_LABELS, FONT_LABELS, printableHeight, qrSizeMm, sideLayout, type LabelDevice, LAYOUT_LABELS, PART_LABELS, fitsA4, labelCss, labelHtml, perSheet,
   type FieldStyle, type LabelField, type LabelFont, type LabelLayout, type LabelPart, type LabelTemplate, type SheetLabel,
 } from '../labelTemplates';
 import { Field, Modal, NumInput } from './ui';
@@ -174,6 +174,16 @@ export function LabelTemplateForm({ initial, sample, company, logo, onSave, onDe
             </Field>
           );
         })()}
+        {(t.layout === 'qr-gauche' || sideLayout(t)) && (
+          <Field label="Texte à côté du code">
+            <select value={t.sideRotate || 0} onChange={(e) => set('sideRotate', (Number(e.target.value) || undefined) as LabelTemplate['sideRotate'])} aria-label="Sens du texte à côté du code">
+              <option value={0}>Droit (normal)</option>
+              <option value={270}>Tourné : se lit de bas en haut</option>
+              <option value={90}>Tourné : se lit de haut en bas</option>
+            </select>
+          </Field>
+        )}
+        {sideLayout(t) && <p className="muted field full" style={{ margin: 0 }}>Chaque information peut aller à côté du code ou dessous, sur toute la largeur : « Régler » → Position.</p>}
         {t.layout === 'qr-seul' && <p className="muted field full">« QR seul » : seul le code est imprimé sous le QR (les autres zones sont masquées).</p>}
       </fieldset>
 
@@ -220,7 +230,7 @@ export function LabelTemplateForm({ initial, sample, company, logo, onSave, onDe
                       <button type="button" className={'ghost small' + (openPart === f ? ' on' : '')} aria-expanded={openPart === f} onClick={() => setOpenPart(openPart === f ? '' : f)}>Régler</button>
                     </span>}
                   </div>
-                  {on && openPart === f && <PartStyle part={f} st={t.styles?.[f] || {}} onChange={(p) => setStyle(f, p)} />}
+                  {on && openPart === f && <PartStyle part={f} st={t.styles?.[f] || {}} canPlace={sideLayout(t)} onChange={(p) => setStyle(f, p)} />}
                 </div>
               );
             })}
@@ -230,7 +240,7 @@ export function LabelTemplateForm({ initial, sample, company, logo, onSave, onDe
                   <span>{PART_LABELS[p]}</span>
                   <button type="button" className={'ghost small' + (openPart === p ? ' on' : '')} aria-expanded={openPart === p} onClick={() => setOpenPart(openPart === p ? '' : p)}>Régler</button>
                 </div>
-                {openPart === p && <PartStyle part={p} st={t.styles?.[p] || {}} onChange={(x) => setStyle(p, x)} />}
+                {openPart === p && <PartStyle part={p} st={t.styles?.[p] || {}} canPlace={sideLayout(t)} onChange={(x) => setStyle(p, x)} />}
               </div>
             ))}
           </div>
@@ -260,10 +270,18 @@ export function LabelTemplateForm({ initial, sample, company, logo, onSave, onDe
 }
 
 /** réglage d'une zone de texte */
-function PartStyle({ part, st, onChange }: { part: LabelPart; st: FieldStyle; onChange: (p: Partial<FieldStyle>) => void }) {
+function PartStyle({ part, st, canPlace, onChange }: { part: LabelPart; st: FieldStyle; canPlace?: boolean; onChange: (p: Partial<FieldStyle>) => void }) {
   const name = PART_LABELS[part];
   return (
     <div className="lt-part">
+      {canPlace && (
+        <label className="check-row">Position
+          <select value={st.place || 'cote'} onChange={(e) => onChange({ place: e.target.value === 'dessous' ? 'dessous' : undefined })} aria-label={`Position : ${name}`} style={{ width: 'auto' }}>
+            <option value="cote">À côté du code</option>
+            <option value="dessous">Sous le code (toute la largeur)</option>
+          </select>
+        </label>
+      )}
       <label className="check-row">Taille {st.size ?? 100} %
         <input type="range" min={40} max={300} step={5} value={st.size ?? 100} onChange={(e) => onChange({ size: Number(e.target.value) })} aria-label={`Taille : ${name}`} />
       </label>

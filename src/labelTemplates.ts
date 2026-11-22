@@ -20,6 +20,8 @@ export interface FieldStyle {
   wrap?: boolean;
   /** texte devant la valeur (ex. « S/N : », « Rangement : ») ; vide = celui par défaut */
   prefix?: string;
+  /** mise en page libre, code à gauche ou à droite : à côté du code (défaut) ou dessous, sur toute la largeur */
+  place?: 'cote' | 'dessous';
 }
 export type LabelFont = 'systeme' | 'arial' | 'etroite' | 'serif' | 'mono';
 export type LabelDevice = 'ptouch' | 'dymo-lm' | 'dymo-lw' | 'autre';
@@ -87,6 +89,11 @@ export interface LabelTemplate {
   /* ----- mise en page libre ----- */
   symbol?: 'qr' | 'code-barres' | 'les-deux' | 'aucun';
   symbolPos?: 'gauche' | 'droite' | 'dessus' | 'dessous';
+  /**
+   * texte à côté du code tourné d'un quart de tour (les lignes se lisent dans le sens de la hauteur,
+   * lettres couchées, pas empilées) : 90 = de haut en bas, 270 = de bas en haut
+   */
+  sideRotate?: 0 | 90 | 270;
   /** taille du code (QR, code-barres) en % de sa taille normale (30 à 200), plafonnée à la place disponible */
   symbolSize?: number;
   builtin?: boolean;
@@ -223,13 +230,13 @@ export function code128Svg(text: string): string {
 const esc = (v: unknown) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /** lignes de texte d'une étiquette, dans l'ordre des champs choisis */
-function lines(t: LabelTemplate, l: SheetLabel, company: string): { cls: string; text: string }[] {
+function lines(t: LabelTemplate, l: SheetLabel, company: string): { cls: string; text: string; part: LabelPart }[] {
   const raw: Record<LabelField, string | undefined> = { title: l.title, code: l.code, serial: l.serial, category: l.category, location: l.location, contents: l.contents, company };
   const pre = (f: LabelField) => t.styles?.[f]?.prefix ?? PREFIX[f] ?? '';
   return [
-    ...(t.header ? [{ cls: 'f-header', text: t.header }] : []),
-    ...t.fields.filter((f) => raw[f]).map((f) => ({ cls: 'f-' + f, text: pre(f) + raw[f]! })),
-    ...(t.footer ? [{ cls: 'f-footer', text: t.footer }] : []),
+    ...(t.header ? [{ cls: 'f-header', text: t.header, part: 'header' as LabelPart }] : []),
+    ...t.fields.filter((f) => raw[f]).map((f) => ({ cls: 'f-' + f, text: pre(f) + raw[f]!, part: f as LabelPart })),
+    ...(t.footer ? [{ cls: 'f-footer', text: t.footer, part: 'footer' as LabelPart }] : []),
   ];
 }
 
@@ -253,6 +260,12 @@ export function qrSizeMm(t0: LabelTemplate): { mm: number; capped: boolean } {
   const t = { ...t0, h: printableHeight(t0) };
   const pad = t.padding ?? 1.5, k = (t.symbolSize ?? 100) / 100;
   const iw = t.w - 2 * pad, ih = t.h - 2 * pad;
+  if (hasBelow(t)) {
+    const basePt = Math.max(5, Math.min(16, t.h * 0.23)) * ((t.textScale || 100) / 100);
+    const nBelow = (['header', 'footer', ...t.fields] as LabelPart[]).filter((x) => (x === 'header' ? t.header : x === 'footer' ? t.footer : true) && isBelow(t, x)).length;
+    const room = Math.max(1, Math.min(ih - nBelow * basePt * 0.3528 * 1.12 - 0.8, iw * 0.7));
+    return { mm: room * Math.min(1, k), capped: k > 1 };
+  }
   // QR au-dessus / en dessous : il remplit la hauteur laissée par le texte (estimée ici pour l'éditeur)
   const col = t.layout === 'qr-dessus' || t.layout === 'qr-seul' || (t.layout === 'libre' && (t.symbolPos === 'dessus' || t.symbolPos === 'dessous') && t.symbol !== 'aucun' && t.symbol !== 'code-barres');
   if (col) {
@@ -278,6 +291,18 @@ export function qrSizeMm(t0: LabelTemplate): { mm: number; capped: boolean } {
  * (plus de blanc perdu en haut et sur les côtés) ; « Taille du code » < 100 % le réduit.
  */
 function fillCss(t: LabelTemplate): string {
+  if (hasBelow(t)) {
+    // code à côté du texte, d'autres lignes dessous : le code remplit la hauteur laissée par les lignes du dessous
+    const k = Math.min(1, (t.symbolSize ?? 100) / 100);
+    const pad = t.padding ?? 1.5;
+    return `\n.lab.libre{flex-direction:column;align-items:stretch}
+.lab.libre .top{display:flex;flex-direction:${t.symbolPos === 'droite' ? 'row-reverse' : 'row'};flex:1 1 0;min-height:0;gap:${t.gap ?? 1.5}mm;align-items:center}
+.lab.libre .top .sym{flex:none;height:${(k * 100).toFixed(0)}%;justify-content:center}
+.lab.libre .top .qr{height:100%;min-height:0;display:flex}
+.lab.libre .top .qr svg{height:100%;width:auto;aspect-ratio:1/1;max-width:${((t.w - 2 * pad) * 0.7).toFixed(1)}mm}
+.lab.libre .top .tx{flex:1;min-width:0;align-self:stretch}
+.lab.libre .tx-bas{flex:none}`;
+  }
   const col = t.layout === 'qr-dessus' || t.layout === 'qr-seul' || (t.layout === 'libre' && (t.symbolPos === 'dessus' || t.symbolPos === 'dessous') && t.symbol !== 'aucun' && t.symbol !== 'code-barres');
   if (!col) return '';
   const k = Math.min(1, (t.symbolSize ?? 100) / 100);
@@ -317,6 +342,11 @@ function tuneCss(t: LabelTemplate, base: number): string {
     if (r.length) out.push(`.lab .f-${part}{${r.join(';')}}`);
   }
   if (t.logo && t.logo !== 'aucun') out.push(`.lab .logo{display:block;max-width:100%;max-height:${(t.h * 0.22).toFixed(1)}mm;object-fit:contain;${t.align === 'droite' ? 'margin-left:auto' : t.align === 'gauche' ? '' : 'margin:0 auto'}}`);
+  // texte à côté du code tourné d'un quart de tour
+  if (t.sideRotate && (t.layout === 'qr-gauche' || sideLayout(t))) {
+    const sel = t.layout === 'qr-gauche' ? '.lab.qr-gauche > .tx' : '.lab.libre > .tx:not(.tx-bas),.lab.libre .top > .tx';
+    out.push(`${sel}{writing-mode:vertical-rl;text-orientation:mixed;align-self:stretch;justify-content:center${t.sideRotate === 270 ? ';transform:rotate(180deg)' : ''}}`);
+  }
   if (t.layout === 'libre') {
     const f = freeSizes(t);
     const dir = { gauche: 'row', droite: 'row-reverse', dessus: 'column', dessous: 'column-reverse' }[t.symbolPos || 'gauche'];
@@ -355,13 +385,23 @@ ${tuneCss(t, base)}${fillCss(t)}${my > 0 ? `\n.lab{padding-top:${(my + (t.paddin
 }
 
 /** une étiquette (HTML) */
+/** mise en page libre, code à gauche ou à droite : zones placées sous le code, sur toute la largeur */
+export const sideLayout = (t: Pick<LabelTemplate, 'layout' | 'symbolPos' | 'symbol'>) => t.layout === 'libre' && t.symbol !== 'aucun' && (!t.symbolPos || t.symbolPos === 'gauche' || t.symbolPos === 'droite');
+const isBelow = (t: LabelTemplate, p: LabelPart) => sideLayout(t) && t.styles?.[p]?.place === 'dessous';
+export const hasBelow = (t: LabelTemplate) => sideLayout(t) && (['header', 'footer', ...t.fields] as LabelPart[]).some((p) => isBelow(t, p));
+
 export function labelHtml(t: LabelTemplate, l: SheetLabel, company: string, qrPayload: (code: string) => string = (c) => c, logo?: string): string {
   const img = logo && t.logo && t.logo !== 'aucun' ? `<img class="logo" src="${esc(logo)}" alt="">` : '';
-  const tx = `<div class="tx">${t.logo === 'haut' ? img : ''}${lines(t, l, company).map((x) => `<div class="${x.cls}">${esc(x.text)}</div>`).join('')}${t.logo === 'bas' ? img : ''}</div>`;
+  const all = lines(t, l, company);
+  const div = (x: { cls: string; text: string }) => `<div class="${x.cls}">${esc(x.text)}</div>`;
+  const tx = `<div class="tx">${t.logo === 'haut' ? img : ''}${all.filter((x) => !isBelow(t, x.part)).map(div).join('')}${t.logo === 'bas' ? img : ''}</div>`;
+  const below = all.filter((x) => isBelow(t, x.part));
   // pas de bordure blanche dans le QR : la marge de l'étiquette (et l'espace avec le texte) sert de zone blanche
   const qr = () => `<div class="qr">${qrSvg(qrPayload(l.code), 100, 0)}</div>`;
   const sym = t.symbol === 'aucun' ? '' : `<div class="sym">${t.symbol === 'code-barres' ? '' : qr()}${t.symbol === 'code-barres' || t.symbol === 'les-deux' ? `<div class="bc">${code128Svg(l.code)}</div>` : ''}</div>`;
-  const inner = t.layout === 'libre' ? `${sym}${tx}`
+  // texte à côté du code et texte dessous : le code et le texte d'à côté en haut, le reste sur toute la largeur
+  const inner = t.layout === 'libre' && below.length ? `<div class="top">${sym}${tx}</div><div class="tx tx-bas">${below.map(div).join('')}</div>`
+    : t.layout === 'libre' ? `${sym}${tx}`
     : t.layout === 'texte' ? tx
     : t.layout === 'code-barres' ? `<div class="bc">${code128Svg(l.code)}</div>${tx}`
       : t.layout === 'cable' ? `${qr()}${tx}<div class="fold"></div>${tx}${qr()}`
