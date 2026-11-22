@@ -29,9 +29,11 @@ const SOURCE: Record<Reservation['source'], string> = { projet: '', reparation: 
 /** liste des autres utilisations, avec un lien vers chaque projet */
 export function OtherUsesList({ uses, kit }: { uses: OtherUse[]; kit?: boolean }) {
   const ids = Array.from(new Set(uses.map((u) => u.projectId).filter(Boolean)));
-  const projects = useLiveQuery(() => db.projects.bulkGet(ids), [ids.join('|')]) || [];
-  const byId = new Map(projects.filter(Boolean).map((p) => [p!.id, p!]));
+  const projects = useLiveQuery(() => db.projects.bulkGet(ids), [ids.join('|')]);
+  const byId = new Map((projects || []).filter(Boolean).map((p) => [p!.id, p!]));
   if (!uses.length) return <p className="muted other-uses-empty">Réservé nulle part ailleurs sur cette période.</p>;
+  // noms des projets pas encore lus : on attend plutôt que d'afficher « Autre » un instant
+  if (ids.length && !projects) return null;
   return (
     <ul className="other-uses">
       {uses.map((u, i) => {
