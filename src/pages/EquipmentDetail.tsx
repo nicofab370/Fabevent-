@@ -5,6 +5,7 @@ import { Empty, Field, Modal, NumInput, PageHead, StatusBadge } from '../compone
 import { nextNumber, unitNo } from '../unitNumbers';
 import { useAvailability } from '../data';
 import { nextUnitCode } from '../codegen';
+import { ensureSerialCodes } from '../autoCodes';
 import { db } from '../db';
 import type { SerialUnit } from '../types';
 import { availableQty, stockAt, fmtDate, fmtRange, inspectionsDue, money, save, toLocalInput } from '../utils';
@@ -116,7 +117,11 @@ export default function EquipmentDetail() {
         <div className="card">
           <div className="page-head" style={{ marginBottom: 8 }}>
             <h2 style={{ margin: 0 }}>Unités ({units.length})</h2>
-            <button className="small" onClick={() => setUnitEdit({ equipmentId: eq.id, serial: '', barcode: nextUnitCode(eq, av.units.filter((u) => u.equipmentId === eq.id)), status: 'ok' })}>+ Unité</button>
+            <button className="small" onClick={async () => {
+              // article sans code interne : il en reçoit un (dépôt-catégorie-numéro) avant sa première unité
+              const fresh = eq.code ? eq : (await ensureSerialCodes(), (await db.equipment.get(eq.id)) || eq);
+              setUnitEdit({ equipmentId: eq.id, serial: '', barcode: nextUnitCode(fresh, av.units.filter((u) => u.equipmentId === eq.id)), status: 'ok' });
+            }}>+ Unité</button>
           </div>
           {units.length === 0 ? <Empty>Ajoute chaque unité avec son numéro de série et son code-barres.</Empty> : (
             <table className="list">

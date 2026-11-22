@@ -1,5 +1,6 @@
 import { currentWorkspace, db, TABLES } from './db';
 import { ensureUnitNumbers } from './unitNumbers';
+import { ensureSerialCodes } from './autoCodes';
 
 /*
  * Synchronisation automatique entre appareils, hors ligne d'abord :
@@ -174,7 +175,7 @@ export async function syncNow(): Promise<SyncState> {
   try {
     while (await push()) { /* par lots de 200 */ }
     // unités reçues sans numéro #x (appareil pas encore à jour) : numérotées ici
-    if (await pull()) await ensureUnitNumbers().catch(() => 0);
+    if (await pull()) { await ensureUnitNumbers().catch(() => 0); await ensureSerialCodes().catch(() => 0); }
     set(K.last(), new Date().toISOString());
     emit({ status: 'idle', message: undefined });
   } catch (e) {
