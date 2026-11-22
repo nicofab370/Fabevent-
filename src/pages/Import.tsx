@@ -211,7 +211,7 @@ export default function ImportPage() {
         units.push(unit);
         added++;
       }
-      setResult(`${created} article(s) créé(s)` + (added ? `, ${added} numéro(s) de série ajouté(s)` : '')
+      setResult(`${created} article(s) importé(s)` + (added ? `, ${added} numéro(s) de série ajouté(s)` : '')
         + (existing ? `, ${existing} article(s) déjà présent(s) ignoré(s)` : '') + (skipped ? `, ${skipped} numéro(s) déjà connu(s) ignoré(s)` : '') + '.');
       setRows([]); setCols([]);
       return;
