@@ -1,12 +1,14 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Empty, Field, Modal, PageHead, StatusBadge } from '../components/ui';
+import { Empty, Field, Modal, NumInput, PageHead, StatusBadge } from '../components/ui';
+import { nextNumber, unitNo } from '../unitNumbers';
 import { useAvailability } from '../data';
 import { nextUnitCode } from '../codegen';
+import { ensureSerialCodes } from '../autoCodes';
 import { db } from '../db';
 import type { SerialUnit } from '../types';
-import { availableQty, fmtDate, fmtRange, inspectionsDue, money, save, toLocalInput } from '../utils';
+import { availableQty, stockAt, fmtDate, fmtRange, inspectionsDue, money, save, toLocalInput } from '../utils';
 import { EquipmentForm } from './EquipmentList';
 import { InspectionModal, RepairModal } from './Maintenance';
 import PrintLabelModal from '../components/PrintLabelModal';
@@ -31,7 +33,7 @@ export default function EquipmentDetail() {
   const eq = av.equipment.find((e) => e.id === id);
   if (!raw || !eq) return <p>Chargement…</p>;
 
-  const units = av.units.filter((u) => u.equipmentId === eq.id).sort((a, b) => a.serial.localeCompare(b.serial));
+  const units = av.units.filter((u) => u.equipmentId === eq.id).sort((a, b) => (a.number || 1e9) - (b.number || 1e9) || a.serial.localeCompare(b.serial));
   const repairs = av.repairs.filter((r) => r.equipmentId === eq.id).sort((a, b) => b.start.localeCompare(a.start));
   const subMap = new Map(av.subs.map((s) => [s.id, s]));
   const projMap = new Map(projects.map((p) => [p.id, p]));
@@ -76,7 +78,7 @@ export default function EquipmentDetail() {
         <div className="stat"><b>{eq.code || '—'}</b><span>référence{eq.location ? ` · ${eq.location}` : ''}</span></div>
       </div>
       {eq._stock && av.depots.length > 1 && !eq.isKit && (
-        <div className="info">Stock par dépôt : {av.depots.map((dp) => `${dp.name} ${eq._stock?.[dp.id] || 0}`).join(' · ')}
+        <div className="info">Stock par dépôt : {av.depots.map((dp) => `${dp.name} ${stockAt(eq, dp.id, av.res)}`).join(' · ')}
           {av.transfers.some((t) => t.status !== 'annule' && t.lines.some((l) => l.equipmentId === eq.id)) && <> — <a href="#/transferts">voir les transferts</a></>}</div>
       )}
 
@@ -115,16 +117,21 @@ export default function EquipmentDetail() {
         <div className="card">
           <div className="page-head" style={{ marginBottom: 8 }}>
             <h2 style={{ margin: 0 }}>Unités ({units.length})</h2>
-            <button className="small" onClick={() => setUnitEdit({ equipmentId: eq.id, serial: '', barcode: nextUnitCode(eq, av.units.filter((u) => u.equipmentId === eq.id)), status: 'ok' })}>+ Unité</button>
+            <button className="small" onClick={async () => {
+              // article sans code interne : il en reçoit un (dépôt-catégorie-numéro) avant sa première unité
+              const fresh = eq.code ? eq : (await ensureSerialCodes(), (await db.equipment.get(eq.id)) || eq);
+              setUnitEdit({ equipmentId: eq.id, serial: '', barcode: nextUnitCode(fresh, av.units.filter((u) => u.equipmentId === eq.id)), status: 'ok' });
+            }}>+ Unité</button>
           </div>
           {units.length === 0 ? <Empty>Ajoute chaque unité avec son numéro de série et son code-barres.</Empty> : (
             <table className="list">
-              <thead><tr><th>N° de série</th><th>Code-barres</th>{av.depots.length > 1 && <th>Dépôt</th>}<th>État</th><th>Prochain contrôle</th><th /></tr></thead>
+              <thead><tr><th className="n">#</th><th>N° de série</th><th>Code-barres</th>{av.depots.length > 1 && <th>Dépôt</th>}<th>État</th><th>Prochain contrôle</th><th /></tr></thead>
               <tbody>
                 {units.map((u) => {
                   const d = due.find((x) => x.unit?.id === u.id);
                   return (
                     <tr key={u.id}>
+                      <td className="n"><strong className="unit-no">{unitNo(u) || '—'}</strong></td>
                       <td><a href="#" onClick={(e) => { e.preventDefault(); setUnitEdit(u); }}><strong>{u.serial}</strong></a></td>
                       <td>{u.barcode}</td>
                       {av.depots.length > 1 && <td>{av.depots.find((dp) => dp.id === (u.depotId || av.mainDepot))?.name}</td>}
@@ -212,10 +219,14 @@ export default function EquipmentDetail() {
             e.preventDefault();
             // sans n° du fabricant, l'unité est désignée par son code (F-S-0010-03)
             const code = unitEdit.barcode?.trim() || nextUnitCode(eq, av.units.filter((u) => u.equipmentId === eq.id));
-            const saved = await save(db.units, { ...unitEdit, barcode: code, serial: unitEdit.serial?.trim() || code } as SerialUnit);
+            const saved = await save(db.units, { ...unitEdit, number: unitEdit.number ?? nextNumber(units), barcode: code, serial: unitEdit.serial?.trim() || code } as SerialUnit);
             setUnitEdit(null);
             if ((e.nativeEvent as SubmitEvent).submitter?.getAttribute('data-print') === '1') setPrinting({ unitIds: [saved.id] });
           }}>
+            <Field label="Numéro de l'unité (#)">
+              <NumInput value={unitEdit.number ?? nextNumber(units)} step="1" min={1} onChange={(n) => setUnitEdit({ ...unitEdit, number: Math.max(1, Math.round(n)) || undefined })} aria-label="Numéro de l'unité" />
+              {(() => { const n = unitEdit.number ?? nextNumber(units); const twin = units.find((u) => u.id !== unitEdit.id && u.number === n); return twin ? <small className="avail ko">#{n} est déjà pris par {twin.barcode || twin.serial}</small> : <small className="muted">Fixe : il ne change pas si une autre unité est supprimée.</small>; })()}
+            </Field>
             <Field label="Code de l'unité (étiquette)"><input value={unitEdit.barcode || ''} onChange={(e) => setUnitEdit({ ...unitEdit, barcode: e.target.value })} aria-label="Code de l'unité" /></Field>
             <Field label="N° de série du fabricant"><input autoFocus value={unitEdit.serial || ''} onChange={(e) => setUnitEdit({ ...unitEdit, serial: e.target.value })} placeholder="facultatif" /></Field>
             <Field label="État">

@@ -1,6 +1,8 @@
 import Papa from 'papaparse';
 import { useState } from 'react';
 import { nextUnitCode, suggestCategoryLetter } from '../codegen';
+import { ensureSerialCodes } from '../autoCodes';
+import { ensureUnitNumbers } from '../unitNumbers';
 import { Field, PageHead } from '../components/ui';
 import { db, getSettings, nextNumber } from '../db';
 import type { Contact, ContactPerson, ContactType, Department, Equipment, InvoiceMoment, Person, PersonRate, ProjectStatus } from '../types';
@@ -231,7 +233,8 @@ export default function ImportPage() {
 
   const run = async () => {
     setBusy(true);
-    try { setResult(await importRows()); } catch (e) { setResult('Erreur : ' + (e as Error).message); }
+    // unités numérotées #x, puis articles sérialisés sans code : code logique (et leurs unités)
+    try { const r = await importRows(); await ensureUnitNumbers(); await ensureSerialCodes(); setResult(r); } catch (e) { setResult('Erreur : ' + (e as Error).message); }
     setBusy(false);
     setRows([]);
     setCols([]);
@@ -344,7 +347,7 @@ export default function ImportPage() {
         const bought = parseDate(get(r, 'unitBought'));
         const price = parseNumber(get(r, 'unitPrice'));
         const unit = {
-          id: uid(), createdAt: t, updatedAt: t, equipmentId: e.id, serial,
+          id: uid(), createdAt: t, updatedAt: t, equipmentId: e.id, serial, number: mine.reduce((m, u) => Math.max(m, u.number || 0), 0) + 1,
           status: yes(get(r, 'unitLost')) ? 'perdu' as const : no(get(r, 'unitActive')) ? 'hs' as const : 'ok' as const,
           barcode: (unitCols ? get(r, 'unitBarcode') : get(r, 'barcode')) || (e.code ? nextUnitCode(e, mine) : undefined),
           extraCodes: mfr ? [mfr] : undefined,

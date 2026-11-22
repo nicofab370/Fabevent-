@@ -1,4 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks';
+import { unitNo } from '../unitNumbers';
 import { setUnitState, UNIT_STATE_LABELS, unitState } from '../codes';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -124,7 +125,7 @@ export default function Maintenance() {
               <thead><tr><th>Article</th><th>Unité</th><th>État</th><th>Défaut / historique</th><th /></tr></thead>
               <tbody>{flagged.map((u) => (
                 <tr key={u.id}>
-                  <td><strong>{eqMap.get(u.equipmentId)?.name}</strong></td><td>n° {u.serial}</td>
+                  <td><strong>{eqMap.get(u.equipmentId)?.name}</strong></td><td>{unitNo(u)} n° {u.serial}</td>
                   <td><span className={'badge ' + (u.status === 'hs' ? 'st-annule' : 'st-option')}>{UNIT_STATE_LABELS[unitState(u)]}</span></td>
                   <td className="muted" style={{ fontSize: 12 }}>{u.defect || (u.history || []).slice(-1)[0]?.text}</td>
                   <td><button className="small" onClick={() => setUnitState(u.id, 'ok')}>Remettre en service</button></td>

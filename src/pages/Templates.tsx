@@ -1,5 +1,6 @@
 import { useSearchParams } from 'react-router-dom';
 import MailTemplates from './MailTemplates';
+import LabelTemplatesTab from './LabelTemplatesTab';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useRef, useState } from 'react';
 import { DOC_CSS, DocRender } from '../components/DocRender';
@@ -55,17 +56,19 @@ function sampleDoc(type: DocType, company: Doc['snapshot']['company'], footer: s
   };
 }
 
-/** Modèles : documents (devis, factures…) et mails, en deux onglets. */
+/** Modèles : documents (devis, factures…), mails et étiquettes, en onglets. */
 export default function Templates() {
   const [params, setParams] = useSearchParams();
-  const tab = params.get('onglet') === 'mails' ? 'mails' : 'documents';
+  const o = params.get('onglet');
+  const tab = o === 'mails' || o === 'etiquettes' ? o : 'documents';
   return (
     <>
       <div className="tabs" role="tablist" style={{ marginBottom: 12 }}>
         <button role="tab" className={tab === 'documents' ? 'on' : ''} onClick={() => setParams({})}>Documents</button>
         <button role="tab" className={tab === 'mails' ? 'on' : ''} onClick={() => setParams({ onglet: 'mails' })}>Mails</button>
+        <button role="tab" className={tab === 'etiquettes' ? 'on' : ''} onClick={() => setParams({ onglet: 'etiquettes' })}>Étiquettes</button>
       </div>
-      {tab === 'mails' ? <MailTemplates /> : <DocTemplates />}
+      {tab === 'mails' ? <MailTemplates /> : tab === 'etiquettes' ? <LabelTemplatesTab /> : <DocTemplates />}
     </>
   );
 }

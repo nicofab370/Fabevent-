@@ -20,6 +20,12 @@ export async function patch<T extends Base>(table: Table<T, string>, id: string,
 /** Crée ou met à jour un enregistrement (id + horodatage). */
 export async function save<T extends Base>(table: Table<T, string>, data: Omit<T, keyof Base> & Partial<Base>): Promise<T> {
   const rec = { ...data, id: data.id || uid(), createdAt: data.createdAt || nowIso(), updatedAt: nowIso() } as T;
+  // unité d'un article sérialisé : numéro #x suivant (le plus grand de l'article + 1)
+  const u = rec as unknown as { number?: number; equipmentId?: string };
+  if (table.name === 'units' && !u.number && u.equipmentId) {
+    const mine = (await (table as unknown as Table<{ id: string; number?: number }, string>).where('equipmentId').equals(u.equipmentId).toArray()).filter((x) => x.id !== rec.id);
+    u.number = mine.reduce((m, x) => Math.max(m, x.number || 0), 0) + 1;
+  }
   await table.put(rec);
   return rec;
 }
@@ -140,9 +146,9 @@ export function inDepot(eq: Equipment, depotId: string | undefined, depots: { id
 }
 
 /** Quantité dans un dépôt maintenant, transferts en cours compris (arrivés ou partis). */
-export function stockAt(eq: Equipment, depotId: string, res?: Reservation[], at = toLocalInput(new Date())): number {
+export function stockAt(eq: Equipment, depotId: string | undefined, res?: Reservation[], at = toLocalInput(new Date())): number {
   let n = stockIn(eq, depotId);
-  for (const r of res || []) if (r.source === 'transfert' && r.equipmentId === eq.id && r.depotId === depotId && r.start <= at && at < r.end) n -= r.qty;
+  if (depotId) for (const r of res || []) if (r.source === 'transfert' && r.equipmentId === eq.id && r.depotId === depotId && r.start <= at && at < r.end) n -= r.qty;
   return Math.max(0, n);
 }
 
@@ -193,9 +199,12 @@ export function buildReservations(lines: EquipmentLine[], subs: Subproject[], eq
   for (const t of extras.transfers || []) {
     if (t.status === 'annule') continue;
     for (const l of t.lines) {
+      // transfert définitif effectué : le stock a déjà changé de dépôt (sauf les unités sérialisées non choisies)
+      const qty = t.applied && !t.end ? (eqMap.get(l.equipmentId)?.trackSerials ? l.qty - (l.unitIds || []).length : 0) : l.qty;
+      if (qty <= 0) continue;
       const base = { equipmentId: l.equipmentId, start: t.start, end: t.end || FOREVER, lineId: t.id, subprojectId: '', projectId: t.projectId || '', source: 'transfert' as const };
-      out.push({ ...base, qty: l.qty, depotId: t.fromDepotId });
-      out.push({ ...base, qty: -l.qty, depotId: t.toDepotId });
+      out.push({ ...base, qty, depotId: t.fromDepotId });
+      out.push({ ...base, qty: -qty, depotId: t.toDepotId });
     }
   }
   return out;

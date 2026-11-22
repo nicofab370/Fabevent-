@@ -109,3 +109,10 @@ export async function setUnitState(unitId: string, state: UnitState, note = '', 
     history: [...(u.history || []), { at: nowIso(), text: `[${today()}] ${text}`, projectId }],
   });
 }
+
+/** unité trouvée dans un autre dépôt que le sien (inventaire, transfert) : elle y est rangée désormais, avec une ligne d'historique */
+export async function moveUnitToDepot(unitId: string, depotId: string, text: string) {
+  const u = await db.units.get(unitId);
+  if (!u || u.depotId === depotId) return;
+  await patch(db.units, unitId, { depotId, history: [...(u.history || []), { at: new Date().toISOString(), text }] });
+}

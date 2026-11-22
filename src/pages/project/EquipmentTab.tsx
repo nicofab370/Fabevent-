@@ -4,12 +4,12 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Empty, Field, Modal, NumInput, StatusBadge } from '../../components/ui';
 import { db } from '../../db';
 import type { EquipGroup, Equipment, EquipmentLine, Subproject } from '../../types';
-import { availableQty, blockPeriod, inDepot, confirmDeleteSubproject, factorFor, fmtRange, lineBlock, lineDays, lineTotal, money, nowIso, round2, save, sortPeriods, uid, type Reservation, patch } from '../../utils';
+import { availableQty, blockPeriod, inDepot, stockAt, confirmDeleteSubproject, factorFor, fmtRange, lineBlock, lineDays, lineTotal, money, nowIso, round2, save, sortPeriods, uid, type Reservation, patch } from '../../utils';
 import { isPerPiece, type ProjectData } from './shared';
 import { codeFromScan, findByCode } from '../../codes';
 import { Icon } from '../../components/Icon';
 import { CategoryOptions } from '../../components/CategoryOptions';
-import { OtherUsesList, otherUses, usedElsewhere } from '../../components/Reservations';
+import { UsageBreakdown, UseChips, projectUses, type OtherUse } from '../../components/Reservations';
 import { NO_CATEGORY, categoryLabel, inCategory, mainCategories, subCategories, topCategory } from '../../categories';
 
 const EQ_MIME = 'application/x-fabevent-equipment';
@@ -127,7 +127,7 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
   const [pickQ, setPickQ] = useState('');
   const [editGroup, setEditGroup] = useState<Partial<EquipGroup> | null>(null);
   const [editLine, setEditLine] = useState<EquipmentLine | null>(null);
-  const [usesOf, setUsesOf] = useState<{ eq: Equipment; uses: ReturnType<typeof otherUses>; name: string; range: string } | null>(null);
+  const [usesOf, setUsesOf] = useState<{ eq: Equipment; uses: OtherUse[]; name: string; range: string; stock: number; here?: number; avail: number } | null>(null);
   const lines = d.lines.filter((l) => l.subprojectId === sp.id).sort((a, b) => a.order - b.order);
   const groups = sp.groups || [];
   const periods = sortPeriods(sp.periods || []);
@@ -230,15 +230,13 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
                             </td>
                             <td className="n eq-avail">{avail === null || !eq ? '—' : (() => {
                               const left = l.optional ? avail : avail - l.qty;
-                              const uses = otherUses(eq, av.equipment, av.res, b0, b1, sp.projectId);
-                              const elsewhere = usedElsewhere(uses);
+                              const uses = projectUses(eq, av.equipment, av.res, b0, b1, { projectId: sp.projectId, subprojectId: sp.id, lineId: l.id, depot: d.depot });
                               return (
                                 <>
                                   <span className={'avail ' + (left >= 0 ? 'ok' : 'ko')} title={`Disponible ${avail} sur la période ; ${l.optional ? 'option : non décomptée' : `reste ${left} après cette ligne`}`}>
                                     <span className="show-sm">reste </span>{left >= 0 ? left : `manque ${-left}`}
                                   </span>
-                                  {elsewhere > 0 && <button type="button" className="link-btn uses-btn" title="Voir les autres projets qui l'utilisent à ces dates" aria-label={`Réservations ailleurs : ${l.name}`}
-                                    onClick={() => setUsesOf({ eq, uses, name: l.name, range: fmtRange(b0, b1) })}>{elsewhere} ailleurs</button>}
+                                  <UseChips uses={uses} label={l.name} onOpen={() => setUsesOf({ eq, uses, name: l.name, range: fmtRange(b0, b1), stock: stockAt(eq, d.depot, av.res), here: l.optional ? undefined : l.qty, avail: left })} />
                                 </>
                               );
                             })()}</td>
@@ -268,9 +266,9 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
       )}
       {editGroup && <GroupModal sp={sp} group={editGroup} onClose={() => setEditGroup(null)} />}
       {usesOf && (
-        <Modal title={`${usesOf.name} : réservé ailleurs`} onClose={() => setUsesOf(null)}>
-          <p className="muted" style={{ marginTop: 0 }}>Autres projets, réparations et transferts qui utilisent cet article pendant {usesOf.range}.</p>
-          <OtherUsesList uses={usesOf.uses} kit={usesOf.eq.isKit} />
+        <Modal title={`${usesOf.name} : où est le matériel ?`} onClose={() => setUsesOf(null)}>
+          <p className="muted" style={{ marginTop: 0 }}>Du {usesOf.range} : dans ce projet, en option ou réservé dans d'autres projets, en réparation ou en transfert.</p>
+          <UsageBreakdown eq={usesOf.eq} uses={usesOf.uses} stock={usesOf.stock} here={usesOf.here} avail={usesOf.avail} />
         </Modal>
       )}
       {editLine && <LineModal sp={sp} line={editLine} accessories={lines.filter((c) => c.parentLineId === editLine.id)} onClose={() => setEditLine(null)} />}
@@ -511,8 +509,7 @@ function EquipmentPicker({ sp, groupId, initialQ = '', depot, depots = [], disco
         <div className="pick-list">
           {list.length === 0 ? <Empty>Aucun article.</Empty> : list.map((e) => {
             const a = avail.get(e.id) || 0, n = qty[e.id] || 0;
-            const uses = otherUses(e, equipment, res, bStart, bEnd, sp.projectId);
-            const elsewhere = usedElsewhere(uses);
+            const uses = projectUses(e, equipment, res, bStart, bEnd, { projectId: sp.projectId, subprojectId: sp.id, depot: where || depot });
             return (
               <div key={e.id} className="pick-item">
               <div className={'pick-row' + (n ? ' on' : '')} onClick={(ev) => { if (!(ev.target as HTMLElement).closest('input,button,a')) bump(e.id, 1); }} title="Clic : +1">
@@ -525,12 +522,7 @@ function EquipmentPicker({ sp, groupId, initialQ = '', depot, depots = [], disco
                   <span className={'avail ' + (a - n >= 0 ? 'ok' : 'ko')} title={n ? `Disponible ${a}, reste ${a - n} après cet ajout` : 'Disponible sur la période'}>
                     {n ? (a - n >= 0 ? `reste ${a - n}` : `manque ${n - a}`) : `${a} dispo`}
                   </span>
-                  {elsewhere > 0 && (
-                    <button type="button" className={'link-btn uses-btn' + (openUses === e.id ? ' on' : '')} aria-expanded={openUses === e.id}
-                      title="Voir les autres projets qui l'utilisent à ces dates" onClick={() => setOpenUses(openUses === e.id ? '' : e.id)}>
-                      {elsewhere} réservé{elsewhere > 1 ? 's' : ''} ailleurs
-                    </button>
-                  )}
+                  <UseChips uses={uses} label={e.name} onOpen={() => setOpenUses(openUses === e.id ? '' : e.id)} />
                 </div>
                 <span className="muted pick-price">{money(e.dailyPrice)}{e.kind === 'vente' ? '' : '/j'}</span>
                 <div className="stepper">
@@ -539,7 +531,7 @@ function EquipmentPicker({ sp, groupId, initialQ = '', depot, depots = [], disco
                   <button type="button" className="ghost" aria-label={`Plus ${e.name}`} onClick={() => bump(e.id, 1)}>+</button>
                 </div>
               </div>
-              {openUses === e.id && <div className="pick-uses"><OtherUsesList uses={uses} kit={e.isKit} /></div>}
+              {openUses === e.id && <div className="pick-uses"><UsageBreakdown eq={e} uses={uses} stock={stockAt(e, where || depot, res)} here={n || undefined} avail={a - n} hereLabel="cet ajout" /></div>}
               </div>
             );
           })}

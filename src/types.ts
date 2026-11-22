@@ -187,7 +187,10 @@ export interface Transfer extends Base {
   /** retour au dépôt d'origine ; vide = transfert définitif */
   end?: string;
   status: TransferStatus;
-  lines: { equipmentId: ID; qty: number }[];
+  /** unitIds : unités choisies (articles sérialisés), rangées au dépôt d'arrivée quand le transfert définitif est effectué */
+  lines: { equipmentId: ID; qty: number; unitIds?: ID[] }[];
+  /** transfert définitif effectué : le stock a été déplacé (stock propre des dépôts, unités choisies) */
+  applied?: boolean;
   projectId?: ID;
   notes?: string;
 }
@@ -579,6 +582,8 @@ export interface Unavailability extends Base {
 
 export interface SerialUnit extends Base {
   equipmentId: ID;
+  /** numéro de l'unité dans son article (#1, #2…), fixe : jamais réutilisé ni décalé */
+  number?: number;
   serial: string;
   barcode?: string;
   /** hs / perdu = sorti définitivement du stock */
@@ -897,6 +902,8 @@ export interface Settings {
   qrLink?: boolean;
   /** modèles d'étiquettes créés par l'utilisateur (planches A4, rouleaux) */
   labelTemplates?: import('./labelTemplates').LabelTemplate[];
+  /** modèle d'étiquette proposé d'office sur la page Étiquettes */
+  labelDefault?: string;
   /** lettre des codes du matériel quand aucun dépôt n'est déclaré (F par défaut) */
   codeLetter?: string;
   /** moments de facturation (au plus 3 par projet) */

@@ -196,7 +196,7 @@ async function seedAll() {
   for (const [key, n, prefix] of serials) {
     for (let i = 1; i <= n; i++) {
       const serial = `${prefix}-${String(1000 + i)}`;
-      await db.units.put({ ...base(), equipmentId: eq[key], serial, barcode: `${eqCode[key]}-${unitSuffix(i)}`, extraCodes: ['SN-' + serial], status: 'ok', depotId: key === 'qu16' && i === 2 ? DEPOT_NAMUR : DEPOT_LIEGE, lastInspection: dayOnly(-300 - i * 10) });
+      await db.units.put({ ...base(), equipmentId: eq[key], number: i, serial, barcode: `${eqCode[key]}-${unitSuffix(i)}`, extraCodes: ['SN-' + serial], status: 'ok', depotId: key === 'qu16' && i === 2 ? DEPOT_NAMUR : DEPOT_LIEGE, lastInspection: dayOnly(-300 - i * 10) });
     }
   }
   // Une lyre en réparation, un contrôle bientôt dû
