@@ -737,7 +737,7 @@ tr.post-open td:first-child { box-shadow: inset 4px 0 0 #d97706; }
 .other-uses li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .other-uses .ou-dates { margin-left: auto; }
 .other-uses-empty { margin: 0; font-size: 13px; }
-@media (max-width: 640px) { .pick-uses { padding-left: 12px; } .other-uses .ou-dates { margin-left: 0; width: 100%; } }
+@media (max-width: 640px) { .uses-btn { min-height: 32px; padding: 8px 0; } .pick-uses { padding-left: 12px; } .other-uses .ou-dates { margin-left: 0; width: 100%; } }
 .quick-add-list li.qa-browse { justify-content: center; color: var(--muted, #6b7280); border-top: 1px solid var(--border); border-radius: 0; font-style: italic; }
 .chosen-name { flex: 1; min-width: 0; align-self: center; }
 .contact-field { display: flex; gap: 6px; align-items: center; flex: 1; min-width: 0; }
