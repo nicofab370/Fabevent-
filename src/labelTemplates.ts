@@ -6,7 +6,21 @@ import { qrSvg } from './payment';
  * (enregistré dans les paramètres, donc synchronisé entre appareils).
  */
 
-export type LabelLayout = 'qr-gauche' | 'qr-dessus' | 'qr-seul' | 'code-barres' | 'texte' | 'cable';
+export type LabelLayout = 'qr-gauche' | 'qr-dessus' | 'qr-seul' | 'code-barres' | 'texte' | 'cable' | 'libre';
+/** zones de texte réglables une à une (champs + en-tête et texte libre) */
+export type LabelPart = LabelField | 'header' | 'footer';
+export interface FieldStyle {
+  /** taille en % de la taille normale de ce champ */
+  size?: number;
+  bold?: boolean;
+  italic?: boolean;
+  upper?: boolean;
+  /** le texte peut passer à la ligne (sinon une ligne, coupée par « … ») */
+  wrap?: boolean;
+  /** texte devant la valeur (ex. « S/N : », « Rangement : ») ; vide = celui par défaut */
+  prefix?: string;
+}
+export type LabelFont = 'systeme' | 'arial' | 'etroite' | 'serif' | 'mono';
 export type LabelField = 'title' | 'code' | 'serial' | 'category' | 'location' | 'contents' | 'company';
 
 export interface LabelTemplate {
@@ -32,6 +46,27 @@ export interface LabelTemplate {
   border?: boolean;
   /** texte libre ajouté (ex. « Propriété de … — ne pas jeter ») */
   footer?: string;
+  /** texte libre en haut (ex. « MATÉRIEL DE LOCATION ») */
+  header?: string;
+  /* ----- réglages fins (toutes les mises en page) ----- */
+  /** marge intérieure et espace entre le code et le texte (mm) */
+  padding?: number;
+  gap?: number;
+  font?: LabelFont;
+  align?: 'gauche' | 'centre' | 'droite';
+  vAlign?: 'haut' | 'centre' | 'bas';
+  /** réglage de chaque zone de texte */
+  styles?: Partial<Record<LabelPart, FieldStyle>>;
+  /** épaisseur du cadre (mm) et coins arrondis (mm) */
+  borderWidth?: number;
+  radius?: number;
+  /** logo de la société */
+  logo?: 'aucun' | 'haut' | 'bas';
+  /* ----- mise en page libre ----- */
+  symbol?: 'qr' | 'code-barres' | 'les-deux' | 'aucun';
+  symbolPos?: 'gauche' | 'droite' | 'dessus' | 'dessous';
+  /** taille du code en % de la place disponible */
+  symbolSize?: number;
   builtin?: boolean;
 }
 
@@ -44,7 +79,21 @@ export const LAYOUT_LABELS: Record<LabelLayout, string> = {
   'code-barres': 'Code-barres (Code 128) pour douchette',
   texte: 'Texte seul, en grand (bacs, flight cases)',
   cable: 'Drapeau pour câble (QR des deux côtés du pli)',
+  libre: 'Libre : QR et / ou code-barres où tu veux, à la taille voulue',
 };
+export const PART_LABELS: Record<LabelPart, string> = {
+  header: 'Texte libre en haut', title: 'Nom de l’article', code: 'Code', serial: 'N° de série', category: 'Catégorie',
+  location: 'Emplacement', contents: 'Contenu fourni', company: 'Nom de la société', footer: 'Texte libre en bas',
+};
+export const FONT_LABELS: Record<LabelFont, string> = {
+  systeme: 'Système (lisible à l’écran)', arial: 'Arial / Helvetica', etroite: 'Étroite (Arial Narrow)', serif: 'Avec empattements (Georgia)', mono: 'Chasse fixe (codes)',
+};
+const FONT_CSS: Record<LabelFont, string> = {
+  systeme: 'system-ui,sans-serif', arial: 'Arial,Helvetica,sans-serif', etroite: '"Arial Narrow","Roboto Condensed","Liberation Sans Narrow",Arial,sans-serif',
+  serif: 'Georgia,"Times New Roman",serif', mono: 'ui-monospace,Menlo,Consolas,monospace',
+};
+/** préfixes par défaut */
+const PREFIX: Partial<Record<LabelField, string>> = { serial: 'n° ', contents: '+ ' };
 export const FIELD_LABELS: Record<LabelField, string> = {
   title: 'Nom de l’article', code: 'Code', serial: 'N° de série', category: 'Catégorie',
   location: 'Emplacement', contents: 'Contenu fourni', company: 'Nom de la société',
@@ -131,11 +180,65 @@ const esc = (v: unknown) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g,
 
 /** lignes de texte d'une étiquette, dans l'ordre des champs choisis */
 function lines(t: LabelTemplate, l: SheetLabel, company: string): { cls: string; text: string }[] {
-  const val: Record<LabelField, string | undefined> = {
-    title: l.title, code: l.code, serial: l.serial ? `n° ${l.serial}` : undefined, category: l.category, location: l.location,
-    contents: l.contents ? `+ ${l.contents}` : undefined, company,
-  };
-  return [...t.fields.filter((f) => val[f]).map((f) => ({ cls: 'f-' + f, text: val[f]! })), ...(t.footer ? [{ cls: 'f-footer', text: t.footer }] : [])];
+  const raw: Record<LabelField, string | undefined> = { title: l.title, code: l.code, serial: l.serial, category: l.category, location: l.location, contents: l.contents, company };
+  const pre = (f: LabelField) => t.styles?.[f]?.prefix ?? PREFIX[f] ?? '';
+  return [
+    ...(t.header ? [{ cls: 'f-header', text: t.header }] : []),
+    ...t.fields.filter((f) => raw[f]).map((f) => ({ cls: 'f-' + f, text: pre(f) + raw[f]! })),
+    ...(t.footer ? [{ cls: 'f-footer', text: t.footer }] : []),
+  ];
+}
+
+/** taille du QR (mm) d'une mise en page libre */
+function freeSizes(t: LabelTemplate) {
+  const pad = t.padding ?? 1.5, k = (t.symbolSize ?? 100) / 100;
+  const side = t.symbolPos === 'dessus' || t.symbolPos === 'dessous' ? 'col' : 'row';
+  const iw = t.w - 2 * pad, ih = t.h - 2 * pad;
+  const both = t.symbol === 'les-deux';
+  return side === 'row'
+    ? { side, qr: Math.min(ih * (both ? 0.62 : 1), iw * 0.55) * k, bcW: iw * 0.55 * k, bcH: ih * (both ? 0.3 : 0.8) * k }
+    : { side, qr: Math.min(iw, ih * 0.62) * k * (both ? 0.75 : 1), bcW: iw * k, bcH: ih * 0.42 * k * (both ? 0.6 : 1) };
+}
+
+/** taille normale d'une zone, en multiple de la taille de base */
+function partSize(p: LabelPart, big: boolean): number {
+  const m: Record<LabelPart, [number, number]> = { title: [1, 1.9], code: [0.9, 1.25], serial: [0.82, 1.05], category: [0.82, 1.05], location: [0.82, 1.05], contents: [0.72, 0.95], company: [0.68, 0.68], footer: [0.68, 0.68], header: [0.75, 0.9] };
+  return m[p][big ? 1 : 0];
+}
+
+/** réglages fins communs à toutes les mises en page (police, alignements, marges, zones de texte, cadre, logo) */
+function tuneCss(t: LabelTemplate, base: number): string {
+  const out: string[] = [];
+  if (t.font && t.font !== 'systeme') out.push(`.lab{font-family:${FONT_CSS[t.font]}}`);
+  if (t.padding !== undefined) out.push(`.lab{padding:${t.padding}mm}`);
+  if (t.gap !== undefined) out.push(`.lab{gap:${t.gap}mm}`);
+  if (t.align) { const a = t.align === 'gauche' ? 'left' : t.align === 'droite' ? 'right' : 'center'; out.push(`.lab .tx{text-align:${a};align-items:${a === 'left' ? 'flex-start' : a === 'right' ? 'flex-end' : 'center'}}.lab .tx div{max-width:100%}`); }
+  if (t.vAlign) out.push(`.lab .tx{justify-content:${t.vAlign === 'haut' ? 'flex-start' : t.vAlign === 'bas' ? 'flex-end' : 'center'}}`);
+  if (t.border && (t.borderWidth || t.radius)) out.push(`.lab{border-width:${t.borderWidth ?? 0.3}mm;border-radius:${t.radius ?? 0}mm}`);
+  else if (t.radius) out.push(`.lab{border-radius:${t.radius}mm}`);
+  out.push(`.lab .f-header{font-weight:700;font-size:${(base * 0.75).toFixed(1)}pt;letter-spacing:.02em}`);
+  for (const [part, st] of Object.entries(t.styles || {}) as [LabelPart, FieldStyle][]) {
+    if (!st) continue;
+    const r: string[] = [];
+    if (st.size && st.size !== 100) r.push(`font-size:${(base * partSize(part, t.layout === 'texte') * st.size / 100).toFixed(1)}pt`);
+    if (st.bold !== undefined) r.push(`font-weight:${st.bold ? 700 : 400}`);
+    if (st.italic) r.push('font-style:italic');
+    if (st.upper) r.push('text-transform:uppercase');
+    if (st.wrap === false) r.push('white-space:nowrap');
+    if (st.wrap) r.push('white-space:normal;overflow-wrap:anywhere');
+    if (r.length) out.push(`.lab .f-${part}{${r.join(';')}}`);
+  }
+  if (t.logo && t.logo !== 'aucun') out.push(`.lab .logo{display:block;max-width:100%;max-height:${(t.h * 0.22).toFixed(1)}mm;object-fit:contain;${t.align === 'droite' ? 'margin-left:auto' : t.align === 'gauche' ? '' : 'margin:0 auto'}}`);
+  if (t.layout === 'libre') {
+    const f = freeSizes(t);
+    const dir = { gauche: 'row', droite: 'row-reverse', dessus: 'column', dessous: 'column-reverse' }[t.symbolPos || 'gauche'];
+    out.push(`.lab.libre{flex-direction:${dir};align-items:${f.side === 'row' ? 'center' : 'stretch'}}
+.lab.libre .tx{flex:1}
+.lab.libre .sym{flex:none;display:flex;flex-direction:column;align-items:center;gap:0.6mm}
+.lab.libre .qr svg{width:${f.qr.toFixed(1)}mm;height:${f.qr.toFixed(1)}mm}
+.lab.libre .bc svg{width:${f.bcW.toFixed(1)}mm;height:${f.bcH.toFixed(1)}mm;display:block}`);
+  }
+  return out.join('\n');
 }
 
 export function labelCss(t: LabelTemplate): string {
@@ -155,14 +258,18 @@ export function labelCss(t: LabelTemplate): string {
 .lab.code-barres{flex-direction:column;justify-content:center;gap:0.8mm}.lab.code-barres .bc svg{width:100%;height:${(t.h * 0.42).toFixed(1)}mm;display:block}
 .lab.code-barres .tx{text-align:center}
 .lab.texte{flex-direction:column;justify-content:center}
-.lab.cable{align-items:center;justify-content:space-between}.lab.cable .tx{flex:1;text-align:center}.lab.cable .fold{border-left:0.3mm dashed #999;align-self:stretch}`;
+.lab.cable{align-items:center;justify-content:space-between}.lab.cable .tx{flex:1;text-align:center}.lab.cable .fold{border-left:0.3mm dashed #999;align-self:stretch}
+${tuneCss(t, base)}`;
 }
 
 /** une étiquette (HTML) */
-export function labelHtml(t: LabelTemplate, l: SheetLabel, company: string, qrPayload: (code: string) => string = (c) => c): string {
-  const tx = `<div class="tx">${lines(t, l, company).map((x) => `<div class="${x.cls}">${esc(x.text)}</div>`).join('')}</div>`;
+export function labelHtml(t: LabelTemplate, l: SheetLabel, company: string, qrPayload: (code: string) => string = (c) => c, logo?: string): string {
+  const img = logo && t.logo && t.logo !== 'aucun' ? `<img class="logo" src="${esc(logo)}" alt="">` : '';
+  const tx = `<div class="tx">${t.logo === 'haut' ? img : ''}${lines(t, l, company).map((x) => `<div class="${x.cls}">${esc(x.text)}</div>`).join('')}${t.logo === 'bas' ? img : ''}</div>`;
   const qr = () => `<div class="qr">${qrSvg(qrPayload(l.code), 100)}</div>`;
-  const inner = t.layout === 'texte' ? tx
+  const sym = t.symbol === 'aucun' ? '' : `<div class="sym">${t.symbol === 'code-barres' ? '' : qr()}${t.symbol === 'code-barres' || t.symbol === 'les-deux' ? `<div class="bc">${code128Svg(l.code)}</div>` : ''}</div>`;
+  const inner = t.layout === 'libre' ? `${sym}${tx}`
+    : t.layout === 'texte' ? tx
     : t.layout === 'code-barres' ? `<div class="bc">${code128Svg(l.code)}</div>${tx}`
       : t.layout === 'cable' ? `${qr()}${tx}<div class="fold"></div>${tx}${qr()}`
         : `${qr()}${tx}`;
@@ -170,11 +277,11 @@ export function labelHtml(t: LabelTemplate, l: SheetLabel, company: string, qrPa
 }
 
 /** page complète à imprimer ; `skip` laisse vides les premières étiquettes d'une planche déjà entamée */
-export function labelSheetHtml(t: LabelTemplate, labels: SheetLabel[], company: string, qrPayload?: (code: string) => string, skip = 0): string {
+export function labelSheetHtml(t: LabelTemplate, labels: SheetLabel[], company: string, qrPayload?: (code: string) => string, skip = 0, logo?: string): string {
   const a4 = t.sheet === 'a4';
   const cols = a4 ? Math.max(1, t.cols || 1) : 1;
   const per = perSheet(t);
-  const cells = [...(a4 ? Array.from({ length: Math.max(0, skip) }, () => '<div class="lab blank"></div>') : []), ...labels.map((l) => labelHtml(t, l, company, qrPayload))];
+  const cells = [...(a4 ? Array.from({ length: Math.max(0, skip) }, () => '<div class="lab blank"></div>') : []), ...labels.map((l) => labelHtml(t, l, company, qrPayload, logo))];
   // une planche (ou une étiquette du rouleau) par page imprimée
   const pages: string[][] = [];
   const size = a4 ? per || cells.length || 1 : 1;

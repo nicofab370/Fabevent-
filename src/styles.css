@@ -788,3 +788,17 @@ td:not(.n) .hours-cell { align-items: flex-start; }
 /* numéro d'unité #x */
 .unit-no { font-variant-numeric: tabular-nums; color: var(--accent); }
 .uchip.on .unit-no { color: inherit; }
+/* modèles d'étiquettes : éditeur et liste par format */
+.lt-form { display: flex; flex-direction: column; gap: 10px; }
+.lt-preview-wrap { position: sticky; top: 0; z-index: 2; background: var(--panel, #fff); padding-bottom: 4px; }
+.lt-section { border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px 12px; margin: 0; }
+.lt-section legend { font-weight: 600; padding: 0 6px; }
+.lt-part { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; padding: 6px 10px 8px 30px; font-size: 13px; }
+.lt-part input[type=range] { width: 140px; }
+.lt-field .ghost.on { font-weight: 600; }
+.lt-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.lt-card { border: 1px solid var(--border); border-radius: 10px; padding: 8px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.lt-card.is-default { border-color: var(--accent); }
+.lt-card .lt-preview { margin-bottom: 0; }
+.lt-card-info { display: flex; flex-direction: column; font-size: 13px; }
+@media (max-width: 640px) { .lt-preview-wrap { position: static; } .lt-part { padding-left: 8px; } }

@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { unitNo } from '../unitNumbers';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Empty, NumInput, PageHead, useSettings } from '../components/ui';
 import { useAvailability } from '../data';
 import { db, getSettings } from '../db';
@@ -22,7 +23,9 @@ const codeFor = labelCode;
 export default function Labels() {
   const av = useAvailability();
   const settings = useSettings();
-  const [format, setFormat] = useState<Format>(() => { try { return (localStorage.getItem('fab.labels.format') as Format) || 'a4-24'; } catch { return 'a4-24'; } });
+  const [chosen, setFormat] = useState<Format | null>(() => { try { return (localStorage.getItem('fab.labels.format') as Format) || null; } catch { return null; } });
+  // sans choix sur cet appareil : le modèle « par défaut » (Modèles de documents → Étiquettes)
+  const format: Format = chosen || settings.labelDefault || 'a4-24';
   const pickFormat = (f: Format) => { setFormat(f); try { localStorage.setItem('fab.labels.format', f); } catch { /* stockage indisponible */ } };
   const [q, setQ] = useState('');
   const [counts, setCounts] = useState<Record<string, number>>({});
@@ -67,7 +70,7 @@ export default function Labels() {
     const labels = await collect(true);
     const w = window.open('', '_blank');
     if (!w) return alert('Autorise les fenêtres pop-up pour imprimer.');
-    w.document.write(labelSheetHtml(tpl, labels, settings.company.name, payload, tpl.sheet === 'a4' ? skip : 0));
+    w.document.write(labelSheetHtml(tpl, labels, settings.company.name, payload, tpl.sheet === 'a4' ? skip : 0, settings.company.logo));
     w.document.close();
     setTimeout(() => w.print(), 300);
   };
@@ -104,7 +107,8 @@ export default function Labels() {
               <button className="secondary small" onClick={() => setEditing({ t: emptyTemplate(), existing: false })}>+ Nouveau modèle</button>
             </div>
           </div>
-          <LabelPreview t={tpl} label={sample} company={settings.company.name} qrPayload={payload} />
+          <LabelPreview t={tpl} label={sample} company={settings.company.name} qrPayload={payload} logo={settings.company.logo} />
+          <p className="muted" style={{ margin: '0 0 6px' }}>Tous les réglages et les modèles par format : <Link to="/modeles?onglet=etiquettes">Modèles de documents → Étiquettes</Link>.</p>
           {tpl.sheet === 'a4' && (
             <label className="check-row">Commencer à l'étiquette n°
               <NumInput className="w-qty" step="1" min={1} value={skip + 1} onChange={(n) => setSkip(Math.max(0, Math.min(perSheet(tpl) - 1, Math.round(n) - 1)))} aria-label="Commencer à l'étiquette n°" />
@@ -114,7 +118,7 @@ export default function Labels() {
         </div>
       )}
       {editing && (
-        <LabelTemplateEditor initial={editing.t} sample={sample} company={settings.company.name} onClose={() => setEditing(null)}
+        <LabelTemplateEditor initial={editing.t} sample={sample} company={settings.company.name} logo={settings.company.logo} onClose={() => setEditing(null)}
           onDelete={editing.existing ? async () => { await saveTemplates(mine.filter((x) => x.id !== editing.t.id)); pickFormat(BUILTIN_TEMPLATES[0].id); setEditing(null); } : undefined}
           onSave={async (t) => {
             const saved = { ...t, id: editing.existing ? t.id : uid(), builtin: undefined };

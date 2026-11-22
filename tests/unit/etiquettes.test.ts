@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { prepareZXingModule, readBarcodes } from 'zxing-wasm/reader';
-import { BUILTIN_TEMPLATES, CODE128_PATTERNS, code128Modules, code128Values, emptyTemplate, fitsA4, labelSheetHtml, perSheet } from '../../src/labelTemplates';
+import { BUILTIN_TEMPLATES, CODE128_PATTERNS, code128Modules, code128Values, emptyTemplate, fitsA4, labelCss, labelHtml, labelSheetHtml, perSheet, type LabelField } from '../../src/labelTemplates';
 
 prepareZXingModule({ overrides: { wasmBinary: readFileSync('node_modules/zxing-wasm/dist/reader/zxing_reader.wasm').buffer as ArrayBuffer }, fireImmediately: true });
 
@@ -53,5 +53,38 @@ describe('Étiquettes', () => {
       expect(html).toContain(`lab ${t.layout}`);
       expect(html.includes('<svg') || t.layout === 'texte').toBe(true);
     }
+  });
+});
+
+describe('mise en page libre et réglages fins', () => {
+  const base = { id: 'x', name: 'Libre', sheet: 'rouleau' as const, w: 62, h: 29, layout: 'libre' as const, fields: ['title', 'serial', 'code'] as LabelField[] };
+  const l = { code: 'F-S-0010-03', title: 'Lyre #3', serial: 'SN1' };
+  it('QR + code-barres, position et taille', () => {
+    const t = { ...base, symbol: 'les-deux' as const, symbolPos: 'droite' as const, symbolSize: 80 };
+    const html = labelHtml(t, l, 'Ma société');
+    expect((html.match(/<svg/g) || []).length).toBe(2);
+    expect(labelCss(t)).toContain('flex-direction:row-reverse');
+  });
+  it('sans code : texte seul', () => {
+    expect(labelHtml({ ...base, symbol: 'aucun' }, l, '')).not.toContain('<svg');
+  });
+  it('textes libres, préfixe, styles par zone, police, logo', () => {
+    const t = { ...base, header: 'LOCATION', footer: 'Ne pas jeter', font: 'mono' as const, align: 'droite' as const, logo: 'haut' as const,
+      styles: { serial: { prefix: 'S/N : ', upper: true, size: 150 }, title: { bold: false, wrap: false } } };
+    const html = labelHtml(t, l, '', undefined, 'data:image/png;base64,AAAA');
+    expect(html).toContain('S/N : SN1');
+    expect(html.indexOf('LOCATION')).toBeLessThan(html.indexOf('Lyre #3'));
+    expect(html).toContain('class="logo"');
+    const css = labelCss(t);
+    expect(css).toContain('.lab .f-serial{font-size:');
+    expect(css).toContain('text-transform:uppercase');
+    expect(css).toContain('.lab .f-title{font-weight:400;white-space:nowrap}');
+    expect(css).toContain('ui-monospace');
+    expect(css).toContain('text-align:right');
+  });
+  it('préfixes par défaut conservés', () => {
+    const html = labelHtml({ ...base, layout: 'qr-gauche', fields: ['serial', 'contents'] }, { ...l, contents: 'Housse' }, '');
+    expect(html).toContain('n° SN1');
+    expect(html).toContain('+ Housse');
   });
 });
