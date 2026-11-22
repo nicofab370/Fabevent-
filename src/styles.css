@@ -707,3 +707,8 @@ tr.post-open td:first-child { box-shadow: inset 4px 0 0 #d97706; }
 .file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .travel-time { align-items: center; gap: 8px; background: var(--soft); border-radius: 8px; padding: 6px 10px; font-size: 13px; }
 .travel-time.warn { outline: 2px solid var(--danger); }
+
+/* Paramètres : liste des bases */
+.ws-list { list-style: none; padding: 0; margin: 8px 0; display: flex; flex-direction: column; gap: 6px; }
+.ws-list li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ws-list .ws-del { margin-left: auto; padding: 4px 10px; font-size: 13px; }
