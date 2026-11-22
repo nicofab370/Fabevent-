@@ -18,7 +18,7 @@ export function CategoriesModal({ onClose }: { onClose: () => void }) {
   const [newMain, setNewMain] = useState('');
   const [newSub, setNewSub] = useState<Record<string, string>>({});
   /** articles de la catégorie (une catégorie principale compte aussi ses sous-catégories) */
-  const count = (id: string) => equipment.filter((e) => inCategory(cats, e.categoryId, id) && !e.archived).length;
+  const count = (id: string) => equipment.filter((e) => inCategory(cats, e.categoryId, id, true) && !e.archived).length;
   const direct = (id: string) => equipment.filter((e) => e.categoryId === id).length;
   const taken = cats.map((c) => c.letter || '');
   const mains = mainCategories(cats);

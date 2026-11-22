@@ -242,7 +242,7 @@ export default function Inventory() {
           <input type="search" placeholder="Nom, code, emplacement…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Rechercher" />
           <select value={ui.cat} onChange={(e) => setUiP({ cat: e.target.value })} aria-label="Catégorie">
             <option value="">Toutes les catégories</option>
-            <CategoryOptions cats={cats} />
+            <CategoryOptions cats={cats} filter />
           </select>
           <div className="seg" role="group" aria-label="Vue">
             {([['all', 'Tout'], ['todo', 'À compter'], ['diff', 'Écarts']] as [View, string][]).map(([v, l]) => (

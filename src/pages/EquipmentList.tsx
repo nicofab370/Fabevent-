@@ -8,7 +8,7 @@ import type { Category, Equipment } from '../types';
 import { useAvailability } from '../data';
 import { resizeImage } from '../image';
 import { CsvButton, CustomFieldsEditor, exportCsv, TagInput, Tags } from '../components/extra';
-import { availableQty, money, save, stockIn, toLocalInput } from '../utils';
+import { availableQty, inDepot, money, save, stockAt, toLocalInput } from '../utils';
 import PrintLabelModal from '../components/PrintLabelModal';
 import { Icon } from '../components/Icon';
 import { CategoryOptions } from '../components/CategoryOptions';
@@ -261,6 +261,7 @@ export default function EquipmentList() {
     !!e.accessoryOnly === showAcc &&
     inCategory(cats, e.categoryId, cat) &&
     (!tag || e.tags?.includes(tag)) &&
+    inDepot(e, depot, depots, res) &&
     [e.name, e.code, e.barcode, ...(e.tags || [])].join(' ').toLowerCase().includes(q.toLowerCase()));
   const toggle = (id: string) => { const n = new Set(selected); if (n.has(id)) n.delete(id); else n.add(id); setSelected(n); };
 
@@ -281,10 +282,10 @@ export default function EquipmentList() {
           <input placeholder="Rechercher (nom, réf, code-barres, étiquette)…" value={q} onChange={(e) => setQ(e.target.value)} />
           <select value={cat} onChange={(e) => setCat(e.target.value)}>
             <option value="">Toutes catégories</option>
-            <CategoryOptions cats={cats} />
+            <CategoryOptions cats={cats} filter />
           </select>
           {depots.length > 1 && (
-            <select value={depot} onChange={(e) => setDepot(e.target.value)}>
+            <select value={depot} onChange={(e) => setDepot(e.target.value)} aria-label="Filtrer par dépôt">
               <option value="">Tous les dépôts</option>
               {depots.map((dp) => <option key={dp.id} value={dp.id}>{dp.name}</option>)}
             </select>
@@ -326,7 +327,7 @@ export default function EquipmentList() {
                       <td>{e.photo && <img src={e.photo} alt="" className="thumb" />}<strong>{e.name}</strong> {e.isKit && <span className="badge">Kit</span>} {e.kind === 'vente' && <span className="badge">vente</span>} {e.trackSerials && <span className="badge">n° série</span>} <Tags tags={e.tags} /></td>
                       <td>{e.code}</td>
                       <td>{e.categoryId ? catName.get(e.categoryId) : ''}</td>
-                      <td className="n" title={e._stock ? depots.map((dp) => `${dp.name} : ${e._stock?.[dp.id] || 0}`).join('\n') : undefined}>{e.isKit || e.accessoryOnly ? '—' : depot ? stockIn(e, depot) : e.quantity}</td>
+                      <td className="n" title={e._stock ? depots.map((dp) => `${dp.name} : ${e._stock?.[dp.id] || 0}`).join('\n') : undefined}>{e.isKit || e.accessoryOnly ? '—' : depot ? stockAt(e, depot, res) : e.quantity}</td>
                       <td className="n">{e.accessoryOnly ? <span className="muted">hors inventaire</span> : <span className={'avail ' + (av > 0 ? 'ok' : 'ko')}>{av}</span>}</td>
                       <td className="n">{money(e.dailyPrice)}{e.kind === 'vente' ? ' /pce' : ''}</td>
                     </tr>
@@ -345,54 +346,193 @@ export default function EquipmentList() {
   );
 }
 
-/** Modification groupée : prix (%), catégorie, étiquette, archivage. */
+/** une ligne de la modification groupée : case « modifier » (cochée dès qu'on change la valeur), libellé, contrôle */
+function BulkRow({ label, changed, mixed, onToggle, children, full }: { label: string; changed: boolean; mixed: boolean; onToggle: (on: boolean) => void; children: React.ReactNode; full?: boolean }) {
+  return (
+    <div className={'field bulk-field' + (full ? ' full' : '') + (changed ? ' changed' : '')}>
+      <label className="check-row bulk-head">
+        <input type="checkbox" checked={changed} aria-label={`Modifier : ${label}`} onChange={(x) => onToggle(x.target.checked)} />
+        <span>{label}</span>
+        {mixed && <span className="muted"> · valeurs différentes</span>}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+type BulkKey = 'categoryId' | 'homeDepotId' | 'kind' | 'dailyPrice' | 'costPrice' | 'replacementValue' | 'weight' | 'inspectionMonths' | 'location' | 'notes' | 'photo' | 'contents' | 'archived';
+
+/**
+ * Modification groupée : chaque information commune aux articles sélectionnés est pré-remplie
+ * (« valeurs différentes » sinon) ; seules les informations modifiées (cochées) sont appliquées.
+ * En plus : variation des prix en %, ajout / retrait d'étiquettes, champs personnalisés.
+ */
 function BulkEdit({ ids, onClose }: { ids: string[]; onClose: (done: boolean) => void }) {
   const cats = useLiveQuery(() => db.categories.orderBy('name').toArray(), []) || [];
+  const items = (useLiveQuery(() => db.equipment.bulkGet(ids), [ids.join()]) || []).filter(Boolean) as Equipment[];
+  const depots = useSettings().depots || [];
+  const customFields = (useSettings().customFields || []).filter((f) => f.entity === 'materiel');
+  const [vals, setVals] = useState<Partial<Record<BulkKey, unknown>>>({});
+  const [on, setOn] = useState<Set<BulkKey>>(new Set());
+  const [custom, setCustom] = useState<Record<string, string | number | boolean | undefined>>({});
+  const [customOn, setCustomOn] = useState<Set<string>>(new Set());
   const [pct, setPct] = useState(0);
   const [round, setRound] = useState(true);
-  const [catId, setCatId] = useState('');
-  const [addTag, setAddTag] = useState('');
-  const [archive, setArchive] = useState<'' | 'oui' | 'non'>('');
+  const [addTags, setAddTags] = useState<string[]>([]);
+  const [removeTags, setRemoveTags] = useState<string[]>([]);
   const [msg, setMsg] = useState('');
+  const norm = (k: BulkKey, e: Equipment): unknown => {
+    const v = (e as unknown as Record<string, unknown>)[k];
+    if (k === 'kind') return v || 'location';
+    if (k === 'homeDepotId') return v || depots[0]?.id;
+    if (k === 'archived') return !!v;
+    if (k === 'contents') return (v as Equipment['contents'])?.length ? v : [];
+    if (typeof v === 'undefined' && ['costPrice', 'replacementValue', 'weight', 'inspectionMonths'].includes(k)) return 0;
+    return v ?? '';
+  };
+  /** valeur commune à tous les articles (undefined + mixed si elles diffèrent) */
+  const common = (k: BulkKey) => {
+    const l = items.map((e) => norm(k, e));
+    const mixed = l.some((x) => JSON.stringify(x) !== JSON.stringify(l[0]));
+    return { value: mixed ? undefined : l[0], mixed };
+  };
+  const get = (k: BulkKey) => (on.has(k) ? { value: vals[k], mixed: false } : common(k));
+  const set = (k: BulkKey, v: unknown) => { setVals((x) => ({ ...x, [k]: v })); setOn((x) => new Set(x).add(k)); };
+  const reset = (k: BulkKey) => setOn((x) => { const n = new Set(x); n.delete(k); return n; });
+  const tagsInSel = Array.from(new Set(items.flatMap((e) => e.tags || []))).sort();
+  const num = (k: BulkKey) => { const g = get(k); return g.mixed ? NaN : Number(g.value) || 0; };
+  const str = (k: BulkKey) => { const g = get(k); return g.mixed ? '' : String(g.value ?? ''); };
+
+  const rowProps = (k: BulkKey) => ({ changed: on.has(k), mixed: !on.has(k) && common(k).mixed, onToggle: (c: boolean) => (c ? set(k, get(k).mixed ? norm(k, items[0]) : get(k).value) : reset(k)) });
+  const changes = on.size + customOn.size + (pct ? 1 : 0) + addTags.length + removeTags.length;
+
   return (
-    <Modal title={`Modifier ${ids.length} article(s)`} onClose={() => onClose(false)}>
+    <Modal title={`Modifier ${ids.length} article(s)`} onClose={() => onClose(false)} wide>
       <form className="form" onSubmit={async (ev) => {
         ev.preventDefault();
         let n = 0;
         for (const id of ids) {
           const e = await db.equipment.get(id);
           if (!e) continue;
-          const price = pct ? e.dailyPrice * (1 + pct / 100) : e.dailyPrice;
-          await save(db.equipment, {
-            ...e,
-            dailyPrice: pct ? (round ? Math.round(price * 2) / 2 : Math.round(price * 100) / 100) : e.dailyPrice,
-            categoryId: catId || e.categoryId,
-            tags: addTag.trim() ? Array.from(new Set([...(e.tags || []), addTag.trim()])) : e.tags,
-            archived: archive === '' ? e.archived : archive === 'oui',
-          });
+          const next: Equipment = { ...e };
+          for (const k of on) {
+            const v = vals[k];
+            if (k === 'categoryId') next.categoryId = (v as string) || undefined;
+            else if (k === 'location' || k === 'notes') (next as unknown as Record<string, unknown>)[k] = (v as string) || undefined;
+            else if (k === 'contents') next.contents = ((v as Equipment['contents']) || []).filter((c) => c.name.trim());
+            else (next as unknown as Record<string, unknown>)[k] = v;
+          }
+          if (pct) { const price = next.dailyPrice * (1 + pct / 100); next.dailyPrice = round ? Math.round(price * 2) / 2 : Math.round(price * 100) / 100; }
+          if (addTags.length || removeTags.length) next.tags = Array.from(new Set([...(next.tags || []), ...addTags])).filter((t) => !removeTags.includes(t));
+          if (customOn.size) { const c = { ...(next.custom || {}) }; for (const f of customOn) c[f] = custom[f]; next.custom = c; }
+          await save(db.equipment, next);
           n++;
         }
         setMsg(`${n} article(s) mis à jour.`);
         setTimeout(() => onClose(true), 700);
       }}>
-        <Field label="Variation des prix (%)"><NumInput step="any" value={pct} onChange={(n) => setPct(n)} /></Field>
-        <Field label=" "><label className="check-row"><input type="checkbox" checked={round} onChange={(e) => setRound(e.target.checked)} /> Arrondir aux 0,50 €</label></Field>
-        <Field label="Catégorie">
-          <select value={catId} onChange={(e) => setCatId(e.target.value)}>
-            <option value="">— inchangée —</option>
+        <p className="muted field full" style={{ margin: 0 }}>Les informations identiques pour les {ids.length} articles sont pré-remplies. Seules les informations cochées (modifiées) sont appliquées ; le reste ne change pas.</p>
+        <BulkRow {...rowProps('categoryId')} label="Catégorie">
+          <select value={str('categoryId')} onChange={(e) => set('categoryId', e.target.value)} aria-label="Catégorie">
+            {common('categoryId').mixed && !on.has('categoryId') && <option value="">— valeurs différentes —</option>}
+            <option value="">— aucune —</option>
             <CategoryOptions cats={cats} />
           </select>
-        </Field>
-        <Field label="Ajouter l'étiquette"><input value={addTag} onChange={(e) => setAddTag(e.target.value)} /></Field>
-        <Field label="Archivage">
-          <select value={archive} onChange={(e) => setArchive(e.target.value as typeof archive)}>
-            <option value="">— inchangé —</option><option value="oui">Archiver</option><option value="non">Désarchiver</option>
+        </BulkRow>
+        {depots.length > 1 && (
+          <BulkRow {...rowProps('homeDepotId')} label="Dépôt de base">
+            <select value={str('homeDepotId')} onChange={(e) => set('homeDepotId', e.target.value)} aria-label="Dépôt de base">
+              {common('homeDepotId').mixed && !on.has('homeDepotId') && <option value="">— valeurs différentes —</option>}
+              {depots.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
+          </BulkRow>
+        )}
+        <BulkRow {...rowProps('kind')} label="Type">
+          <select value={str('kind')} onChange={(e) => set('kind', e.target.value)} aria-label="Type">
+            {common('kind').mixed && !on.has('kind') && <option value="">— valeurs différentes —</option>}
+            <option value="location">Location (facturé par jour)</option>
+            <option value="vente">Consommable / vente (à la pièce)</option>
           </select>
-        </Field>
+        </BulkRow>
+        <BulkRow {...rowProps('dailyPrice')} label="Prix location / jour HT (€)"><NumInput value={num('dailyPrice')} placeholder="valeurs différentes" onChange={(n) => set('dailyPrice', n)} aria-label="Prix HT" /></BulkRow>
+        <Field label="Variation des prix (%)"><NumInput step="any" value={pct} onChange={(n) => setPct(n)} /></Field>
+        <Field label=" "><label className="check-row"><input type="checkbox" checked={round} onChange={(e) => setRound(e.target.checked)} /> Arrondir aux 0,50 €</label></Field>
+        <BulkRow {...rowProps('costPrice')} label="Prix d'achat unitaire HT (€)"><NumInput value={num('costPrice')} placeholder="valeurs différentes" onChange={(n) => set('costPrice', n)} aria-label="Prix d'achat" /></BulkRow>
+        <BulkRow {...rowProps('replacementValue')} label="Valeur de remplacement (€)"><NumInput value={num('replacementValue')} placeholder="valeurs différentes" onChange={(n) => set('replacementValue', n)} aria-label="Valeur de remplacement" /></BulkRow>
+        <BulkRow {...rowProps('weight')} label="Poids unitaire (kg)"><NumInput value={num('weight')} placeholder="valeurs différentes" onChange={(n) => set('weight', n)} aria-label="Poids" /></BulkRow>
+        <BulkRow {...rowProps('inspectionMonths')} label="Contrôle périodique (mois, 0 = aucun)"><NumInput value={num('inspectionMonths')} step="1" min={0} placeholder="valeurs différentes" onChange={(n) => set('inspectionMonths', n)} aria-label="Contrôle périodique" /></BulkRow>
+        <BulkRow {...rowProps('location')} label="Emplacement dépôt"><input value={str('location')} placeholder={common('location').mixed ? 'valeurs différentes' : 'ex. Rack A3'} onChange={(e) => set('location', e.target.value)} aria-label="Emplacement" /></BulkRow>
+        <BulkRow {...rowProps('archived')} label="Archivé">
+          <select value={get('archived').mixed ? '' : get('archived').value ? 'oui' : 'non'} onChange={(e) => set('archived', e.target.value === 'oui')} aria-label="Archivage">
+            {common('archived').mixed && !on.has('archived') && <option value="">— valeurs différentes —</option>}
+            <option value="non">Non (proposé dans les projets)</option><option value="oui">Oui (archivé)</option>
+          </select>
+        </BulkRow>
+        <Field label="Ajouter des étiquettes"><TagInput value={addTags} onChange={setAddTags} suggestions={tagsInSel} /></Field>
+        {tagsInSel.length > 0 && (
+          <div className="field">
+            <span>Retirer des étiquettes</span>
+            <div className="chips">
+              {tagsInSel.map((t) => (
+                <button type="button" key={t} className={'chip' + (removeTags.includes(t) ? ' on' : '')} aria-pressed={removeTags.includes(t)}
+                  onClick={() => setRemoveTags((x) => (x.includes(t) ? x.filter((y) => y !== t) : [...x, t]))}>
+                  {t} ({items.filter((e) => e.tags?.includes(t)).length})
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        <BulkRow {...rowProps('photo')} label="Photo">
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            {!!get('photo').value && <img src={String(get('photo').value)} alt="" style={{ height: 48, borderRadius: 6 }} />}
+            <input type="file" accept="image/*" aria-label="Photo" onChange={async (x) => { const f = x.target.files?.[0]; if (f) set('photo', await resizeImage(f)); }} />
+            {(!!get('photo').value || common('photo').mixed) && <button type="button" className="ghost small" onClick={() => set('photo', undefined)}>Retirer la photo</button>}
+          </div>
+        </BulkRow>
+        <BulkRow {...rowProps('contents')} label="Contenu fourni avec l'article" full>
+          {(() => {
+            const list = (get('contents').mixed ? [] : (get('contents').value as Equipment['contents']) || []);
+            const upd = (l: NonNullable<Equipment['contents']>) => set('contents', l);
+            return (
+              <>
+                {common('contents').mixed && !on.has('contents') && <span className="muted">Le contenu diffère selon l'article : en modifier un remplace le contenu de tous.</span>}
+                {list.map((c, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6, alignItems: 'center' }}>
+                    <NumInput className="w-qty" value={c.qty} onChange={(n) => upd(list.map((y, j) => (j === i ? { ...y, qty: n || 1 } : y)))} aria-label="Quantité du contenu" />
+                    <input value={c.name} onChange={(x) => upd(list.map((y, j) => (j === i ? { ...y, name: x.target.value } : y)))} placeholder="ex. Chargeur 65 W" aria-label="Élément du contenu" />
+                    <button type="button" className="ghost" onClick={() => upd(list.filter((_, j) => j !== i))} aria-label="Retirer"><Icon name="x" /></button>
+                  </div>
+                ))}
+                <div><button type="button" className="secondary small" onClick={() => upd([...list, { name: '', qty: 1 }])}>+ Élément du contenu</button></div>
+              </>
+            );
+          })()}
+        </BulkRow>
+        <BulkRow {...rowProps('notes')} label="Notes" full><textarea value={str('notes')} placeholder={common('notes').mixed ? 'valeurs différentes' : ''} onChange={(e) => set('notes', e.target.value)} aria-label="Notes" /></BulkRow>
+        {customFields.map((f) => {
+          const l = items.map((e) => e.custom?.[f.id]);
+          const mixed = !customOn.has(f.id) && l.some((x) => x !== l[0]);
+          const v = customOn.has(f.id) ? custom[f.id] : mixed ? undefined : l[0];
+          const setC = (x: string | number | boolean | undefined) => { setCustom((c) => ({ ...c, [f.id]: x })); setCustomOn((s) => new Set(s).add(f.id)); };
+          return (
+            <div key={f.id} className={'field bulk-field' + (customOn.has(f.id) ? ' changed' : '')}>
+              <label className="check-row bulk-head">
+                <input type="checkbox" checked={customOn.has(f.id)} aria-label={`Modifier : ${f.label}`} onChange={(x) => (x.target.checked ? setC(v) : setCustomOn((s) => { const n = new Set(s); n.delete(f.id); return n; }))} />
+                <span>{f.label}</span>{mixed && <span className="muted"> · valeurs différentes</span>}
+              </label>
+              {f.type === 'oui_non' ? <label className="check-row"><input type="checkbox" checked={!!v} onChange={(e) => setC(e.target.checked)} /> Oui</label>
+                : f.type === 'nombre' ? <NumInput value={typeof v === 'number' ? v : NaN} placeholder={mixed ? 'valeurs différentes' : ''} onChange={(n) => setC(n)} />
+                : f.type === 'liste' ? <select value={(v as string) || ''} onChange={(e) => setC(e.target.value || undefined)}><option value="">{mixed ? '— valeurs différentes —' : '—'}</option>{(f.choices || []).map((c) => <option key={c}>{c}</option>)}</select>
+                : f.type === 'date' ? <input type="date" value={(v as string) || ''} onChange={(e) => setC(e.target.value || undefined)} />
+                : <input value={(v as string) || ''} placeholder={mixed ? 'valeurs différentes' : ''} onChange={(e) => setC(e.target.value || undefined)} />}
+            </div>
+          );
+        })}
         {msg && <p className="avail ok field full">{msg}</p>}
         <div className="form-actions">
+          <span className="muted" style={{ marginRight: 'auto', alignSelf: 'center' }}>{changes ? `${changes} modification(s) à appliquer` : 'Aucune modification'}</span>
           <button type="button" className="secondary" onClick={() => onClose(false)}>Annuler</button>
-          <button type="submit">Appliquer</button>
+          <button type="submit" disabled={!changes || !items.length}>Appliquer à {ids.length} article(s)</button>
         </div>
       </form>
     </Modal>

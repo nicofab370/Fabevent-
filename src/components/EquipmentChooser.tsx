@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
-import { categoryLabel, inCategory, mainCategories, subCategories } from '../categories';
+import { NO_CATEGORY, categoryLabel, inCategory, mainCategories, subCategories, topCategory } from '../categories';
 import { db } from '../db';
 import type { Equipment } from '../types';
 import { Icon } from './Icon';
@@ -35,9 +35,8 @@ export function EquipmentChooser({ title, equipment, exclude = [], withQty = fal
   const picked = Object.entries(qty).filter(([, n]) => n > 0).map(([equipmentId, n]) => ({ equipmentId, qty: n }));
   const bump = (id: string, d: number) => setQty((x) => ({ ...x, [id]: Math.max(0, (x[id] || 0) + d) }));
   const choose = (e: Equipment) => { if (withQty) bump(e.id, 1); else setQty((x) => ({ ...x, [e.id]: x[e.id] ? 0 : 1 })); };
-  const current = cats.find((c) => c.id === cat);
-  const parentId = current?.parentId || current?.id;
-  const subs = parentId ? subCategories(cats, parentId) : [];
+  const parentId = cat === NO_CATEGORY ? undefined : topCategory(cats, cat)?.id;
+  const subs = parentId ? subCategories(cats, parentId, true) : [];
 
   return (
     <Modal title={title} onClose={onClose} wide>
@@ -47,15 +46,16 @@ export function EquipmentChooser({ title, equipment, exclude = [], withQty = fal
           <input autoFocus placeholder="Rechercher (nom, code, catégorie, étiquette)…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Rechercher du matériel" />
           <div className="chips">
             <button type="button" className={'chip' + (!cat ? ' on' : '')} onClick={() => setCat('')}>Tout ({base.length})</button>
-            {mainCategories(cats).map((c) => {
+            {mainCategories(cats, true).map((c) => {
               const n = base.filter((e) => inCategory(cats, e.categoryId, c.id)).length;
-              return n ? <button type="button" key={c.id} className={'chip' + (parentId === c.id ? ' on' : '')} onClick={() => setCat(cat === c.id ? '' : c.id)}>{c.name} ({n})</button> : null;
+              return n ? <button type="button" key={c.id} className={'chip' + (cat && inCategory(cats, cat, c.id) ? ' on' : '')} onClick={() => setCat(cat === c.id ? '' : c.id)}>{c.name} ({n})</button> : null;
             })}
+            {(() => { const n = base.filter((e) => inCategory(cats, e.categoryId, NO_CATEGORY)).length; return n ? <button type="button" className={'chip' + (cat === NO_CATEGORY ? ' on' : '')} onClick={() => setCat(cat === NO_CATEGORY ? '' : NO_CATEGORY)}>Sans catégorie ({n})</button> : null; })()}
           </div>
           {subs.length > 0 && (
             <div className="chips sub-chips" aria-label="Sous-catégories">
               {subs.map((c) => {
-                const n = base.filter((e) => e.categoryId === c.id).length;
+                const n = base.filter((e) => inCategory(cats, e.categoryId, c.id)).length;
                 return n ? <button type="button" key={c.id} className={'chip' + (cat === c.id ? ' on' : '')} onClick={() => setCat(cat === c.id ? parentId! : c.id)}>{c.name} ({n})</button> : null;
               })}
             </div>

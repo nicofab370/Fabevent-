@@ -760,3 +760,6 @@ td:not(.n) .hours-cell { align-items: flex-start; }
 .lt-fields { display: flex; flex-direction: column; gap: 2px; }
 .lt-field { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 6px; border-radius: 6px; }
 .lt-field.on { background: color-mix(in srgb, var(--ok) 10%, transparent); }
+/* modification groupée : information cochée = appliquée */
+.bulk-field .bulk-head { font-size: 13px; gap: 6px; }
+.bulk-field.changed { background: color-mix(in srgb, var(--accent, #2563eb) 7%, transparent); border-radius: 8px; padding: 4px 6px; margin: -4px -6px; }

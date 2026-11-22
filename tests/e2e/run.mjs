@@ -692,6 +692,14 @@ await step('Transfert manuel définitif : le stock change de dépôt', async () 
   await page.waitForTimeout(300);
   const dispo = await page.locator('table.list tr', { hasText: 'Machine à brouillard' }).locator('td').nth(5).innerText();
   expect(Number(dispo) === 2, `Namur reçoit 2 machines (dispo ${dispo})`);
+  // le filtre « dépôt » ne garde que le matériel présent à Namur
+  const rows = await page.locator('table.list tbody tr').count();
+  const stocks = await page.locator('table.list tbody tr td:nth-child(5)').allInnerTexts();
+  expect(rows > 0 && rows < 10, `liste filtrée sur Namur (${rows} lignes)`);
+  expect(stocks.every((x) => x.trim() === '—' || Number(x) > 0), `rien à 0 à Namur (${stocks.join(',')})`);
+  await page.locator('select[aria-label="Filtrer par dépôt"]').selectOption('');
+  await page.waitForTimeout(200);
+  expect(await page.locator('table.list tbody tr').count() > rows, 'tous les dépôts : liste complète');
 });
 
 await step('Bases séparées : une nouvelle base est vide', async () => {
@@ -964,6 +972,31 @@ await step('Export CSV et modification groupée des prix', async () => {
   await page.click('.modal button[type=submit]');
   await page.waitForTimeout(1200);
   expect(before.startsWith('5,00') && (await price('Micro Shure SM58')).startsWith('6,00'), `prix 5 € → 6 € (+20 %) (${before} → ${await price('Micro Shure SM58')})`);
+});
+await step('Modification groupée : infos communes pré-remplies, seules les infos modifiées sont appliquées', async () => {
+  await go('materiel');
+  const row = (n) => page.locator('table.list tr', { hasText: n });
+  for (const n of ['Câble XLR 10 m', 'Câble XLR 5 m']) await row(n).locator('input[type=checkbox]').check();
+  await page.click('text=Modifier en groupe…');
+  const m = page.locator('.modal');
+  await page.waitForFunction(() => document.querySelector('.modal input[aria-label="Emplacement"]')?.value === 'Bac C1', null, { timeout: 4000 });
+  const cat = await m.locator('select[aria-label="Catégorie"] option:checked').innerText();
+  expect(/Câblage/.test(cat), `catégorie commune pré-remplie (${cat})`);
+  expect(await m.locator('input[aria-label="Modifier : Catégorie"]').isChecked() === false, 'rien de coché au départ');
+  expect(await m.locator('input[aria-label="Emplacement"]').inputValue() === 'Bac C1', 'emplacement commun pré-rempli');
+  expect(await m.locator('input[aria-label="Poids"]').inputValue() === '' && (await m.locator('.bulk-field', { hasText: 'Poids' }).innerText()).includes('valeurs différentes'), 'poids différents signalés');
+  await m.locator('input[aria-label="Emplacement"]').fill('Bac câbles B2');
+  await m.locator('input[aria-label="Poids"]').fill('0,6');
+  expect(await m.locator('input[aria-label="Modifier : Emplacement dépôt"]').isChecked(), 'case cochée en modifiant');
+  expect((await m.locator('.form-actions').innerText()).includes('2 modification(s)'), 'compte des modifications');
+  await m.locator('button[type=submit]').click();
+  await page.waitForTimeout(1200);
+  await row('Câble XLR 5 m').locator('td').nth(1).click();
+  await page.waitForTimeout(400);
+  const fiche = await page.locator('main').innerText();
+  expect(fiche.includes('Bac câbles B2'), 'emplacement appliqué');
+  await go('materiel');
+  expect(/Câblage/.test(await row('Câble XLR 5 m').innerText()), 'catégorie inchangée');
 });
 console.log('\n  — lot 3 : relecture du manuel Rentman —');
 const statusOf = async (name) => { await openProject(name); return field('Statut').locator('select').first().inputValue(); };
@@ -1807,6 +1840,11 @@ await step('« + Matériel » : filtres, − / +, sélection, « Ajouter et cont
   await tab('Équipement');
   await page.locator('button:has-text("+ Matériel")').first().click();
   const m = page.locator('.modal');
+  // filtre « dépôt » : seulement le matériel présent à Namur (PAR, SM58, truss…), pas les câbles restés à Liège
+  await m.locator('select[aria-label="Filtrer par dépôt"]').selectOption({ label: 'Dépôt Namur (dépôt du projet)' });
+  const atNamur = await m.locator('.pick-row strong').allInnerTexts();
+  expect(atNamur.some((n) => /SM58/.test(n)) && !atNamur.some((n) => /Câble XLR/.test(n)), `matériel de Namur (${atNamur.join(', ')})`);
+  await m.locator('select[aria-label="Filtrer par dépôt"]').selectOption('');
   await m.locator('.chip', { hasText: 'Câblage' }).click();
   const names = await m.locator('.pick-row strong').allInnerTexts();
   expect(names.length > 0 && names.every((n) => /Câble|Rallonge/.test(n)), `filtre catégorie (${names.join(', ')})`);
