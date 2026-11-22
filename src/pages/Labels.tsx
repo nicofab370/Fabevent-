@@ -51,7 +51,9 @@ export default function Labels() {
           if (persist && !u.barcode) await save(db.units, { ...u, barcode: code });
           for (let i = 0; i < counts['u:' + u.id]; i++) labels.push({ code, title: [e.name, unitNo(u)].filter(Boolean).join(' '), sub: u.serial === code ? code : `${code} · n° ${u.serial}`, serial: u.serial === code ? undefined : u.serial, contents: showContents ? contentsText(e) : undefined, category: categoryLabel(cats, e.categoryId) || undefined, location: e.location });
         }
-      } else if (counts[e.id]) {
+      }
+      // étiquette générale (code de l'article) : aussi pour un article sérialisé (bac, étagère, flight case)
+      if (counts[e.id]) {
         const code = codeFor(e);
         if (persist && !e.barcode) { const raw = await db.equipment.get(e.id); if (raw) await save(db.equipment, { ...raw, barcode: code }); }
         for (let i = 0; i < counts[e.id]; i++) labels.push({ code, title: e.name, sub: e.code || code, contents: showContents ? contentsText(e) : undefined, category: categoryLabel(cats, e.categoryId) || undefined, location: e.location });
@@ -148,13 +150,19 @@ export default function Labels() {
             <thead><tr><th>Article</th><th>Code imprimé</th><th>Étiquettes</th></tr></thead>
             <tbody>
               {items.flatMap((e) => e.trackSerials
-                ? av.units.filter((u) => u.equipmentId === e.id && u.status === 'ok').map((u) => (
+                ? [(
+                  <tr key={e.id} className="label-general">
+                    <td>{e.name} <span className="badge">étiquette générale</span> <span className="muted">(code de l'article, sans numéro d'unité)</span></td>
+                    <td><code>{codeFor(e)}</code>{!e.barcode && <span className="muted"> (nouveau)</span>}</td>
+                    <td><NumInput className="w-qty" step="1" min={0} value={counts[e.id] || 0} onChange={(n) => setCounts({ ...counts, [e.id]: n })} aria-label={`Étiquettes générales ${e.name}`} /></td>
+                  </tr>
+                ), ...av.units.filter((u) => u.equipmentId === e.id && u.status === 'ok').map((u) => (
                   <tr key={u.id}>
                     <td>{e.name} {u.number ? <strong className="unit-no">#{u.number}</strong> : null} <span className="muted">n° {u.serial}</span></td>
                     <td><code>{u.barcode || u.serial}</code></td>
                     <td><NumInput className="w-qty" step="1" min={0} value={counts['u:' + u.id] || 0} onChange={(n) => setCounts({ ...counts, ['u:' + u.id]: n })} /></td>
                   </tr>
-                ))
+                ))]
                 : [(
                   <tr key={e.id}>
                     <td>{e.name} <span className="muted">({e.quantity} en stock)</span></td>

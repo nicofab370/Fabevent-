@@ -18,13 +18,15 @@ export default function PrintLabelModal({ equipmentId, unitIds, onClose }: { equ
   const units = useLiveQuery(() => db.units.where({ equipmentId }).toArray(), [equipmentId]) || [];
   const [picked, setPicked] = useState<Set<string> | null>(unitIds ? new Set(unitIds) : null);
   const [copies, setCopies] = useState(1);
+  /** article sérialisé : étiquettes générales (code de l'article) en plus de celles des unités */
+  const [general, setGeneral] = useState(0);
   if (!eq) return null;
 
   const serial = !!eq.trackSerials;
   const sorted = [...units].sort((a, b) => (a.number || 1e9) - (b.number || 1e9) || (a.barcode || a.serial).localeCompare(b.barcode || b.serial));
   // par défaut : toutes les unités en service
   const sel = picked || new Set(sorted.filter((u) => u.status === 'ok').map((u) => u.id));
-  const total = serial ? sorted.filter((u) => sel.has(u.id)).length * copies : copies;
+  const total = serial ? sorted.filter((u) => sel.has(u.id)).length * copies + general : copies;
   const linkFor = settings.qrLink ? (code: string) => `${appBaseUrl(settings)}#/q/${encodeURIComponent(code)}` : undefined;
 
   const collect = async (persist: boolean): Promise<LabelData[]> => {
@@ -35,6 +37,11 @@ export default function PrintLabelModal({ equipmentId, unitIds, onClose }: { equ
         const code = u.barcode || u.serial;
         if (persist && !u.barcode) await save(db.units, { ...u, barcode: code });
         for (let i = 0; i < copies; i++) out.push({ code, title: [eq.name, unitNo(u)].filter(Boolean).join(' '), sub: code, serial: u.serial === code ? undefined : u.serial, contents });
+      }
+      if (general) {
+        const code = labelCode(eq);
+        if (persist && !eq.barcode) await save(db.equipment, { ...eq, barcode: code });
+        for (let i = 0; i < general; i++) out.push({ code, title: eq.name, sub: eq.code || code, contents });
       }
     } else {
       const code = labelCode(eq);
@@ -68,12 +75,19 @@ export default function PrintLabelModal({ equipmentId, unitIds, onClose }: { equ
               </div>
             </>
           )
-        ) : <div>Code imprimé : <code>{labelCode(eq)}</code>{!eq.barcode && <span className="muted"> (enregistré sur l'article à l'impression)</span>}</div>}
+        ) : null}
+        {serial && (
+          <label className="check-row label-general" style={{ marginTop: 8 }}>
+            Étiquettes générales de l'article <NumInput className="w-qty" step="1" min={0} value={general} onChange={(n) => setGeneral(Math.max(0, Math.min(99, Math.round(n) || 0)))} aria-label="Étiquettes générales de l'article" />
+            <span className="muted">code <code>{labelCode(eq)}</code>, sans numéro d'unité (bac, étagère, flight case)</span>
+          </label>
+        )}
+        {!serial && <div>Code imprimé : <code>{labelCode(eq)}</code>{!eq.barcode && <span className="muted"> (enregistré sur l'article à l'impression)</span>}</div>}
         <label className="check-row" style={{ marginTop: 8 }}>
           Exemplaires {serial ? 'par unité' : ''} <NumInput className="w-qty" step="1" min={1} value={copies} onChange={(n) => setCopies(Math.max(1, Math.min(99, Math.round(n) || 1)))} aria-label="Nombre d'exemplaires" />
         </label>
       </div>
-      <PtouchPanel total={total} sig={[...sel].join(',') + (eq.barcode || '') + (eq.code || '')} collect={collect} linkFor={linkFor} company={settings.company.name} />
+      <PtouchPanel total={total} sig={[...sel].join(',') + '|' + general + (eq.barcode || '') + (eq.code || '')} collect={collect} linkFor={linkFor} company={settings.company.name} />
       <p className="muted">Planche A4 ou rouleau : <Link to="/etiquettes" onClick={onClose}>page Étiquettes</Link>.</p>
     </Modal>
   );
