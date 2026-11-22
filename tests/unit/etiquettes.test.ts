@@ -107,3 +107,19 @@ describe('rubans d’étiqueteuse (Brother PT-P750W, Dymo)', async () => {
     expect(labelCss(t)).toMatch(/padding-top:1\.6\dmm/); // (12 − 9,88) / 2 + 0,6
   });
 });
+
+describe('taille du QR au-delà de 100 %', async () => {
+  const { qrSizeMm } = await import('../../src/labelTemplates');
+  const big = { id: 'b', name: 'B', sheet: 'rouleau' as const, w: 102, h: 51, layout: 'qr-dessus' as const, fields: ['title'] as LabelField[] };
+  it('le QR grandit jusqu’à 200 %, sans jamais dépasser l’étiquette', () => {
+    const n = qrSizeMm(big).mm, x150 = qrSizeMm({ ...big, symbolSize: 150 }).mm, x200 = qrSizeMm({ ...big, symbolSize: 200 });
+    expect(x150).toBeGreaterThan(n);
+    expect(x200.mm).toBeLessThanOrEqual(51 - 3 + 0.01);
+    expect(x200.capped).toBe(true);
+  });
+  it('mise en page libre, QR au-dessus sur une étiquette haute : 160 % plus grand que 100 %', () => {
+    const t = { ...big, layout: 'libre' as const, symbol: 'qr' as const, symbolPos: 'dessus' as const };
+    expect(qrSizeMm({ ...t, symbolSize: 160 }).mm).toBeGreaterThan(qrSizeMm(t).mm);
+    expect(labelCss({ ...t, symbolSize: 160 })).toContain('.lab.libre .qr svg{width:');
+  });
+});

@@ -1,6 +1,6 @@
 import { useId, useState } from 'react';
 import {
-  ALL_FIELDS, DEVICE_LABELS, DEVICE_TAPES, FIELD_LABELS, FONT_LABELS, printableHeight, type LabelDevice, LAYOUT_LABELS, PART_LABELS, fitsA4, labelCss, labelHtml, perSheet,
+  ALL_FIELDS, DEVICE_LABELS, DEVICE_TAPES, FIELD_LABELS, FONT_LABELS, printableHeight, qrSizeMm, type LabelDevice, LAYOUT_LABELS, PART_LABELS, fitsA4, labelCss, labelHtml, perSheet,
   type FieldStyle, type LabelField, type LabelFont, type LabelLayout, type LabelPart, type LabelTemplate, type SheetLabel,
 } from '../labelTemplates';
 import { Field, Modal, NumInput } from './ui';
@@ -160,11 +160,20 @@ export function LabelTemplateForm({ initial, sample, company, logo, onSave, onDe
                 <option value="gauche">À gauche</option><option value="droite">À droite</option><option value="dessus">Au-dessus</option><option value="dessous">En dessous</option>
               </select>
             </Field>
-            <Field label={`Taille du code : ${t.symbolSize ?? 100} %`}>
-              <input type="range" min={30} max={100} step={5} value={t.symbolSize ?? 100} onChange={(e) => set('symbolSize', Number(e.target.value))} aria-label="Taille du code" />
-            </Field>
           </>}
         </>}
+        {t.layout !== 'texte' && !(free && t.symbol === 'aucun') && (() => {
+          const q = qrSizeMm(t);
+          return (
+            <Field label={`Taille du ${t.layout === 'code-barres' || (free && t.symbol === 'code-barres') ? 'code-barres' : 'QR code'} : ${t.symbolSize ?? 100} %`} full>
+              <input type="range" min={30} max={200} step={5} value={t.symbolSize ?? 100} onChange={(e) => set('symbolSize', Number(e.target.value))} aria-label="Taille du code" />
+              <small className={q.capped ? 'avail ko' : 'muted'}>
+                {t.layout !== 'code-barres' && !(free && t.symbol === 'code-barres') ? `QR de ${q.mm.toFixed(1).replace('.', ',')} mm de côté` : ''}
+                {q.capped ? ' · taille maximale pour cette étiquette (place gardée pour le texte) : réduis la marge intérieure ou le nombre d\'informations pour aller plus loin' : ''}
+              </small>
+            </Field>
+          );
+        })()}
         {t.layout === 'qr-seul' && <p className="muted field full">« QR seul » : seul le code est imprimé sous le QR (les autres zones sont masquées).</p>}
       </fieldset>
 
