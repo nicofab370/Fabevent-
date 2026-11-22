@@ -74,7 +74,10 @@ async function openDemo() {
 }
 async function resetDemo() {
   await go('parametres');
+  // la réinitialisation recharge la page : on attend ce rechargement avant de continuer
+  const reloaded = page.waitForEvent('load', { timeout: 30000 });
   await page.click('text=Réinitialiser les données de démo');
+  await reloaded;
   await page.waitForSelector('.demo-badge', { timeout: 20000 });
   await page.waitForTimeout(800);
 }
@@ -215,10 +218,12 @@ await step('Modèles de documents : HTML + variable, ancien document inchangé',
   const oldUrl = page.url();
   const oldHtml = await page.locator('.doc').innerHTML();
   await go('modeles');
-  const ta = page.locator('textarea.code');
+  await page.click('.blk-main:has-text("En-tête")');
+  const ta = page.locator('.blk.open textarea.code');
   await ta.click();
   await page.keyboard.press('Control+Home');
   await ta.type('<div class="test-var">Pour ');
+  await page.click('.blk.open button:has-text("Insérer une variable")');
   await page.click('.var:has-text("Nom / société")');
   await ta.type('</div>\n');
   await page.click('button:text-is("Enregistrer")');
@@ -740,7 +745,8 @@ await step('Champs personnalisés : saisie et variable dans le devis', async () 
   await openProject('Festival des Lumières');
   expect(await page.locator('.field', { hasText: 'Repas fourni' }).locator('input').isChecked(), 'champ « Repas fourni » coché');
   await go('modeles');
-  await page.locator('.field', { hasText: "Texte d'introduction" }).locator('textarea').fill('Repas : {{champ.repas_fourni}} — accès : {{champ.acces_livraison}}');
+  await page.click(`.blk-main:has-text("Texte d'introduction")`);
+  await page.locator('.blk.open textarea').fill('Repas : {{champ.repas_fourni}} — accès : {{champ.acces_livraison}}');
   await page.click('button:text-is("Enregistrer")');
   await page.waitForTimeout(300);
   await openProject('Festival des Lumières');
@@ -748,6 +754,105 @@ await step('Champs personnalisés : saisie et variable dans le devis', async () 
   await page.click('button:text-is("+ Devis")');
   await page.waitForSelector('.doc .text');
   expect((await page.locator('.doc .text').innerText()).includes('Repas : Oui — accès : Entrée nord, quai 2'), 'variables remplies');
+});
+
+await step('Modèles : blocs déplacés, masqués, modifiés depuis l’aperçu ; thème et couleur', async () => {
+  await go('modeles');
+  // clic sur un bloc de l'aperçu : il s'ouvre dans la liste
+  await page.locator('.tpl-preview [data-bloc="introduction"], .tpl-preview [data-bloc="totaux"]').first().click();
+  expect(await page.locator('.blk.open').count() === 1, 'bloc ouvert depuis l’aperçu');
+  // masquer les conditions générales
+  expect(await page.locator('.tpl-preview .terms').count() === 1, 'conditions visibles');
+  await page.click('button[aria-label="Masquer Conditions générales"]');
+  expect(await page.locator('.tpl-preview .terms').count() === 0, 'conditions masquées');
+  expect(await page.locator('.blk-hidden button:has-text("Conditions générales")').count() === 1, 'dans les blocs masqués');
+  // remonter les totaux au-dessus des sous-projets
+  const order = async () => page.locator('.tpl-preview [data-bloc]').evaluateAll((els) => els.map((e) => e.getAttribute('data-bloc')));
+  const idx = (o, k) => o.indexOf(k);
+  const before = await order();
+  expect(idx(before, 'salles') < idx(before, 'totaux'), 'ordre initial');
+  for (let i = 0; i < 6 && idx(await order(), 'totaux') > idx(await order(), 'salles'); i++) await page.click('button[aria-label="Monter Totaux"]');
+  expect(idx(await order(), 'totaux') < idx(await order(), 'salles'), 'totaux remontés');
+  // texte libre
+  await page.click('button:has-text("Texte libre")');
+  await page.locator('.blk.open textarea').fill('Merci pour votre confiance, {{client.nom}}.');
+  expect((await page.locator('.tpl-preview .free').innerText()).startsWith('Merci pour votre confiance'), 'texte libre dans l’aperçu');
+  // thème sobre et couleur
+  await page.click('.theme-opt:has-text("Sobre")');
+  expect(await page.locator('.tpl-preview .doc.t-sobre').count() === 1, 'thème sobre');
+  await page.click('.theme-opt:has-text("Moderne")');
+  await page.click('.swatch[aria-label="Couleur #0f766e"]');
+  expect((await page.locator('.tpl-preview .doc').getAttribute('style')).includes('rgb(15,118,110)'), 'couleur appliquée');
+  await page.click('button:text-is("Enregistrer")'); await page.waitForTimeout(300);
+  // un nouveau devis suit la mise en page
+  await openProject('Mariage Dupont-Lemaire');
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Devis")');
+  await page.waitForSelector('.doc');
+  expect(await page.locator('.doc .terms').count() === 0, 'devis sans conditions');
+  expect((await page.locator('.doc .free').innerText()).includes('Mariage Dupont-Lemaire (démo)'), 'texte libre avec variable');
+  expect((await page.locator('.doc').getAttribute('style')).includes('rgb(15,118,110)'), 'couleur du devis');
+  // remise par défaut pour la suite
+  await go('modeles');
+  await page.click('button:has-text("Ordre par défaut")');
+  await page.click('button:text-is("Enregistrer")'); await page.waitForTimeout(300);
+});
+
+await step('Modèles : fiche pour une IA, export puis import d’un modèle HTML + CSS complet', async () => {
+  await go('modeles');
+  await page.click('button:has-text("Pour une IA")');
+  const brief = await page.locator('.ai-brief').inputValue();
+  expect(brief.includes('{{client.nom}}') && brief.includes('{{bloc.totaux}}') && brief.includes('<!-- fabevent:header') && brief.includes('var(--accent)'), 'fiche complète');
+  await page.keyboard.press('Escape');
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('button:has-text("Exporter")')]);
+  const fs = await import('node:fs');
+  let html = fs.readFileSync(await dl.path(), 'utf8');
+  expect(html.includes('<!-- fabevent:layout') && html.includes('id="fabevent-css"') && html.includes('"color"'), 'fichier exporté');
+  // modification « par une IA » : CSS, en-tête et couleur
+  html = html.replace(/(<style id="fabevent-css">)/, '$1\n.doc h1 { letter-spacing: .2em; }')
+    .replace('<div class="d-co-name">{{societe.nom}}</div>', '<div class="d-co-name ia-mark">{{societe.nom}}</div>')
+    .replace(/"color": "#[0-9a-fA-F]{6}"/, '"color": "#be123c"');
+  await page.click('button:has-text("Importer")');
+  await page.locator('.modal textarea').fill(html);
+  await page.click('.modal button:has-text("Importer ce texte")');
+  await page.waitForTimeout(300);
+  expect(await page.locator('.tpl-preview .ia-mark').count() === 1, 'en-tête importé');
+  expect((await page.locator('.tpl-preview .doc').getAttribute('style')).includes('rgb(190,18,60)'), 'couleur importée');
+  expect((await page.locator('.tpl-preview').innerHTML()).includes('letter-spacing: .2em'), 'CSS importé');
+  // fichier invalide : message clair, rien ne change
+  await page.click('button:has-text("Importer")');
+  await page.locator('.modal textarea').fill('<html><body>rien</body></html>');
+  await page.click('.modal button:has-text("Importer ce texte")');
+  expect((await page.locator('.modal .avail.ko').innerText()).includes('Aucune zone'), 'erreur claire');
+  await page.keyboard.press('Escape');
+  await page.reload(); await page.waitForTimeout(800); // non enregistré : abandon
+});
+
+await step('Postes : la case Trajet fonctionne même sans distance calculée ; temps de trajet modifiable', async () => {
+  await openProject('Mariage Dupont-Lemaire');
+  await tab('Équipe & transport');
+  await crewMode(1);
+  const tt = page.locator('.travel-time input');
+  await tt.fill('0'); await tt.blur(); await page.waitForTimeout(300);
+  const box = page.locator('table.crew-posts input[aria-label="Trajet"]').first();
+  expect(!(await box.isDisabled()), 'case active');
+  // case pilotée par la base : on clique puis on attend la mise à jour
+  if (await box.isChecked()) { await box.click(); await page.waitForTimeout(300); }
+  await box.click(); await page.waitForTimeout(400);
+  expect(await box.isChecked(), 'case cochée');
+  expect(await page.locator('.travel-time.warn').count() === 1, 'demande le temps de trajet');
+  await tt.fill('45'); await tt.blur(); await page.waitForTimeout(300);
+  expect(await page.locator('.travel-time.warn').count() === 0, 'temps de trajet renseigné');
+  // nouveau poste avec trajet
+  const before = await page.locator('table.crew-posts input[aria-label="Trajet"]:checked').count();
+  const form = page.locator('form', { has: page.locator('button:text-is("+ Ajouter les postes")') }).first();
+  await form.locator('input[aria-label="Fonction à ajouter"]').fill('Roadie trajet');
+  await form.locator('label:has-text("Trajet") input').check();
+  await form.locator('button:text-is("+ Ajouter les postes")').click(); await page.waitForTimeout(400);
+  expect(await page.locator('table.crew-posts input[aria-label="Trajet"]:checked').count() === before + 1, 'poste créé avec trajet');
+  await page.reload(); await page.waitForTimeout(800);
+  await crewMode(1);
+  expect(await page.locator('.travel-time input').inputValue() === '45', 'temps gardé');
 });
 
 await step('Étiquettes : filtres sur les projets et le matériel', async () => {
@@ -878,7 +983,7 @@ await step('Ligne : horaire propre, remarques client et entrepôt, notes et assu
   const quote = await page.locator('.doc').innerText();
   expect(quote.includes('Uniquement pour la plénière du premier jour'), 'remarque client sur le devis');
   expect(!quote.includes('lentille'), 'remarque entrepôt absente du devis');
-  expect(quote.includes('Accès et parking'), 'note du projet sur le devis');
+  expect(quote.toLowerCase().includes('accès et parking'), 'note du projet sur le devis');
   expect(quote.includes('Assurance du matériel (3 %)'), 'assurance ajoutée');
   expect(quote.includes('Conditions générales'), 'conditions générales');
   await openProject('Conférence annuelle');
@@ -886,7 +991,7 @@ await step('Ligne : horaire propre, remarques client et entrepôt, notes et assu
   await page.click('button:text-is("+ Bon de sortie")');
   await page.waitForSelector('.doc');
   const bs = await page.locator('.doc').innerText();
-  expect(bs.includes('Prendre la lentille grand angle') && bs.includes('Accès et parking'), 'remarque entrepôt et note sur le bon de sortie');
+  expect(bs.includes('Prendre la lentille grand angle') && bs.toLowerCase().includes('accès et parking'), 'remarque entrepôt et note sur le bon de sortie');
 });
 
 await step('Caution : affichée sur le devis, hors total', async () => {
@@ -1702,7 +1807,7 @@ await step('Devis : les options dans une section à part, avec leur total', asyn
   await tab('Finances & documents');
   await page.click('button:text-is("+ Devis")');
   await page.waitForSelector('.doc');
-  const opt = await page.locator('.doc .doc-options').innerText();
+  const opt = await page.locator('.doc .doc-options').textContent();
   expect(opt.includes('Options proposées') && opt.includes('Lyre') && opt.includes('Total des options'), `section options (${opt.slice(0, 120)})`);
   const main = await page.locator('.doc section').first().innerText();
   expect(!main.split('Options proposées')[0].includes('en option'), 'les options ne sont plus mêlées au matériel');
