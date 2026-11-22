@@ -1,4 +1,5 @@
 import { qrSvg } from './payment';
+import { TAPES as PT_TAPES, printableMm as ptPrintable } from './ptouch';
 
 /*
  * Modèles d'étiquettes (planches A4 et rouleaux) : format, mise en page, champs imprimés.
@@ -21,14 +22,35 @@ export interface FieldStyle {
   prefix?: string;
 }
 export type LabelFont = 'systeme' | 'arial' | 'etroite' | 'serif' | 'mono';
+export type LabelDevice = 'ptouch' | 'dymo-lm' | 'dymo-lw' | 'autre';
+export const DEVICE_LABELS: Record<LabelDevice, string> = {
+  ptouch: 'Brother PT-P750W (ruban TZe)', 'dymo-lm': 'Dymo LabelManager (ruban D1)', 'dymo-lw': 'Dymo LabelWriter (étiquettes prédécoupées)', autre: 'Autre imprimante',
+};
+/** largeurs de ruban de chaque étiqueteuse (mm) */
+export const DEVICE_TAPES: Partial<Record<LabelDevice, number[]>> = { ptouch: PT_TAPES.map((t) => t.mm), 'dymo-lm': [6, 9, 12, 19, 24] };
+/**
+ * largeur imprimable en travers d'un ruban (mm) : table Brother pour la PT-P750W ;
+ * Dymo LabelManager : tête de 64 points à 180 dpi (9 mm) au plus, marges d'environ 1,5 mm sur les rubans étroits
+ */
+export function printableHeight(t: Pick<LabelTemplate, 'sheet' | 'device' | 'h'>): number {
+  if (t.sheet !== 'ruban') return t.h;
+  if (t.device === 'ptouch' && PT_TAPES.some((x) => x.mm === t.h)) return ptPrintable(t.h);
+  if (t.device === 'dymo-lm') return Math.min(9, Math.max(2, t.h - 3));
+  return t.h;
+}
 export type LabelField = 'title' | 'code' | 'serial' | 'category' | 'location' | 'contents' | 'company';
 
 export interface LabelTemplate {
   id: string;
   name: string;
-  /** planche A4 (plusieurs étiquettes par page) ou rouleau (une étiquette par page) */
-  sheet: 'a4' | 'rouleau';
-  /** taille d'une étiquette (mm) */
+  /**
+   * planche A4 (plusieurs étiquettes par page), rouleau d'étiquettes prédécoupées (une par page),
+   * ou ruban continu d'étiqueteuse (h = largeur du ruban, w = longueur coupée)
+   */
+  sheet: 'a4' | 'rouleau' | 'ruban';
+  /** machine : impression directe en USB pour la PT-P750W, pilote de l'ordinateur pour les autres */
+  device?: LabelDevice;
+  /** taille d'une étiquette (mm) ; ruban : w = longueur, h = largeur du ruban */
   w: number;
   h: number;
   /** planche : colonnes, lignes, marges et espaces (mm) */
@@ -114,6 +136,28 @@ export const BUILTIN_TEMPLATES: LabelTemplate[] = [
   std({ id: 'rouleau-102', name: 'Rouleau — 102 × 51 mm, QR au-dessus (Zebra, Dymo XL)', sheet: 'rouleau', w: 102, h: 51, layout: 'qr-dessus', fields: ['title', 'code', 'serial', 'location', 'company'] }),
   std({ id: 'rouleau-57', name: 'Rouleau — 57 × 32 mm, code-barres', sheet: 'rouleau', w: 57, h: 32, layout: 'code-barres', fields: ['title', 'code'] }),
   std({ id: 'cable', name: 'Drapeau pour câble — 100 × 19 mm (rouleau)', sheet: 'rouleau', w: 100, h: 19, layout: 'cable', fields: ['title', 'code'] }),
+  // Brother PT-P750W : tous les rubans TZe (impression directe en USB)
+  std({ id: 'pt-3.5', textScale: 120,  name: 'PT-P750W — ruban 3,5 mm (code seul)', sheet: 'ruban', device: 'ptouch', w: 30, h: 3.5, layout: 'libre', symbol: 'aucun', fields: ['code'], padding: 0.5, styles: { code: { size: 140, wrap: false } } }),
+  std({ id: 'pt-6', textScale: 150,  name: 'PT-P750W — ruban 6 mm (code seul)', sheet: 'ruban', device: 'ptouch', w: 35, h: 6, layout: 'libre', symbol: 'aucun', fields: ['code'], padding: 0.5, styles: { code: { size: 150, wrap: false } } }),
+  std({ id: 'pt-9', textScale: 150,  name: 'PT-P750W — ruban 9 mm (QR + code)', sheet: 'ruban', device: 'ptouch', w: 38, h: 9, layout: 'libre', symbol: 'qr', symbolPos: 'gauche', fields: ['code', 'title'], padding: 0.6, gap: 1, styles: { code: { wrap: false }, title: { wrap: false } } }),
+  std({ id: 'pt-12', textScale: 165,  name: 'PT-P750W — ruban 12 mm (QR + code + nom)', sheet: 'ruban', device: 'ptouch', w: 45, h: 12, layout: 'libre', symbol: 'qr', symbolPos: 'gauche', fields: ['code', 'title'], padding: 0.6, gap: 1.2, styles: { code: { wrap: false }, title: { wrap: false }, contents: { wrap: false } } }),
+  std({ id: 'pt-18', textScale: 150,  name: 'PT-P750W — ruban 18 mm', sheet: 'ruban', device: 'ptouch', w: 55, h: 18, layout: 'libre', symbol: 'qr', symbolPos: 'gauche', fields: ['title', 'code', 'serial', 'contents'], padding: 0.6, gap: 1.5, styles: { title: { wrap: false }, contents: { wrap: false } } }),
+  std({ id: 'pt-24', textScale: 140,  name: 'PT-P750W — ruban 24 mm', sheet: 'ruban', device: 'ptouch', w: 65, h: 24, layout: 'libre', symbol: 'qr', symbolPos: 'gauche', fields: ['title', 'code', 'serial', 'contents', 'company'], padding: 0.8, gap: 1.8 }),
+  // Dymo LabelManager : rubans D1 (impression par le pilote Dymo)
+  std({ id: 'dymo-d1-6', textScale: 150,  name: 'Dymo LabelManager — ruban D1 6 mm', sheet: 'ruban', device: 'dymo-lm', w: 35, h: 6, layout: 'libre', symbol: 'aucun', fields: ['code'], padding: 0.5, styles: { code: { wrap: false } } }),
+  std({ id: 'dymo-d1-9', textScale: 150,  name: 'Dymo LabelManager — ruban D1 9 mm', sheet: 'ruban', device: 'dymo-lm', w: 40, h: 9, layout: 'libre', symbol: 'qr', fields: ['code', 'title'], padding: 0.5, gap: 1, styles: { code: { wrap: false }, title: { wrap: false } } }),
+  std({ id: 'dymo-d1-12', textScale: 160,  name: 'Dymo LabelManager — ruban D1 12 mm', sheet: 'ruban', device: 'dymo-lm', w: 45, h: 12, layout: 'libre', symbol: 'qr', fields: ['code', 'title'], padding: 0.5, gap: 1.2, styles: { code: { wrap: false }, title: { wrap: false } } }),
+  std({ id: 'dymo-d1-19', textScale: 150,  name: 'Dymo LabelManager — ruban D1 19 mm', sheet: 'ruban', device: 'dymo-lm', w: 55, h: 19, layout: 'libre', symbol: 'qr', fields: ['code', 'title', 'contents'], padding: 0.5, gap: 1.2, styles: { title: { wrap: false } } }),
+  std({ id: 'dymo-d1-24', textScale: 140,  name: 'Dymo LabelManager — ruban D1 24 mm', sheet: 'ruban', device: 'dymo-lm', w: 60, h: 24, layout: 'libre', symbol: 'qr', fields: ['title', 'code', 'serial', 'contents'], padding: 0.5, gap: 1.5 }),
+  // Dymo LabelWriter : étiquettes prédécoupées (référence Dymo entre parenthèses)
+  std({ id: 'dymo-11355', name: 'Dymo LabelWriter — 51 × 19 mm (11355)', sheet: 'rouleau', device: 'dymo-lw', w: 51, h: 19, layout: 'qr-gauche', fields: ['code', 'title'] }),
+  std({ id: 'dymo-11352', name: 'Dymo LabelWriter — 54 × 25 mm (11352)', sheet: 'rouleau', device: 'dymo-lw', w: 54, h: 25, layout: 'qr-gauche', fields: ['title', 'code', 'contents'] }),
+  std({ id: 'dymo-11354', name: 'Dymo LabelWriter — 57 × 32 mm (11354)', sheet: 'rouleau', device: 'dymo-lw', w: 57, h: 32, layout: 'qr-gauche', fields: ['title', 'code', 'serial', 'contents'] }),
+  std({ id: 'dymo-30332', name: 'Dymo LabelWriter — 25 × 25 mm (30332)', sheet: 'rouleau', device: 'dymo-lw', w: 25, h: 25, layout: 'qr-seul', fields: ['code'] }),
+  std({ id: 'dymo-99010', name: 'Dymo LabelWriter — 89 × 28 mm (99010)', sheet: 'rouleau', device: 'dymo-lw', w: 89, h: 28, layout: 'qr-gauche', fields: ['title', 'code', 'serial', 'company'] }),
+  std({ id: 'dymo-99012', name: 'Dymo LabelWriter — 89 × 36 mm (99012)', sheet: 'rouleau', device: 'dymo-lw', w: 89, h: 36, layout: 'qr-gauche', fields: ['title', 'code', 'serial', 'contents', 'company'] }),
+  std({ id: 'dymo-99014', name: 'Dymo LabelWriter — 101 × 54 mm (99014)', sheet: 'rouleau', device: 'dymo-lw', w: 101, h: 54, layout: 'qr-gauche', fields: ['title', 'code', 'serial', 'category', 'location', 'contents', 'company'] }),
+  std({ id: 'dymo-s0904980', name: 'Dymo LabelWriter — 104 × 159 mm (S0904980)', sheet: 'rouleau', device: 'dymo-lw', w: 104, h: 159, layout: 'qr-dessus', fields: ['title', 'code', 'serial', 'category', 'location', 'contents', 'company'] }),
 ];
 
 export const emptyTemplate = (): LabelTemplate => ({
@@ -241,12 +285,15 @@ function tuneCss(t: LabelTemplate, base: number): string {
   return out.join('\n');
 }
 
-export function labelCss(t: LabelTemplate): string {
+export function labelCss(t0: LabelTemplate): string {
+  // ruban d'étiqueteuse : tout est calculé sur la largeur imprimable, centrée dans la largeur du ruban
+  const t = { ...t0, h: printableHeight(t0) };
+  const my = (t0.h - t.h) / 2;
   const k = (t.textScale || 100) / 100;
   const base = Math.max(5, Math.min(16, t.h * 0.23)) * k; // pt, selon la hauteur
   const qr = t.layout === 'qr-dessus' ? Math.min(t.w * 0.6, t.h * 0.58) : t.layout === 'qr-seul' ? Math.min(t.w, t.h) * 0.72 : t.layout === 'cable' ? t.h * 0.86 : Math.min(t.h - 3, t.w * 0.45);
   const big = t.layout === 'texte';
-  return `.lab{width:${t.w}mm;height:${t.h}mm;box-sizing:border-box;padding:1.5mm;overflow:hidden;display:flex;gap:1.5mm;font-family:system-ui,sans-serif;color:#000;background:#fff;${t.border ? 'border:0.3mm solid #000;' : ''}}
+  return `.lab{width:${t.w}mm;height:${t0.h}mm;box-sizing:border-box;padding:1.5mm;overflow:hidden;display:flex;gap:1.5mm;font-family:system-ui,sans-serif;color:#000;background:#fff;${t.border ? 'border:0.3mm solid #000;' : ''}}
 .lab .qr svg{width:${qr.toFixed(1)}mm;height:${qr.toFixed(1)}mm;display:block}.lab .qr{flex:none}
 .lab .tx{min-width:0;display:flex;flex-direction:column;justify-content:center}.lab .tx div{overflow:hidden;text-overflow:ellipsis;line-height:1.12}
 .lab .f-title{font-weight:700;font-size:${(base * (big ? 1.9 : 1)).toFixed(1)}pt}.lab .f-code{font:700 ${(base * (big ? 1.25 : 0.9)).toFixed(1)}pt ui-monospace,Menlo,Consolas,monospace}
@@ -259,7 +306,7 @@ export function labelCss(t: LabelTemplate): string {
 .lab.code-barres .tx{text-align:center}
 .lab.texte{flex-direction:column;justify-content:center}
 .lab.cable{align-items:center;justify-content:space-between}.lab.cable .tx{flex:1;text-align:center}.lab.cable .fold{border-left:0.3mm dashed #999;align-self:stretch}
-${tuneCss(t, base)}`;
+${tuneCss(t, base)}${my > 0 ? `\n.lab{padding-top:${(my + (t.padding ?? 1.5)).toFixed(2)}mm;padding-bottom:${(my + (t.padding ?? 1.5)).toFixed(2)}mm}` : ''}`;
 }
 
 /** une étiquette (HTML) */

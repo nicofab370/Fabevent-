@@ -1,6 +1,6 @@
 import { useId, useState } from 'react';
 import {
-  ALL_FIELDS, FIELD_LABELS, FONT_LABELS, LAYOUT_LABELS, PART_LABELS, fitsA4, labelCss, labelHtml, perSheet,
+  ALL_FIELDS, DEVICE_LABELS, DEVICE_TAPES, FIELD_LABELS, FONT_LABELS, printableHeight, type LabelDevice, LAYOUT_LABELS, PART_LABELS, fitsA4, labelCss, labelHtml, perSheet,
   type FieldStyle, type LabelField, type LabelFont, type LabelLayout, type LabelPart, type LabelTemplate, type SheetLabel,
 } from '../labelTemplates';
 import { Field, Modal, NumInput } from './ui';
@@ -87,13 +87,43 @@ export function LabelTemplateForm({ initial, sample, company, logo, onSave, onDe
         <legend>Format</legend>
         <Field label="Nom du modèle *" full><input required value={t.name} onChange={(e) => set('name', e.target.value)} aria-label="Nom du modèle" /></Field>
         <Field label="Support">
-          <select value={t.sheet} onChange={(e) => set('sheet', e.target.value as LabelTemplate['sheet'])} aria-label="Support">
+          <select value={t.sheet} onChange={(e) => {
+            const sheet = e.target.value as LabelTemplate['sheet'];
+            // ruban : une étiqueteuse et une largeur de ruban existante
+            setT((x) => sheet === 'ruban'
+              ? { ...x, sheet, device: x.device === 'dymo-lm' ? 'dymo-lm' : 'ptouch', h: (DEVICE_TAPES[x.device === 'dymo-lm' ? 'dymo-lm' : 'ptouch'] || [12]).includes(x.h) ? x.h : 12, w: Math.min(x.w, 80) }
+              : { ...x, sheet, device: x.device === 'ptouch' || x.device === 'dymo-lm' ? undefined : x.device });
+          }} aria-label="Support">
             <option value="a4">Planche A4 (plusieurs étiquettes)</option>
-            <option value="rouleau">Rouleau (une étiquette par page)</option>
+            <option value="rouleau">Rouleau d'étiquettes prédécoupées (une par page)</option>
+            <option value="ruban">Ruban d'étiqueteuse (longueur au choix)</option>
           </select>
         </Field>
-        <Field label="Largeur (mm)"><NumInput value={t.w} min={10} onChange={(n) => set('w', n)} aria-label="Largeur en mm" /></Field>
-        <Field label="Hauteur (mm)"><NumInput value={t.h} min={8} onChange={(n) => set('h', n)} aria-label="Hauteur en mm" /></Field>
+        {t.sheet !== 'a4' && (
+          <Field label="Machine">
+            <select value={t.device || 'autre'} onChange={(e) => {
+              const device = e.target.value as LabelDevice;
+              const tapes = DEVICE_TAPES[device];
+              setT((x) => ({ ...x, device: device === 'autre' ? undefined : device, ...(x.sheet === 'ruban' && tapes && !tapes.includes(x.h) ? { h: tapes.includes(12) ? 12 : tapes[0] } : {}) }));
+            }} aria-label="Machine">
+              {(t.sheet === 'ruban' ? (['ptouch', 'dymo-lm', 'autre'] as LabelDevice[]) : (['dymo-lw', 'autre'] as LabelDevice[])).map((d) => <option key={d} value={d}>{DEVICE_LABELS[d]}</option>)}
+            </select>
+          </Field>
+        )}
+        {t.sheet === 'ruban' ? <>
+          <Field label="Largeur du ruban">
+            {DEVICE_TAPES[t.device || 'autre']
+              ? <select value={t.h} onChange={(e) => set('h', Number(e.target.value))} aria-label="Largeur du ruban">
+                {DEVICE_TAPES[t.device || 'autre']!.map((mm) => <option key={mm} value={mm}>{String(mm).replace('.', ',')} mm</option>)}
+              </select>
+              : <NumInput value={t.h} min={3} onChange={(n) => set('h', n)} aria-label="Largeur du ruban" />}
+          </Field>
+          <Field label="Longueur de l'étiquette (mm)"><NumInput value={t.w} min={10} onChange={(n) => set('w', n)} aria-label="Longueur en mm" /></Field>
+          <p className="muted field full" style={{ margin: 0 }}>Zone imprimable en travers : {printableHeight(t).toFixed(1).replace('.', ',')} mm sur {String(t.h).replace('.', ',')} mm de ruban{t.device === 'ptouch' ? ' (table Brother)' : ''}.{t.device === 'ptouch' && t.h <= 6 ? ' Trop étroit pour un QR lisible : code seul conseillé.' : ''}</p>
+        </> : <>
+          <Field label="Largeur (mm)"><NumInput value={t.w} min={10} onChange={(n) => set('w', n)} aria-label="Largeur en mm" /></Field>
+          <Field label="Hauteur (mm)"><NumInput value={t.h} min={8} onChange={(n) => set('h', n)} aria-label="Hauteur en mm" /></Field>
+        </>}
         {a4 && <>
           <Field label="Colonnes"><NumInput value={t.cols || 1} min={1} step="1" onChange={(n) => set('cols', Math.max(1, Math.round(n)))} aria-label="Colonnes" /></Field>
           <Field label="Lignes"><NumInput value={t.rows || 1} min={1} step="1" onChange={(n) => set('rows', Math.max(1, Math.round(n)))} aria-label="Lignes" /></Field>

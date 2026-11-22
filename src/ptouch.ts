@@ -24,9 +24,11 @@ export const PT_P750W_PRODUCT = 0x2062;
 /**
  * Rubans TZe : points imprimables en travers, d'après la table officielle Brother (Raster Command Reference
  * PT-E550W/P750W/P710BT v1.01, § 2.3.5) : marge gauche = marge droite = (128 − points) / 2.
- *   6 mm : 32 (marges 48) · 9 mm : 50 (39) · 12 mm : 70 (29) · 18 mm : 112 (8) · 24 mm : 128 (0)
+ *   3,5 mm : 24 (marges 52) · 6 mm : 32 (48) · 9 mm : 50 (39) · 12 mm : 70 (29) · 18 mm : 112 (8) · 24 mm : 128 (0)
+ * Le ruban de 3,5 mm est annoncé « 4 mm » par la machine (statut et commande ESC i z).
  */
 export const TAPES: { mm: number; dots: number; label: string }[] = [
+  { mm: 3.5, dots: 24, label: '3,5 mm' },
   { mm: 6, dots: 32, label: '6 mm' },
   { mm: 9, dots: 50, label: '9 mm' },
   { mm: 12, dots: 70, label: '12 mm' },
@@ -34,6 +36,10 @@ export const TAPES: { mm: number; dots: number; label: string }[] = [
   { mm: 24, dots: 128, label: '24 mm' },
 ];
 export const tapeDots = (mm: number) => TAPES.find((t) => t.mm === mm)?.dots ?? 70;
+/** largeur du ruban telle que la machine la code (3,5 mm → 4) */
+export const tapeCode = (mm: number) => (mm === 3.5 ? 4 : Math.round(mm));
+/** largeur imprimable en travers du ruban (mm) */
+export const printableMm = (mm: number) => tapeDots(mm) / (180 / 25.4);
 /** Longueur minimale de ruban sortie par la machine (position du coupe-ruban) : 24,5 mm. */
 export const MIN_FEED_MM = 24.5;
 /** Marge d'avance minimale avant et après l'étiquette : 2 mm = 14 points (§ 2.3.3). */
@@ -124,7 +130,7 @@ export function encodePage(p: Bitmap, page: number, last: boolean, o: JobOptions
   const n = p.width;
   push(0x1b, 0x69, 0x61, 0x01); // ESC i a 01 : mode raster
   // ESC i z : comme l'exemple Brother (84h = reprise auto + largeur vérifiée), nombre de lignes, page
-  push(0x1b, 0x69, 0x7a, 0x84, 0x00, o.tapeMm, 0x00, n, n >> 8, n >> 16, n >>> 24, page === 0 ? 0 : 1, 0x00);
+  push(0x1b, 0x69, 0x7a, 0x84, 0x00, tapeCode(o.tapeMm), 0x00, n, n >> 8, n >> 16, n >>> 24, page === 0 ? 0 : 1, 0x00);
   push(0x1b, 0x69, 0x4d, autoCut ? 0x40 : 0x00); // ESC i M : découpe auto
   if (autoCut) push(0x1b, 0x69, 0x41, 0x01); // ESC i A 01 : couper chaque étiquette
   push(0x1b, 0x69, 0x4b, (o.halfCut ? 0x04 : 0) | (o.chain ? 0 : 0x08)); // ESC i K
@@ -180,7 +186,7 @@ export function parseStatus(buf: Uint8Array): PtStatus | null {
   if (e2 & 0x20) errors.push('surchauffe');
   if (buf[11] === 0xff || buf[24] === 0xff) errors.push('ruban incompatible');
   if (buf[24] === 0xf0) errors.push('cassette de nettoyage en place');
-  return { tapeMm: buf[10], mediaType: buf[11], type: buf[18], errors, tapeColor: buf[24] };
+  return { tapeMm: buf[10] === 4 ? 3.5 : buf[10], mediaType: buf[11], type: buf[18], errors, tapeColor: buf[24] };
 }
 
 /* ---------- mise en page d'une étiquette ---------- */

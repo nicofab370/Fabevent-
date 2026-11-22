@@ -47,7 +47,7 @@ describe('PackBits', () => {
 
 describe('Ligne raster', () => {
   it('table officielle Brother : marges gauche/droite en points (§ 2.3.5)', () => {
-    const official: Record<number, [number, number]> = { 6: [48, 32], 9: [39, 50], 12: [29, 70], 18: [8, 112], 24: [0, 128] };
+    const official: Record<number, [number, number]> = { 3.5: [52, 24], 6: [48, 32], 9: [39, 50], 12: [29, 70], 18: [8, 112], 24: [0, 128] };
     for (const t of TAPES) {
       const [margin, dots] = official[t.mm];
       expect(t.dots).toBe(dots);
@@ -192,7 +192,7 @@ describe('Décodage strict d\'un travail (comme la machine)', () => {
       expect(pages.length).toBe(3);
       expect(pages.map((p) => p.end)).toEqual([0x0c, 0x0c, 0x1a]); // FF, FF, puis Ctrl-Z (avance + coupe)
       for (const p of pages) {
-        expect(p.tape).toBe(t.mm);
+        expect(p.tape).toBe(t.mm === 3.5 ? 4 : t.mm); // 3,5 mm est codé « 4 » par la machine
         expect(p.declared).toBe(260); // nombre de lignes annoncé = envoyé : la machine n'avance pas plus
         expect(p.lines.length).toBe(260);
         expect(p.cut).toBe(0x40);
