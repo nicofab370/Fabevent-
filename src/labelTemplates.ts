@@ -253,6 +253,15 @@ export function qrSizeMm(t0: LabelTemplate): { mm: number; capped: boolean } {
   const t = { ...t0, h: printableHeight(t0) };
   const pad = t.padding ?? 1.5, k = (t.symbolSize ?? 100) / 100;
   const iw = t.w - 2 * pad, ih = t.h - 2 * pad;
+  // QR au-dessus / en dessous : il remplit la hauteur laissée par le texte (estimée ici pour l'éditeur)
+  const col = t.layout === 'qr-dessus' || t.layout === 'qr-seul' || (t.layout === 'libre' && (t.symbolPos === 'dessus' || t.symbolPos === 'dessous') && t.symbol !== 'aucun' && t.symbol !== 'code-barres');
+  if (col) {
+    const basePt = Math.max(5, Math.min(16, t.h * 0.23)) * ((t.textScale || 100) / 100);
+    const nLines = t.layout === 'qr-seul' ? 1 : t.fields.length + (t.header ? 1 : 0) + (t.footer ? 1 : 0);
+    const textMm = nLines * basePt * 0.3528 * 1.12 + (t.gap ?? 0.8) + (t.symbol === 'les-deux' ? ih * 0.25 : 0);
+    const room = Math.max(1, Math.min(iw, ih - textMm));
+    return { mm: room * Math.min(1, k), capped: k > 1 };
+  }
   if (t.layout === 'libre') {
     const f = freeSizes(t);
     const want = (f.side === 'row' ? Math.min(ih * (t.symbol === 'les-deux' ? 0.62 : 1), iw * 0.55) : Math.min(iw, ih * 0.62) * (t.symbol === 'les-deux' ? 0.75 : 1)) * k;
@@ -262,6 +271,21 @@ export function qrSizeMm(t0: LabelTemplate): { mm: number; capped: boolean } {
   const max = t.layout === 'qr-dessus' ? Math.min(iw, ih * 0.8) : t.layout === 'qr-seul' ? Math.min(iw, ih * 0.85) : t.layout === 'cable' ? Math.min(ih, iw * 0.3) : Math.min(ih, iw * 0.8);
   const want = base * k;
   return { mm: Math.max(1, Math.min(want, Math.max(max, base))), capped: want > Math.max(max, base) + 0.05 };
+}
+
+/**
+ * QR au-dessus (ou en dessous) du texte : il prend toute la hauteur laissée par le texte
+ * (plus de blanc perdu en haut et sur les côtés) ; « Taille du code » < 100 % le réduit.
+ */
+function fillCss(t: LabelTemplate): string {
+  const col = t.layout === 'qr-dessus' || t.layout === 'qr-seul' || (t.layout === 'libre' && (t.symbolPos === 'dessus' || t.symbolPos === 'dessous') && t.symbol !== 'aucun' && t.symbol !== 'code-barres');
+  if (!col) return '';
+  const k = Math.min(1, (t.symbolSize ?? 100) / 100);
+  const L = `.lab.${t.layout}`;
+  return `\n${L}{justify-content:flex-start}${L} .tx{flex:none}
+${t.layout === 'libre' ? `${L} .sym{flex:1 1 0;min-height:0;width:100%}` : ''}
+${L} .qr{flex:1 1 0;min-height:0;width:100%;display:flex;justify-content:center;align-items:center}
+${L} .qr svg{width:auto;height:${(k * 100).toFixed(0)}%;max-width:100%;aspect-ratio:1/1}`;
 }
 
 /** taille normale d'une zone, en multiple de la taille de base */
@@ -327,14 +351,15 @@ export function labelCss(t0: LabelTemplate): string {
 .lab.code-barres .tx{text-align:center}
 .lab.texte{flex-direction:column;justify-content:center}
 .lab.cable{align-items:center;justify-content:space-between}.lab.cable .tx{flex:1;text-align:center}.lab.cable .fold{border-left:0.3mm dashed #999;align-self:stretch}
-${tuneCss(t, base)}${my > 0 ? `\n.lab{padding-top:${(my + (t.padding ?? 1.5)).toFixed(2)}mm;padding-bottom:${(my + (t.padding ?? 1.5)).toFixed(2)}mm}` : ''}`;
+${tuneCss(t, base)}${fillCss(t)}${my > 0 ? `\n.lab{padding-top:${(my + (t.padding ?? 1.5)).toFixed(2)}mm;padding-bottom:${(my + (t.padding ?? 1.5)).toFixed(2)}mm}` : ''}`;
 }
 
 /** une étiquette (HTML) */
 export function labelHtml(t: LabelTemplate, l: SheetLabel, company: string, qrPayload: (code: string) => string = (c) => c, logo?: string): string {
   const img = logo && t.logo && t.logo !== 'aucun' ? `<img class="logo" src="${esc(logo)}" alt="">` : '';
   const tx = `<div class="tx">${t.logo === 'haut' ? img : ''}${lines(t, l, company).map((x) => `<div class="${x.cls}">${esc(x.text)}</div>`).join('')}${t.logo === 'bas' ? img : ''}</div>`;
-  const qr = () => `<div class="qr">${qrSvg(qrPayload(l.code), 100)}</div>`;
+  // pas de bordure blanche dans le QR : la marge de l'étiquette (et l'espace avec le texte) sert de zone blanche
+  const qr = () => `<div class="qr">${qrSvg(qrPayload(l.code), 100, 0)}</div>`;
   const sym = t.symbol === 'aucun' ? '' : `<div class="sym">${t.symbol === 'code-barres' ? '' : qr()}${t.symbol === 'code-barres' || t.symbol === 'les-deux' ? `<div class="bc">${code128Svg(l.code)}</div>` : ''}</div>`;
   const inner = t.layout === 'libre' ? `${sym}${tx}`
     : t.layout === 'texte' ? tx
