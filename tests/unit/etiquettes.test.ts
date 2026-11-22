@@ -51,7 +51,7 @@ describe('Étiquettes', () => {
     for (const t of BUILTIN_TEMPLATES) {
       const html = labelSheetHtml(t, [{ code: 'X-1', title: 'Test', serial: '42' }], 'Soc');
       expect(html).toContain(`lab ${t.layout}`);
-      expect(html.includes('<svg') || t.layout === 'texte').toBe(true);
+      expect(html.includes('<svg') || t.layout === 'texte' || t.symbol === 'aucun').toBe(true);
     }
   });
 });
@@ -86,5 +86,24 @@ describe('mise en page libre et réglages fins', () => {
     const html = labelHtml({ ...base, layout: 'qr-gauche', fields: ['serial', 'contents'] }, { ...l, contents: 'Housse' }, '');
     expect(html).toContain('n° SN1');
     expect(html).toContain('+ Housse');
+  });
+});
+
+describe('rubans d’étiqueteuse (Brother PT-P750W, Dymo)', async () => {
+  const { printableHeight, DEVICE_TAPES } = await import('../../src/labelTemplates');
+  it('tous les rubans TZe de la PT-P750W ont un modèle, et la largeur imprimable vient de la table Brother', () => {
+    for (const mm of DEVICE_TAPES.ptouch!) expect(BUILTIN_TEMPLATES.some((t) => t.device === 'ptouch' && t.h === mm)).toBe(true);
+    expect(printableHeight({ sheet: 'ruban', device: 'ptouch', h: 12 })).toBeCloseTo(70 / (180 / 25.4), 3);
+    expect(printableHeight({ sheet: 'ruban', device: 'ptouch', h: 3.5 })).toBeCloseTo(24 / (180 / 25.4), 3);
+  });
+  it('Dymo : rubans D1 et étiquettes LabelWriter', () => {
+    for (const mm of DEVICE_TAPES['dymo-lm']!) expect(BUILTIN_TEMPLATES.some((t) => t.device === 'dymo-lm' && t.h === mm)).toBe(true);
+    expect(BUILTIN_TEMPLATES.filter((t) => t.device === 'dymo-lw').length).toBeGreaterThanOrEqual(6);
+  });
+  it('ruban : page = longueur × largeur du ruban, texte centré dans la zone imprimable', () => {
+    const t = BUILTIN_TEMPLATES.find((x) => x.id === 'pt-12')!;
+    const html = labelSheetHtml(t, [{ code: 'F-S-0001-01', title: 'Micro' }], '');
+    expect(html).toContain('@page{size:45mm 12mm');
+    expect(labelCss(t)).toMatch(/padding-top:1\.6\dmm/); // (12 − 9,88) / 2 + 0,6
   });
 });

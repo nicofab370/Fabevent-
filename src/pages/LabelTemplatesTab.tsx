@@ -7,14 +7,19 @@ import { useSettings } from '../components/ui';
 import { contentsText, labelCode } from '../codes';
 import { categoryLabel } from '../categories';
 import { db, getSettings } from '../db';
-import { BUILTIN_TEMPLATES, LAYOUT_LABELS, emptyTemplate, perSheet, type LabelTemplate, type SheetLabel } from '../labelTemplates';
+import { BUILTIN_TEMPLATES, DEVICE_LABELS, LAYOUT_LABELS, emptyTemplate, perSheet, type LabelTemplate, type SheetLabel } from '../labelTemplates';
 import { unitNo } from '../unitNumbers';
 import { uid } from '../utils';
 
 /** format d'étiquette : support et taille (les modèles d'un même format s'impriment sur les mêmes étiquettes) */
-const formatKey = (t: LabelTemplate) => `${t.sheet}|${t.w}|${t.h}|${t.sheet === 'a4' ? `${t.cols || 1}x${t.rows || 1}` : ''}`;
-const formatName = (t: LabelTemplate) => `${String(t.w).replace('.', ',')} × ${String(t.h).replace('.', ',')} mm · ${t.sheet === 'a4' ? `planche A4 de ${perSheet(t)}` : 'rouleau'}`;
-const fmtSort = (t: LabelTemplate) => `${t.sheet === 'a4' ? 0 : 1}${String(Math.round(t.w * 10)).padStart(5, '0')}${String(Math.round(t.h * 10)).padStart(5, '0')}`;
+// ruban : même format = même machine et même largeur de ruban (la longueur se règle dans chaque modèle)
+const formatKey = (t: LabelTemplate) => (t.sheet === 'ruban' ? `ruban|${t.device || ''}|${t.h}` : `${t.sheet}|${t.device || ''}|${t.w}|${t.h}|${t.sheet === 'a4' ? `${t.cols || 1}x${t.rows || 1}` : ''}`);
+const mm = (n: number) => String(n).replace('.', ',');
+const formatName = (t: LabelTemplate) => (t.sheet === 'ruban'
+  ? `${DEVICE_LABELS[t.device || 'autre']} · ruban ${mm(t.h)} mm`
+  : `${mm(t.w)} × ${mm(t.h)} mm · ${t.sheet === 'a4' ? `planche A4 de ${perSheet(t)}` : t.device ? DEVICE_LABELS[t.device] : 'rouleau'}`);
+const DEV_ORDER = ['', 'dymo-lw', 'ptouch', 'dymo-lm', 'autre'];
+const fmtSort = (t: LabelTemplate) => `${t.sheet === 'a4' ? 0 : t.sheet === 'rouleau' ? 1 : 2}${DEV_ORDER.indexOf(t.device || '')}${String(Math.round((t.sheet === 'ruban' ? t.h : t.w) * 10)).padStart(5, '0')}${String(Math.round(t.h * 10)).padStart(5, '0')}`;
 
 /**
  * Modèles de documents → Étiquettes : les modèles rangés par format d'étiquette ;
@@ -80,6 +85,8 @@ export default function LabelTemplatesTab() {
       <div className="toolbar">
         <button onClick={() => setEditing({ t: emptyTemplate(), existing: false })}>+ Nouveau modèle</button>
         <button className="secondary" onClick={() => setEditing({ t: { ...emptyTemplate(), name: 'Mon modèle libre', layout: 'libre', symbol: 'qr', symbolPos: 'gauche' }, existing: false })}>+ Modèle libre</button>
+        <button className="secondary" onClick={() => setEditing({ t: { ...emptyTemplate(), name: 'PT-P750W — mon ruban 12 mm', sheet: 'ruban', device: 'ptouch', w: 45, h: 12, layout: 'libre', symbol: 'qr', symbolPos: 'gauche', padding: 0.6, fields: ['code', 'title'] }, existing: false })}>+ Modèle Brother P-touch</button>
+        <button className="secondary" onClick={() => setEditing({ t: { ...emptyTemplate(), name: 'Dymo — mon modèle 89 × 36 mm', sheet: 'rouleau', device: 'dymo-lw', w: 89, h: 36, cols: undefined, rows: undefined, fields: ['title', 'code', 'serial'] }, existing: false })}>+ Modèle Dymo</button>
       </div>
       {[...groups.entries()].map(([key, list]) => (
         <div key={key} className="card lt-group">

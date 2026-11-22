@@ -11,7 +11,8 @@ import { contentsText, labelCode } from '../codes';
 import { categoryLabel } from '../categories';
 import PtouchPanel, { type LabelData } from '../components/PtouchPanel';
 import { LabelPreview, LabelTemplateEditor } from '../components/LabelTemplateEditor';
-import { BUILTIN_TEMPLATES, LAYOUT_LABELS, emptyTemplate, labelSheetHtml, perSheet, type LabelTemplate, type SheetLabel } from '../labelTemplates';
+import LabelDevicePanel from '../components/LabelDevicePanel';
+import { BUILTIN_TEMPLATES, DEVICE_LABELS, LAYOUT_LABELS, emptyTemplate, labelSheetHtml, perSheet, type LabelTemplate, type SheetLabel } from '../labelTemplates';
 
 /** identifiant d'un modèle (standard ou personnel), ou l'étiqueteuse PT-P750W */
 type Format = string;
@@ -87,9 +88,11 @@ export default function Labels() {
     <>
       <PageHead title="Étiquettes QR">
         <select aria-label="Format d'étiquette" value={tpl ? tpl.id : 'ptouch'} onChange={(e) => pickFormat(e.target.value as Format)} style={{ width: 'auto', maxWidth: '100%' }}>
-          <optgroup label="Formats standard">{BUILTIN_TEMPLATES.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</optgroup>
           {mine.length > 0 && <optgroup label="Mes modèles">{mine.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</optgroup>}
-          <optgroup label="Étiqueteuse"><option value="ptouch">Brother PT-P750W — ruban TZe</option></optgroup>
+          <optgroup label="Planches A4 et rouleaux">{BUILTIN_TEMPLATES.filter((t) => !t.device).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</optgroup>
+          <optgroup label="Brother PT-P750W (ruban TZe)">{BUILTIN_TEMPLATES.filter((t) => t.device === 'ptouch').map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            <option value="ptouch">PT-P750W — réglages simples (ancien mode)</option></optgroup>
+          <optgroup label="Dymo">{BUILTIN_TEMPLATES.filter((t) => t.device === 'dymo-lm' || t.device === 'dymo-lw').map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</optgroup>
         </select>
         {tpl && <button disabled={!total} onClick={print}>Imprimer {total || ''} étiquette(s)</button>}
       </PageHead>
@@ -98,7 +101,7 @@ export default function Labels() {
           <div className="lt-head">
             <div>
               <strong>{tpl.name}</strong>
-              <div className="muted">{LAYOUT_LABELS[tpl.layout]} · {tpl.w} × {tpl.h} mm{tpl.sheet === 'a4' ? ` · ${perSheet(tpl)} par planche A4` : ' · rouleau'}</div>
+              <div className="muted">{LAYOUT_LABELS[tpl.layout]} · {tpl.w} × {tpl.h} mm{tpl.sheet === 'a4' ? ` · ${perSheet(tpl)} par planche A4` : tpl.sheet === 'ruban' ? ' · ruban' : ' · rouleau'}{tpl.device ? ` · ${DEVICE_LABELS[tpl.device]}` : ''}</div>
             </div>
             <div className="toolbar" style={{ marginBottom: 0 }}>
               {tpl.builtin
@@ -126,6 +129,7 @@ export default function Labels() {
             pickFormat(saved.id); setEditing(null);
           }} />
       )}
+      {tpl?.device && <LabelDevicePanel t={tpl} total={total} collect={collect} sample={sample} company={settings.company.name} logo={settings.company.logo} qrPayload={payload} />}
       {format === 'ptouch' && <PtouchPanel total={total} collect={collect} linkFor={qrLink ? payload : undefined} company={settings.company.name} />}
       <div className="info">
         Le QR code se scanne à la douchette ou à la caméra dans l'entrepôt. Les articles sans code-barres en reçoivent un automatiquement à l'impression.
