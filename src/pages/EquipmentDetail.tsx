@@ -7,7 +7,7 @@ import { useAvailability } from '../data';
 import { nextUnitCode } from '../codegen';
 import { db } from '../db';
 import type { SerialUnit } from '../types';
-import { availableQty, fmtDate, fmtRange, inspectionsDue, money, save, toLocalInput } from '../utils';
+import { availableQty, stockAt, fmtDate, fmtRange, inspectionsDue, money, save, toLocalInput } from '../utils';
 import { EquipmentForm } from './EquipmentList';
 import { InspectionModal, RepairModal } from './Maintenance';
 import PrintLabelModal from '../components/PrintLabelModal';
@@ -77,7 +77,7 @@ export default function EquipmentDetail() {
         <div className="stat"><b>{eq.code || '—'}</b><span>référence{eq.location ? ` · ${eq.location}` : ''}</span></div>
       </div>
       {eq._stock && av.depots.length > 1 && !eq.isKit && (
-        <div className="info">Stock par dépôt : {av.depots.map((dp) => `${dp.name} ${eq._stock?.[dp.id] || 0}`).join(' · ')}
+        <div className="info">Stock par dépôt : {av.depots.map((dp) => `${dp.name} ${stockAt(eq, dp.id, av.res)}`).join(' · ')}
           {av.transfers.some((t) => t.status !== 'annule' && t.lines.some((l) => l.equipmentId === eq.id)) && <> — <a href="#/transferts">voir les transferts</a></>}</div>
       )}
 

@@ -327,7 +327,7 @@ export default function EquipmentList() {
                       <td>{e.photo && <img src={e.photo} alt="" className="thumb" />}<strong>{e.name}</strong> {e.isKit && <span className="badge">Kit</span>} {e.kind === 'vente' && <span className="badge">vente</span>} {e.trackSerials && <span className="badge">n° série</span>} <Tags tags={e.tags} /></td>
                       <td>{e.code}</td>
                       <td>{e.categoryId ? catName.get(e.categoryId) : ''}</td>
-                      <td className="n" title={e._stock ? depots.map((dp) => `${dp.name} : ${e._stock?.[dp.id] || 0}`).join('\n') : undefined}>{e.isKit || e.accessoryOnly ? '—' : depot ? stockAt(e, depot, res) : e.quantity}</td>
+                      <td className="n" title={e._stock ? depots.map((dp) => `${dp.name} : ${stockAt(e, dp.id, res)}`).join('\n') : undefined}>{e.isKit || e.accessoryOnly ? '—' : depot ? stockAt(e, depot, res) : e.quantity}</td>
                       <td className="n">{e.accessoryOnly ? <span className="muted">hors inventaire</span> : <span className={'avail ' + (av > 0 ? 'ok' : 'ko')}>{av}</span>}</td>
                       <td className="n">{money(e.dailyPrice)}{e.kind === 'vente' ? ' /pce' : ''}</td>
                     </tr>

@@ -187,7 +187,10 @@ export interface Transfer extends Base {
   /** retour au dépôt d'origine ; vide = transfert définitif */
   end?: string;
   status: TransferStatus;
-  lines: { equipmentId: ID; qty: number }[];
+  /** unitIds : unités choisies (articles sérialisés), rangées au dépôt d'arrivée quand le transfert définitif est effectué */
+  lines: { equipmentId: ID; qty: number; unitIds?: ID[] }[];
+  /** transfert définitif effectué : le stock a été déplacé (stock propre des dépôts, unités choisies) */
+  applied?: boolean;
   projectId?: ID;
   notes?: string;
 }

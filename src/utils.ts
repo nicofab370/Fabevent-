@@ -199,9 +199,12 @@ export function buildReservations(lines: EquipmentLine[], subs: Subproject[], eq
   for (const t of extras.transfers || []) {
     if (t.status === 'annule') continue;
     for (const l of t.lines) {
+      // transfert définitif effectué : le stock a déjà changé de dépôt (sauf les unités sérialisées non choisies)
+      const qty = t.applied && !t.end ? (eqMap.get(l.equipmentId)?.trackSerials ? l.qty - (l.unitIds || []).length : 0) : l.qty;
+      if (qty <= 0) continue;
       const base = { equipmentId: l.equipmentId, start: t.start, end: t.end || FOREVER, lineId: t.id, subprojectId: '', projectId: t.projectId || '', source: 'transfert' as const };
-      out.push({ ...base, qty: l.qty, depotId: t.fromDepotId });
-      out.push({ ...base, qty: -l.qty, depotId: t.toDepotId });
+      out.push({ ...base, qty, depotId: t.fromDepotId });
+      out.push({ ...base, qty: -qty, depotId: t.toDepotId });
     }
   }
   return out;

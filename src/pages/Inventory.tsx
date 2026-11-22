@@ -5,12 +5,12 @@ import { Link } from 'react-router-dom';
 import { Empty, Field, Modal, NumInput, PageHead, StatusBadge, useSettings } from '../components/ui';
 import { Scanner } from '../components/Scanner';
 import PrintLabelModal from '../components/PrintLabelModal';
-import { addExtraCode, contentsText, findByCode, removeExtraCode, setUnitState, UNIT_STATE_LABELS, unitState, type UnitState } from '../codes';
+import { addExtraCode, contentsText, findByCode, moveUnitToDepot, removeExtraCode, setUnitState, UNIT_STATE_LABELS, unitState, type UnitState } from '../codes';
 import { newArticleCode, nextUnitCode } from '../codegen';
 import { useAvailability } from '../data';
 import { currentWorkspace, db } from '../db';
 import type { Equipment, SerialUnit } from '../types';
-import { fmtDate, fmtRange, money, patch, save, stockIn, toLocalInput } from '../utils';
+import { fmtDate, fmtRange, money, patch, save, stockAt, toLocalInput } from '../utils';
 import { AssociateModal, stockMove } from './Checklist';
 import { Icon } from '../components/Icon';
 import { CategoryOptions } from '../components/CategoryOptions';
@@ -93,13 +93,26 @@ export default function Inventory() {
   const [creating, setCreating] = useState(false);
   const ref = useRef<HTMLInputElement>(null);
   const dep = multi ? depot : undefined;
-  const inDepot = (u: SerialUnit) => !multi || (u.depotId || av.mainDepot) === depot;
+  /** dépôt d'une unité ; un dépôt supprimé ou inconnu compte comme le dépôt principal (comme dans la liste du matériel) */
+  const unitDepot = (u: SerialUnit) => (u.depotId && av.depots.some((d) => d.id === u.depotId) ? u.depotId : av.mainDepot);
+  const inDepot = (u: SerialUnit) => !multi || unitDepot(u) === depot;
+  const depotName = (id: string) => av.depots.find((d) => d.id === id)?.name || 'dépôt principal';
+  /**
+   * unité scannée ici alors qu'elle est enregistrée dans un autre dépôt : elle est bien ici,
+   * on la range dans ce dépôt pour qu'elle soit comptée (renvoie le message à afficher)
+   */
+  const bringHere = async (u: SerialUnit): Promise<string> => {
+    if (inDepot(u)) return '';
+    const from = depotName(unitDepot(u));
+    await moveUnitToDepot(u.id, depot, `Trouvée au ${depotName(depot)} à l'inventaire (était enregistrée au ${from})`);
+    return ` · était enregistrée au ${from} : rangée au ${depotName(depot)}`;
+  };
   /** unités attendues au dépôt : en service ou à réparer (les unités en réparation et perdues n'y sont pas) */
   const unitsHere = (eqId: string) => av.units.filter((u) => u.equipmentId === eqId && u.status === 'ok' && inDepot(u)).sort((a, b) => (a.number || 1e9) - (b.number || 1e9) || (a.barcode || a.serial).localeCompare(b.barcode || b.serial, 'fr', { numeric: true }));
   const items = av.equipment.filter((e) => !e.isKit && !e.archived && !e.accessoryOnly);
   const kits = av.equipment.filter((e) => e.isKit && !e.archived && e.kitItems.length);
   const byId = new Map(av.equipment.map((e) => [e.id, e]));
-  const expected = (e: Equipment) => (e.trackSerials ? unitsHere(e.id).length : stockIn(e, dep));
+  const expected = (e: Equipment) => (e.trackSerials ? unitsHere(e.id).length : multi ? stockAt(e, dep, av.res) : e.quantity);
   const countOf = (e: Equipment): number | undefined => (e.trackSerials ? (unitsHere(e.id).some((u) => found.has(u.id)) ? unitsHere(e.id).filter((u) => found.has(u.id)).length : undefined) : ses.counted[e.id]);
   const stateOf = (e: Equipment): 'todo' | 'ok' | 'diff' => { const c = countOf(e); return c === undefined ? 'todo' : c === expected(e) ? 'ok' : 'diff'; };
 
@@ -163,10 +176,13 @@ export default function Inventory() {
         return true;
       }
       if (st === 'repair') { say({ ok: false, msg: `${e.name} n° ${unit.serial} est en réparation (hors service) : non comptée.`, actions: [{ label: 'Remettre en service', run: async () => { await setUnitState(unit.id, 'ok'); setFlash({ ok: true, msg: 'Remise en service. Scanne-la à nouveau.' }); } }] }); return false; }
-      if (!ui.burst) { beep(true); markUnits([unit.id]); setFlash({ ok: true, msg: `${e.name} n° ${unit.serial} : ouvert` }); setOpen({ id: e.id, unit: unit.id }); return true; }
-      if (found.has(unit.id)) { say({ ok: false, msg: `${e.name} n° ${unit.serial} déjà compté, pas compté deux fois.` }); return false; }
+      if (ui.burst && found.has(unit.id) && inDepot(unit)) { say({ ok: false, msg: `${e.name} n° ${unit.serial} déjà compté, pas compté deux fois.` }); return false; }
+      const moved = await bringHere(unit);
+      if (!ui.burst) { beep(true); markUnits([unit.id]); setFlash({ ok: true, msg: `${e.name} n° ${unit.serial} : ouvert${moved}` }); setOpen({ id: e.id, unit: unit.id }); return true; }
       markUnits([unit.id]);
-      say({ ok: true, msg: `${e.name} n° ${unit.serial} — ${unitsHere(e.id).filter((u) => found.has(u.id)).length + 1} / ${unitsHere(e.id).length}${unit.defect ? ` · à réparer : ${unit.defect}` : ''}` });
+      // l'unité qui vient d'être rangée ici n'est pas encore dans la liste : on la compte
+      const seenN = unitsHere(e.id).filter((u) => found.has(u.id)).length + 1, total = unitsHere(e.id).length + (moved ? 1 : 0);
+      say({ ok: true, msg: `${e.name} n° ${unit.serial} — ${seenN} / ${total}${moved}${unit.defect ? ` · à réparer : ${unit.defect}` : ''}` });
       return true;
     }
     if (e.isKit && e.kitItems.length) {
@@ -303,14 +319,14 @@ export default function Inventory() {
           onAddStock={() => { setOpen(null); setAddStock(openItem.id); }} />
       )}
       {openItem && !openItem.isKit && openItem.trackSerials && (
-        <UnitsModal e={openItem} here={unitsHere(openItem.id)} all={av.units.filter((u) => u.equipmentId === openItem.id)} found={found} flash={open?.unit}
+        <UnitsModal e={openItem} here={unitsHere(openItem.id)} bringHere={bringHere} all={av.units.filter((u) => u.equipmentId === openItem.id)} found={found} flash={open?.unit}
           equipment={av.equipment} units={av.units} onToggle={(id) => (found.has(id) ? unmarkUnits([id]) : markUnits([id]))}
           onMark={markUnits} onReset={() => unmarkUnits(av.units.filter((u) => u.equipmentId === openItem.id).map((u) => u.id))}
           onClose={() => { setOpen(null); ref.current?.focus(); }} onInfo={() => setSheet(openItem.id)}
           onPrint={(unitIds) => { setOpen(null); setPrintFor({ id: openItem.id, unitIds }); }} />
       )}
       {openItem && openItem.isKit && (
-        <KitModal kit={openItem} byId={byId} units={av.units} here={unitsHere} found={found} done={ses.kitsDone?.[openItem.id] || 0} canUndo={ses.kits[ses.kits.length - 1]?.kitId === openItem.id}
+        <KitModal kit={openItem} byId={byId} units={av.units} here={unitsHere} found={found} bringHere={bringHere} done={ses.kitsDone?.[openItem.id] || 0} canUndo={ses.kits[ses.kits.length - 1]?.kitId === openItem.id}
           onCommit={(qtys, units) => commitKit(openItem.id, qtys, units)} onUndo={undoKit} onClose={() => { setOpen(null); ref.current?.focus(); }}
           onPrint={() => { setOpen(null); setPrintFor({ id: openItem.id }); }} />
       )}
@@ -401,7 +417,8 @@ function CountModal({ e, exp, parts: parts0, onSave, onClear, onClose, onPrint, 
 }
 
 /* ---------- articles à numéros de série : une pastille par unité ---------- */
-function UnitsModal({ e, here, all, found, flash, equipment, units, onToggle, onMark, onReset, onClose, onInfo, onPrint }: {
+function UnitsModal({ e, here, all, found, flash, equipment, units, bringHere, onToggle, onMark, onReset, onClose, onInfo, onPrint }: {
+  bringHere: (u: SerialUnit) => Promise<string>;
   e: Equipment; here: SerialUnit[]; all: SerialUnit[]; found: Set<string>; flash?: string; equipment: Equipment[]; units: SerialUnit[];
   onToggle: (id: string) => void; onMark: (ids: string[]) => void; onReset: () => void; onClose: () => void; onInfo: () => void; onPrint: (unitIds?: string[]) => void;
 }) {
@@ -426,9 +443,10 @@ function UnitsModal({ e, here, all, found, flash, equipment, units, onToggle, on
     const u = hit.unit, st = unitState(u);
     if (st === 'repair') return ko(`${label(u)} est en réparation (hors service) : pas comptée.`);
     if (st === 'lost') { await setUnitState(u.id, 'ok', "retrouvée à l'inventaire"); onMark([u.id]); setHl(u.id); setMsg({ ok: true, t: `${label(u)} était perdue : retrouvée et remise en stock` }); beep(true); return true; }
-    if (found.has(u.id)) return ko(`${label(u)} déjà scannée, pas comptée deux fois.`);
+    if (found.has(u.id) && here.includes(u)) return ko(`${label(u)} déjà scannée, pas comptée deux fois.`);
+    const moved = await bringHere(u);
     onMark([u.id]); setHl(u.id); beep(true);
-    setMsg({ ok: true, t: `${label(u)} — ${seen.length + 1} / ${here.length}` });
+    setMsg({ ok: true, t: `${label(u)} — ${seen.length + 1} / ${here.length + (moved ? 1 : 0)}${moved}` });
     return true;
   };
   return (
@@ -477,7 +495,8 @@ function UnitsModal({ e, here, all, found, flash, equipment, units, onToggle, on
 }
 
 /* ---------- kits : comptés un par un, contenu coché ou scanné ---------- */
-function KitModal({ kit, byId, units, here, found, done, canUndo, onCommit, onUndo, onClose, onPrint }: {
+function KitModal({ kit, byId, units, here, found, bringHere, done, canUndo, onCommit, onUndo, onClose, onPrint }: {
+  bringHere: (u: SerialUnit) => Promise<string>;
   kit: Equipment; byId: Map<string, Equipment>; units: SerialUnit[]; done: number; canUndo: boolean;
   /** unités attendues au dépôt et unités déjà vues pendant l'inventaire */
   here: (eqId: string) => SerialUnit[]; found: Set<string>;
@@ -520,7 +539,7 @@ function KitModal({ kit, byId, units, here, found, done, canUndo, onCommit, onUn
     if (rows.length && rows.every((r) => got(r, c, cu) >= r.k.qty)) finish(false, c, cu, true);
   };
   const started = rows.some((r) => got(r) > 0);
-  const scanHere = (raw: string) => {
+  const scanHere = async (raw: string) => {
     const c = raw.trim(); setCode('');
     if (!c) return false;
     const hit = findByCode(c, [...byId.values()], units);
@@ -529,6 +548,8 @@ function KitModal({ kit, byId, units, here, found, done, canUndo, onCommit, onUn
     if (hit.unit) {
       const l = curU[r.i] || [];
       if (l.includes(hit.unit.id)) { setMsg({ ok: false, t: `${hit.unit.barcode || hit.unit.serial} déjà scannée dans ce kit.` }); beep(false); return false; }
+      // unité d'un autre dépôt : rangée ici, sinon elle ne compterait pas
+      await bringHere(hit.unit);
       check(cur, { ...curU, [r.i]: [...l, hit.unit.id] });
     } else if (r.comp.trackSerials) { setMsg({ ok: false, t: `${r.comp.name} : scanne l'étiquette de l'unité.` }); beep(false); return false; }
     else check({ ...cur, [r.i]: Math.min(r.k.qty, got(r) + 1) }, curU);
@@ -725,7 +746,8 @@ function SendDiffs({ diffs, countOf, expected, unitsHere, found, depot, multi, m
             if (multi && depot !== mainDepot) {
               // dépôt secondaire : on corrige son stock propre
               const raw = await db.equipment.get(e.id);
-              if (raw) await patch(db.equipment, e.id, { stock: { ...raw.stock, [depot]: c }, quantity: raw.quantity + c - x, stockLog: [...(raw.stockLog || []), { at: new Date().toISOString(), delta: c - x, text: `[${new Date().toLocaleDateString('fr-FR')}] ${txt}` }] });
+              // l'attendu compte les transferts en cours : on corrige le stock propre du dépôt de l'écart (sans effacer les transferts)
+              if (raw) await patch(db.equipment, e.id, { stock: { ...raw.stock, [depot]: Math.max(0, (raw.stock?.[depot] || 0) + c - x) }, quantity: Math.max(0, raw.quantity + c - x), stockLog: [...(raw.stockLog || []), { at: new Date().toISOString(), delta: c - x, text: `[${new Date().toLocaleDateString('fr-FR')}] ${txt}` }] });
             } else await stockMove(e.id, c - x, txt);
             nb++;
           }

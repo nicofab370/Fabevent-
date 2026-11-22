@@ -11,6 +11,7 @@ import { setNumberProvider } from './db';
 import { warmUpScanner } from './components/Scanner';
 import { installUndo } from './undo';
 import { ensureUnitNumbers } from './unitNumbers';
+import { applyDoneTransfers } from './transferApply';
 
 installUndo();
 
@@ -23,6 +24,8 @@ if (currentWorkspace() === DEMO_WORKSPACE && (await db.projects.count()) === 0) 
 
 // unités sérialisées sans numéro #x (créées avant, importées) : on les numérote
 await ensureUnitNumbers().catch(() => 0);
+// transferts définitifs déjà effectués : le stock change vraiment de dépôt (une seule fois)
+await applyDoneTransfers().catch(() => 0);
 
 // iPhone : Safari ignore « user-scalable=no » ; on bloque le pincement (le double tap est coupé en CSS)
 document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
