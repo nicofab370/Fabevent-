@@ -309,7 +309,7 @@ export default function Inventory() {
           onPrint={(unitIds) => { setOpen(null); setPrintFor({ id: openItem.id, unitIds }); }} />
       )}
       {openItem && openItem.isKit && (
-        <KitModal kit={openItem} byId={byId} units={av.units} done={ses.kitsDone?.[openItem.id] || 0} canUndo={ses.kits[ses.kits.length - 1]?.kitId === openItem.id}
+        <KitModal kit={openItem} byId={byId} units={av.units} here={unitsHere} found={found} done={ses.kitsDone?.[openItem.id] || 0} canUndo={ses.kits[ses.kits.length - 1]?.kitId === openItem.id}
           onCommit={(qtys, units) => commitKit(openItem.id, qtys, units)} onUndo={undoKit} onClose={() => { setOpen(null); ref.current?.focus(); }}
           onPrint={() => { setOpen(null); setPrintFor({ id: openItem.id }); }} />
       )}
@@ -476,8 +476,10 @@ function UnitsModal({ e, here, all, found, flash, equipment, units, onToggle, on
 }
 
 /* ---------- kits : comptés un par un, contenu coché ou scanné ---------- */
-function KitModal({ kit, byId, units, done, canUndo, onCommit, onUndo, onClose, onPrint }: {
+function KitModal({ kit, byId, units, here, found, done, canUndo, onCommit, onUndo, onClose, onPrint }: {
   kit: Equipment; byId: Map<string, Equipment>; units: SerialUnit[]; done: number; canUndo: boolean;
+  /** unités attendues au dépôt et unités déjà vues pendant l'inventaire */
+  here: (eqId: string) => SerialUnit[]; found: Set<string>;
   onCommit: (qtys: Record<string, number>, units: string[]) => void; onUndo: () => void; onClose: () => void; onPrint: () => void;
 }) {
   const rows = kit.kitItems.map((k, i) => ({ i, k, comp: byId.get(k.equipmentId) })).filter((r): r is { i: number; k: typeof r.k; comp: Equipment } => !!r.comp);
@@ -486,18 +488,30 @@ function KitModal({ kit, byId, units, done, canUndo, onCommit, onUndo, onClose, 
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null);
   const [code, setCode] = useState('');
   const [camera, setCamera] = useState(false);
-  const got = (r: (typeof rows)[number], c = cur, cu = curU) => Math.max(c[r.i] || 0, (cu[r.i] || []).length);
-  const finish = (full: boolean, c = cur, cu = curU, auto = false) => {
+  type Row = (typeof rows)[number];
+  const got = (r: Row, c = cur, cu = curU) => (r.comp.trackSerials ? (cu[r.i] || []).length : Math.max(c[r.i] || 0, (cu[r.i] || []).length));
+  /** unités encore libres d'un article sérialisé : ni vues ailleurs dans l'inventaire, ni déjà dans ce kit */
+  const free = (r: Row, cu = curU) => { const taken = new Set(Object.values(cu).flat()); return here(r.comp.id).filter((u) => !found.has(u.id) && !taken.has(u.id)); };
+  /** comptage à la main d'un article sérialisé : on prend les unités libres dans l'ordre (le bon numéro peut être touché ensuite) */
+  const setUnitsCount = (r: Row, n: number, cu = curU) => {
+    const l = (cu[r.i] || []).slice(0, Math.max(0, n));
+    const add = free(r, cu).slice(0, Math.max(0, n - l.length)).map((u) => u.id);
+    return { ...cu, [r.i]: [...l, ...add] };
+  };
+  const finish = (full: boolean, c = cur, cu0 = curU, auto = false) => {
     const qtys: Record<string, number> = {}, us: string[] = [];
+    // « Kit complet » : les unités sérialisées non scannées sont comptées à la main
+    let cu = cu0;
+    if (full) for (const r of rows) if (r.comp.trackSerials) cu = setUnitsCount(r, r.k.qty, cu);
     for (const r of rows) {
       if (r.comp.trackSerials) { us.push(...(cu[r.i] || [])); continue; }
       const q = full ? r.k.qty : Math.min(got(r, c, cu), r.k.qty);
       qtys[r.comp.id] = (qtys[r.comp.id] || 0) + q;
     }
     onCommit(qtys, us);
-    const skip = rows.filter((r) => r.comp.trackSerials && !(cu[r.i] || []).length).map((r) => r.comp.name);
+    const short = rows.filter((r) => r.comp.trackSerials && (cu[r.i] || []).length < r.k.qty).map((r) => r.comp.name);
     setCur({}); setCurU({});
-    setMsg({ ok: true, t: `Kit n° ${done + 1} ${full || auto ? 'complet' : 'incomplet enregistré'}${skip.length ? ` · à scanner unité par unité : ${skip.join(', ')}` : ''}` });
+    setMsg({ ok: true, t: `Kit n° ${done + 1} ${(full && !short.length) || auto ? 'complet' : 'incomplet enregistré'}${full && short.length ? ` · plus d'unité libre au dépôt pour : ${short.join(', ')}` : ''}` });
     beep(true);
   };
   const check = (c: typeof cur, cu: typeof curU) => {
@@ -527,7 +541,7 @@ function KitModal({ kit, byId, units, done, canUndo, onCommit, onUndo, onClose, 
       <div className="muted">{[kit.code, 'kit / pack'].filter(Boolean).join(' · ')}</div>
       <div className="inv-expect"><span className="muted">Kits comptés</span><b>{done}</b></div>
       {msg && <div className={'flash ' + (msg.ok ? 'ok' : 'ko')}>{msg.t}</div>}
-      <p className="muted"><b>Kit n° {done + 1}</b> — « Kit complet » s'il ne manque rien. Sinon touche (ou scanne) chaque article trouvé : quand tout y est, le kit est compté tout seul et on passe au suivant.</p>
+      <p className="muted"><b>Kit n° {done + 1}</b> — « Kit complet » s'il ne manque rien. Sinon touche (ou scanne) chaque article trouvé ; les articles à numéro de série se comptent aussi à la main (+ / −, ou touche le numéro de l'unité). Quand tout y est, le kit est compté tout seul et on passe au suivant.</p>
       <div className="toolbar">
         <input placeholder="Scanner le contenu…" value={code} onChange={(ev) => setCode(ev.target.value)} onKeyDown={(ev) => ev.key === 'Enter' && scanHere(code)} aria-label="Scanner le contenu du kit" />
         <button type="button" className="secondary" onClick={() => setCamera(!camera)}>{camera ? 'Fermer la caméra' : <><Icon name="camera" />Caméra</>}</button>
@@ -538,13 +552,34 @@ function KitModal({ kit, byId, units, done, canUndo, onCommit, onUndo, onClose, 
           const g = got(r), ok = g >= r.k.qty;
           return (
             <div key={r.i} className={'inv-kitrow' + (ok ? ' ok' : '')} role="button" tabIndex={0}
-              onClick={() => { if (r.comp.trackSerials) return; const c = { ...cur, [r.i]: ok ? 0 : r.k.qty }; const cu = { ...curU }; if (!c[r.i]) delete cu[r.i]; check(c, cu); }}>
+              onClick={() => {
+                if (r.comp.trackSerials) { check(cur, setUnitsCount(r, ok ? 0 : r.k.qty)); return; }
+                const c = { ...cur, [r.i]: ok ? 0 : r.k.qty }; const cu = { ...curU }; if (!c[r.i]) delete cu[r.i]; check(c, cu);
+              }}>
               <span className="inv-main"><span className="inv-name">{ok && <Icon name="check" className="ok-txt" />}{r.comp.name}</span>
-                <span className="inv-sub">{r.comp.code}{r.comp.trackSerials ? ' · unités : scanne-les' : ''}</span></span>
+                <span className="inv-sub">{r.comp.code}{r.comp.trackSerials ? ' · numéro de série : scanne, touche le numéro ou compte avec + / −' : ''}</span>
+                {r.comp.trackSerials && (() => {
+                  const mine = (curU[r.i] || []).map((id) => units.find((u) => u.id === id)).filter((u): u is SerialUnit => !!u);
+                  const list = [...mine, ...free(r)];
+                  return list.length > 0 && (
+                    <span className="uchips kit-uchips" onClick={(ev) => ev.stopPropagation()}>
+                      {list.map((u) => {
+                        const on = mine.includes(u);
+                        return <button key={u.id} type="button" className={'uchip' + (on ? ' on' : '')} aria-pressed={on}
+                          disabled={!on && g >= r.k.qty} title={on ? 'Retirer du kit' : 'Cette unité est dans le kit'}
+                          onClick={() => check(cur, { ...curU, [r.i]: on ? (curU[r.i] || []).filter((x) => x !== u.id) : [...(curU[r.i] || []), u.id] })}>{u.barcode || u.serial}</button>;
+                      })}
+                    </span>
+                  );
+                })()}
+              </span>
               <span className="inv-kq" onClick={(ev) => ev.stopPropagation()}>
-                {r.k.qty > 1 && !r.comp.trackSerials && <button type="button" className="ghost small" aria-label="Un de moins" onClick={() => check({ ...cur, [r.i]: Math.max(0, g - 1) }, curU)}>−</button>}
+                {(r.k.qty > 1 || r.comp.trackSerials) && <button type="button" className="ghost small" aria-label={`Un de moins : ${r.comp.name}`} disabled={!g}
+                  onClick={() => (r.comp.trackSerials ? check(cur, setUnitsCount(r, g - 1)) : check({ ...cur, [r.i]: Math.max(0, g - 1) }, curU))}>−</button>}
                 <b>{g} / {r.k.qty}</b>
-                {r.k.qty > 1 && !r.comp.trackSerials && <button type="button" className="ghost small" aria-label="Un de plus" onClick={() => check({ ...cur, [r.i]: Math.min(r.k.qty, g + 1) }, curU)}>+</button>}
+                {(r.k.qty > 1 || r.comp.trackSerials) && <button type="button" className="ghost small" aria-label={`Un de plus : ${r.comp.name}`} disabled={g >= r.k.qty || (r.comp.trackSerials && !free(r).length)}
+                  title={r.comp.trackSerials && !free(r).length && g < r.k.qty ? 'Plus aucune unité libre au dépôt' : undefined}
+                  onClick={() => (r.comp.trackSerials ? check(cur, setUnitsCount(r, g + 1)) : check({ ...cur, [r.i]: Math.min(r.k.qty, g + 1) }, curU))}>+</button>}
               </span>
             </div>
           );

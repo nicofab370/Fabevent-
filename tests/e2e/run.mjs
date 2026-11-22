@@ -324,6 +324,49 @@ await step('Étiquettes QR imprimables', async () => {
   await popup.close();
 });
 
+await step('Étiquettes : autres mises en page (code-barres) et modèle personnel (créé, imprimé, supprimé)', async () => {
+  await go('etiquettes');
+  const sel = page.locator('select[aria-label="Format d\'étiquette"]');
+  await sel.selectOption('a4-14');
+  expect(await page.locator('.lt-preview .lab.code-barres svg').count() === 1, 'aperçu code-barres');
+  await page.click('button:text-is("+ Nouveau modèle")');
+  const m = page.locator('.modal');
+  await m.locator('input[aria-label="Nom du modèle"]').fill('Bacs entrepôt');
+  await m.locator('select[aria-label="Mise en page"]').selectOption('texte');
+  await m.locator('input[aria-label="Largeur en mm"]').fill('100');
+  await m.locator('input[aria-label="Hauteur en mm"]').fill('50');
+  await m.locator('input[aria-label="Colonnes"]').fill('3');
+  await m.locator('input[aria-label="Lignes"]').fill('5');
+  expect((await m.innerText()).includes('dépasse la feuille A4'), 'dépassement signalé');
+  expect(await m.locator('button:text-is("Enregistrer le modèle")').isDisabled(), 'enregistrement bloqué');
+  await m.locator('input[aria-label="Colonnes"]').fill('2');
+  await m.locator('input[aria-label="Imprimer : Emplacement"]').check();
+  await m.locator('button[aria-label="Monter Emplacement"]').click();
+  await m.locator('input[aria-label="Texte libre"]').fill('Propriété de la société');
+  const order = await m.locator('.lt-preview .tx div').evaluateAll((els) => els.map((e) => e.className));
+  expect(order.indexOf('f-location') < order.indexOf('f-company') && order.includes('f-footer'), `ordre des champs (${order})`);
+  await m.locator('button:text-is("Enregistrer le modèle")').click();
+  await page.waitForTimeout(400);
+  expect((await sel.locator('option:checked').innerText()) === 'Bacs entrepôt', 'modèle choisi après création');
+  expect((await page.locator('.label-template').innerText()).includes('10 par planche'), '10 par planche');
+  await page.click('text=Tout cocher');
+  await page.locator('input[aria-label="Commencer à l\'étiquette n°"]').fill('3');
+  const [popup] = await Promise.all([page.waitForEvent('popup'), page.click('button:has-text("Imprimer")')]);
+  await popup.waitForLoadState();
+  const n = await popup.locator('.lab.texte').count();
+  expect(n > 10, `étiquettes imprimées (${n})`);
+  expect(await popup.locator('.lab.blank').count() === 2, '2 étiquettes sautées');
+  expect(await popup.locator('.sheet').count() === Math.ceil((n + 2) / 10), 'une page par planche');
+  expect((await popup.locator('.f-footer').first().innerText()).includes('Propriété'), 'texte libre imprimé');
+  await popup.close();
+  await page.reload(); await page.waitForTimeout(600);
+  expect(await sel.locator('optgroup[label="Mes modèles"] option', { hasText: 'Bacs entrepôt' }).count() === 1, 'modèle gardé');
+  await page.click('button:text-is("Modifier le modèle")');
+  await m.locator('button:text-is("Supprimer")').click();
+  await page.waitForTimeout(400);
+  expect(await sel.locator('option', { hasText: 'Bacs entrepôt' }).count() === 0, 'modèle supprimé');
+});
+
 // étiqueteuse simulée : répond au statut (ruban 12 mm laminé) et signale chaque étiquette imprimée
 const installPtMock = () => page.evaluate(() => {
   const w = window;
@@ -1528,6 +1571,40 @@ await step('Inventaire : kit compté kit par kit (contenu coché, kit complet to
   await page.waitForTimeout(200);
   await m.locator('button:text-is("Fermer")').click();
   expect((await badge('Projecteur PAR LED')).startsWith('8'), '1 kit = 8 PAR comptés');
+});
+
+await step('Inventaire : kit avec article sérialisé compté à la main (+, numéro touché, kit complet)', async () => {
+  await page.locator('.inv-row.st-kit', { hasText: 'Pack conférence' }).click();
+  const m = page.locator('.modal');
+  const qu = m.locator('.inv-kitrow', { hasText: 'Qu-16' });
+  const chips = qu.locator('.kit-uchips .uchip');
+  const n = await chips.count();
+  expect(n >= 1, 'unités Qu-16 du dépôt proposées');
+  const u1 = await chips.first().innerText();
+  // + : une unité comptée à la main
+  await qu.locator('button[aria-label^="Un de plus"]').click();
+  expect((await qu.locator('.inv-kq b').innerText()) === '1 / 1', 'compté avec +');
+  expect(await qu.locator('.uchip.on').innerText() === u1, 'première unité libre prise');
+  // retirer puis toucher le numéro à la main
+  await qu.locator('.uchip.on').click();
+  expect((await qu.locator('.inv-kq b').innerText()) === '0 / 1', 'retirée');
+  await qu.locator('.uchip', { hasText: u1 }).click();
+  expect(await qu.locator('.uchip.on').innerText() === u1, 'numéro choisi à la main');
+  await m.locator('button:text-is("Kit complet")').click();
+  await page.waitForTimeout(200);
+  expect((await m.innerText()).includes('Kit n° 1 complet'), 'kit n° 1 complet');
+  expect(!(await chips.allInnerTexts()).includes(u1), 'unité déjà comptée retirée des choix');
+  // kits suivants : « Kit complet » prend les unités libres restantes
+  for (let i = 1; i < n; i++) { await m.locator('button:text-is("Kit complet")').click(); await page.waitForTimeout(200); }
+  // 3e kit : plus aucune Qu-16 libre
+  expect(await qu.locator('button[aria-label^="Un de plus"]').isDisabled(), '+ désactivé sans unité libre');
+  await m.locator('button:text-is("Kit complet")').click();
+  await page.waitForTimeout(200);
+  expect((await m.innerText()).includes('plus d\'unité libre au dépôt pour : Console Allen & Heath Qu-16'), 'kit n° 3 signalé incomplet');
+  await m.locator('button:text-is("Annuler le dernier kit")').click();
+  await page.waitForTimeout(200);
+  await m.locator('button:text-is("Fermer")').click();
+  expect((await badge('Console Allen & Heath Qu-16')).startsWith(String(n)), `les ${n} Qu-16 vues (${await badge('Console Allen & Heath Qu-16')})`);
 });
 
 await step('Inventaire : unités en pastilles, scan limité à l’article, scan qui ouvre l’article', async () => {
