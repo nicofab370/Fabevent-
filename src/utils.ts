@@ -140,9 +140,9 @@ export function inDepot(eq: Equipment, depotId: string | undefined, depots: { id
 }
 
 /** Quantité dans un dépôt maintenant, transferts en cours compris (arrivés ou partis). */
-export function stockAt(eq: Equipment, depotId: string, res?: Reservation[], at = toLocalInput(new Date())): number {
+export function stockAt(eq: Equipment, depotId: string | undefined, res?: Reservation[], at = toLocalInput(new Date())): number {
   let n = stockIn(eq, depotId);
-  for (const r of res || []) if (r.source === 'transfert' && r.equipmentId === eq.id && r.depotId === depotId && r.start <= at && at < r.end) n -= r.qty;
+  if (depotId) for (const r of res || []) if (r.source === 'transfert' && r.equipmentId === eq.id && r.depotId === depotId && r.start <= at && at < r.end) n -= r.qty;
   return Math.max(0, n);
 }
 
