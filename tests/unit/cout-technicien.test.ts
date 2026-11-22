@@ -36,6 +36,13 @@ describe('coût du technicien', () => {
     expect(crewAmount(jour('2026-12-10T10:00', '2026-12-10T22:00'), s, 0, p).cost).toBe(300 + 2 * 40 * 1.5);
     expect(crewAmount(heure('2026-12-10T10:00', '2026-12-10T22:00'), s, 0, p).cost).toBe(10 * 40 + 2 * 40 * 1.5);
   });
+  it('heures prestées : durée réelle, ou même horaire chaque jour sur plusieurs jours, trajet compris', () => {
+    expect(crewAmount(jour('2026-12-10T10:00', '2026-12-10T22:00'), s, 0, {}).worked).toBe(12);
+    const multi = crewAmount(jour('2026-12-10T08:00', '2026-12-12T18:00'), s, 0, {});
+    expect(multi).toMatchObject({ worked: 30, estimated: true, costOvertime: 0 });
+    expect(crewAmount({ ...jour('2026-12-10T10:00', '2026-12-10T18:00'), travel: true }, s, 30, {}).worked).toBe(9);
+    expect(crewAmount(heure('2026-12-10T14:00', '2026-12-11T01:00'), s, 0, {}).worked).toBe(11);
+  });
   it('plusieurs jours à la journée : pas d’heures sup. inventées', () => {
     expect(crewAmount(jour('2026-12-10T08:00', '2026-12-12T18:00'), s, 0, crewCostProfile({}, { costRate: 300 })).cost).toBe(900);
     expect(crewAmount(jour('2026-12-10T08:00', '2026-12-12T18:00'), s, 0, crewCostProfile({}, { hourlyCost: 30 })).cost).toBe(3 * 10 * 30);

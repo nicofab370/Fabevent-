@@ -494,8 +494,12 @@ export function lineDays(l: Pick<EquipmentLine, 'groupId' | 'periodIds'>, sp: Su
 
 export interface CrewAmount {
   unit: 'jour' | 'heure'; qty: number; hours: number; overtime: number; billed: number; cost: number;
-  /** heures sup. payées au technicien (au-delà de son forfait journalier) */
+  /** heures sup. du technicien (au-delà de son forfait journalier) */
   costOvertime: number;
+  /** heures prestées par le technicien (trajet compris) */
+  worked: number;
+  /** heures estimées (poste à la journée sur plusieurs jours : même horaire chaque jour) */
+  estimated: boolean;
 }
 
 /**
@@ -540,33 +544,45 @@ export function crewAmount(
   // coût : saisi sur le poste, sinon le profil de la personne
   const unitOf = c.costUnit ?? c.rateUnit ?? 'jour';
   const prof: CostProfile = c.cost != null ? (unitOf === 'heure' ? { hour: c.cost } : { day: c.cost })
-    : typeof costFallback === 'number' ? ((c.rateUnit ?? 'jour') === 'heure' ? { hour: costFallback } : { day: costFallback }) : costFallback;
+    : typeof costFallback === 'number' ? ((c.rateUnit ?? 'jour') === 'heure' ? { hour: costFallback } : { day: costFallback }) : { ...costFallback };
   if (c.cost != null && typeof costFallback === 'object') prof.dayHours = costFallback.dayHours;
   const limitCost = prof.dayHours || s.overtimeAfter || 10;
+
+  // heures prestées : à l'heure, la durée réelle ; à la journée sur plusieurs jours, le même horaire chaque jour
+  // (ex. 8 h → 18 h pendant 3 jours = 30 h), trajet compris
+  // (estimation : les heures sup. ne sont alors pas comptées, l'horaire réel de chaque jour n'étant pas connu)
+  let worked = hours, workedOver = over(limitCost), estimated = false;
+  if (c.rateUnit !== 'heure' && !single) {
+    const clock = (d: string) => { const x = new Date(d); return x.getHours() + x.getMinutes() / 60; };
+    const span = clock(b) - clock(a);
+    worked = round2((span > 0 ? span : limitCost) * days);
+    workedOver = 0;
+    estimated = true;
+  }
+
   const day = prof.day || 0, hour = prof.hour || 0;
-  let cost = 0, costOvertime = 0;
+  let cost = 0;
   if (hour && (!day || c.rateUnit === 'heure')) {
     // payé à l'heure (seulement un prix horaire, ou poste à l'heure)
-    if (c.rateUnit !== 'heure' && !single) {
-      // poste à la journée sur plusieurs jours : heures du jour inconnues, on compte le forfait d'heures
-      cost = days * limitCost * hour;
-    } else {
-      costOvertime = over(limitCost);
-      cost = (hours - costOvertime) * hour + costOvertime * hour * k;
-    }
+    cost = (worked - workedOver) * hour + workedOver * hour * k;
   } else if (day) {
-    // payé au forfait : par jour (poste à la journée) ou par journée de service (poste à l'heure)
+    // payé au forfait : par jour (poste à la journée) ou par journée de service (poste à l'heure) + heures sup.
     const n = c.rateUnit === 'heure' ? perDay.filter((h) => h > 0).length : days;
-    // heures sup. connues seulement pour un service d'une journée (ou à l'heure)
-    costOvertime = c.rateUnit === 'heure' || single ? over(limitCost) : 0;
-    cost = n * day + costOvertime * (hour || day / limitCost) * k;
+    cost = n * day + workedOver * (hour || day / limitCost) * k;
   }
   cost = round2(cost);
+  const extra = { cost, costOvertime: workedOver, worked, estimated };
 
-  if (c.rateUnit !== 'heure') return { unit: 'jour', qty: days, hours: 0, overtime: 0, billed: round2(days * c.rate), cost, costOvertime };
+  if (c.rateUnit !== 'heure') return { unit: 'jour', qty: days, hours: 0, overtime: 0, billed: round2(days * c.rate), ...extra };
   const overtime = over(s.overtimeAfter ?? 10);
   const normal = hours - overtime;
-  return { unit: 'heure', qty: hours, hours, overtime, billed: round2(normal * c.rate + overtime * c.rate * k), cost, costOvertime };
+  return { unit: 'heure', qty: hours, hours, overtime, billed: round2(normal * c.rate + overtime * c.rate * k), ...extra };
+}
+
+/** 12,5 → « 12 h 30 » */
+export function fmtHours(x: number): string {
+  const h = Math.floor(x + 1e-9), m = Math.round((x - h) * 60);
+  return m === 60 ? `${h + 1} h` : m ? `${h} h ${String(m).padStart(2, '0')}` : `${h} h`;
 }
 
 /** Horaires communiqués : trajet aller avant le début et retour après la fin. */

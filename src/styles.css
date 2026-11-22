@@ -745,3 +745,8 @@ tr.post-open td:first-child { box-shadow: inset 4px 0 0 #d97706; }
 .contact-field .quick-add-list li span.muted { font-size: 12px; }
 .cost-unit { margin-left: 3px; font-size: 12px; }
 .cost-help { margin: -4px 0 4px; font-size: 12px; }
+.hours-cell { display: inline-flex; flex-direction: column; align-items: flex-end; line-height: 1.25; }
+td:not(.n) .hours-cell { align-items: flex-start; }
+.hours-sub { font-size: 11px; font-weight: 400; }
+.crew-hours { margin-top: 4px; font-size: 12px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.crew-total { margin: 6px 0 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
