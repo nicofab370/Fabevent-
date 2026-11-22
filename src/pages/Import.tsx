@@ -26,6 +26,7 @@ const FIELDS: Record<Target, ImportField[]> = {
     { key: 'name', label: 'Désignation *', guess: ['nom (dans la base de données)', 'nom', 'name', 'désignation', 'designation', 'displayname', 'article'] },
     { key: 'code', label: 'Référence (code équipement)', guess: ['code', 'référence', 'reference', 'ref', 'numéro', 'number'] },
     { key: 'category', label: 'Catégorie', guess: ['dossier (dossier)', 'catégorie', 'categorie', 'category', 'dossier', 'folder', 'groupe'] },
+    { key: 'path', label: 'Chemin (catégorie / sous-catégorie, prioritaire)', guess: ['chemin', 'path', 'category path'] },
     { key: 'quantity', label: 'Quantité', guess: ['quantité actuelle', 'quantité', 'quantite', 'quantity', 'stock', 'qté', 'qty', 'nombre'] },
     { key: 'dailyPrice', label: 'Prix / jour', guess: ['prix de location/vente', 'prix', 'price', 'tarif', 'prix de location', 'rental price', 'prix/jour'] },
     { key: 'costPrice', label: "Prix d'achat / sous-location", guess: ['prix de sous-location/achat', "prix d'achat", 'cost price'] },
@@ -207,6 +208,8 @@ export default function ImportPage() {
   const [result, setResult] = useState('');
   const [detected, setDetected] = useState('');
   const [busy, setBusy] = useState(false);
+  /** chemin Rentman « Fabri / Son / Console » : le premier niveau (société, dépôt) n'est pas une catégorie */
+  const [skipRoot, setSkipRoot] = useState(true);
 
   const onFile = (file: File) => {
     setResult('');
@@ -267,7 +270,25 @@ export default function ImportPage() {
         groups.set(k, g);
       }
       const cats = await db.categories.toArray();
-      const catByName = new Map(cats.map((c) => [c.name.toLowerCase(), c.id]));
+      /** catégorie (et sous-catégorie) d'une ligne, créées si besoin */
+      const categoryOf = async (r: Record<string, string>): Promise<string | undefined> => {
+        const path = get(r, 'path');
+        const segs = path ? path.split(/\s*[/>›]\s*/).map((x) => x.trim()).filter(Boolean) : [get(r, 'category')].filter(Boolean);
+        if (path && skipRoot && segs.length > 1) segs.shift();
+        if (!segs.length) return undefined;
+        const same = (a: string, b: string) => a.localeCompare(b, 'fr', { sensitivity: 'base' }) === 0;
+        const find = (name: string, parentId?: string) => cats.find((c) => same(c.name, name) && (path ? (c.parentId || undefined) === parentId : true));
+        const make = async (name: string, parentId?: string) => {
+          const c = { id: uid(), name, parentId, letter: parentId ? undefined : suggestCategoryLetter(name, cats.map((x) => x.letter || '')), createdAt: t, updatedAt: t };
+          await db.categories.put(c);
+          cats.push(c);
+          return c;
+        };
+        const main = find(segs[0]) || await make(segs[0]);
+        if (segs.length === 1) return main.id;
+        const subName = segs.slice(1).join(' / ');
+        return (find(subName, main.id) || await make(subName, main.id)).id;
+      };
       // articles déjà connus (base ou lignes précédentes du fichier) : par référence, ou par nom s'il n'y a pas de référence
       const known = await db.equipment.toArray();
       const byCode = new Map(known.filter((e) => e.code).map((e) => [e.code!.toLowerCase(), e]));
@@ -284,16 +305,7 @@ export default function ImportPage() {
         const g = groups.get(keyOf(r))!;
         let e: Equipment | undefined = code ? byCode.get(code.toLowerCase()) : byName.get(name.toLowerCase());
         if (!e) {
-          const catName = get(r, 'category');
-          let categoryId: string | undefined;
-          if (catName) {
-            categoryId = catByName.get(catName.toLowerCase());
-            if (!categoryId) {
-              categoryId = uid();
-              await db.categories.put({ id: categoryId, name: catName, letter: suggestCategoryLetter(catName, (await db.categories.toArray()).map((c) => c.letter || '')), createdAt: t, updatedAt: t });
-              catByName.set(catName.toLowerCase(), categoryId);
-            }
-          }
+          const categoryId = await categoryOf(r);
           // suivi par numéro de série : article sérialisé, ou numéros pour tout le stock
           const tracked = g.serialized || (g.serials > 0 && g.serials >= g.qty);
           const dims = ['length', 'width', 'height'].map((k) => parseNumber(get(r, k)));
@@ -540,6 +552,18 @@ export default function ImportPage() {
         <div className="card">
           <h2>Correspondance des colonnes ({rows.length} lignes)</h2>
           <p className="muted">{mapped.length} champ(s) reliés à une colonne du fichier ; {unused.length} colonne(s) non utilisée(s).</p>
+          {target === 'equipment' && map.path && (() => {
+            const ex = rows.map((r) => (r[map.path] || '').trim()).find((v) => v.split('/').length > 2) || rows.find((r) => r[map.path])?.[map.path] || '';
+            const segs = ex.split(/\s*[/>›]\s*/).filter(Boolean);
+            const shown = skipRoot && segs.length > 1 ? segs.slice(1) : segs;
+            return (
+              <label className="check-row">
+                <input type="checkbox" checked={skipRoot} onChange={(e) => setSkipRoot(e.target.checked)} />
+                Ignorer le premier niveau du chemin (société, dossier racine)
+                {ex && <span className="muted"> : « {ex.trim()} » → {shown[0]}{shown.length > 1 ? ` › ${shown.slice(1).join(' / ')}` : ''}</span>}
+              </label>
+            );
+          })()}
           {groups.map((g) => (
             <div key={g}>
               {g && <h3 style={{ marginTop: 12 }}>{g}</h3>}

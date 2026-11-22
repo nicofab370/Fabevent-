@@ -8,6 +8,8 @@ import { availableQty, blockPeriod, confirmDeleteSubproject, factorFor, fmtRange
 import { isPerPiece, type ProjectData } from './shared';
 import { codeFromScan, findByCode } from '../../codes';
 import { Icon } from '../../components/Icon';
+import { CategoryOptions } from '../../components/CategoryOptions';
+import { categoryLabel, inCategory, mainCategories, subCategories } from '../../categories';
 
 const EQ_MIME = 'application/x-fabevent-equipment';
 const LINE_MIME = 'application/x-fabevent-line';
@@ -85,7 +87,7 @@ function Catalogue({ d, qty, setQty, targetLabel, onAdd }: { d: ProjectData; qty
   const cats = useLiveQuery(() => db.categories.orderBy('name').toArray(), []) || [];
   const [b0, b1] = d.subs.length ? [d.subs.map((x) => blockPeriod(x)[0]).sort()[0], d.subs.map((x) => blockPeriod(x)[1]).sort().slice(-1)[0]] : [d.project.start, d.project.end];
   const list = d.av.equipment
-    .filter((e) => !e.archived && !e.accessoryOnly && (!cat || e.categoryId === cat) && [e.name, e.code, e.barcode, ...(e.tags || [])].join(' ').toLowerCase().includes(q.toLowerCase()))
+    .filter((e) => !e.archived && !e.accessoryOnly && inCategory(cats, e.categoryId, cat) && [e.name, e.code, e.barcode, ...(e.tags || [])].join(' ').toLowerCase().includes(q.toLowerCase()))
     .slice(0, 200);
   return (
     <aside className="eq-catalogue card">
@@ -93,7 +95,7 @@ function Catalogue({ d, qty, setQty, targetLabel, onAdd }: { d: ProjectData; qty
       <input placeholder="Rechercher…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Rechercher dans le catalogue" />
       <select value={cat} onChange={(e) => setCat(e.target.value)} style={{ marginTop: 6 }}>
         <option value="">Toutes catégories</option>
-        {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        <CategoryOptions cats={cats} />
       </select>
       <label className="check-row" style={{ marginTop: 6 }}>Quantité déposée <NumInput className="w-qty" value={qty} onChange={setQty} aria-label="Quantité déposée" /></label>
       <p className="muted" style={{ fontSize: 12, margin: '6px 0' }}>Glisse vers un groupe, ou « + » pour ajouter à : <strong>{targetLabel || '—'}</strong>. Dispo sur la durée du projet.</p>
@@ -399,7 +401,7 @@ function EquipmentPicker({ sp, groupId, depot, discount, equipment, res, existin
   const [added, setAdded] = useState('');
   const cats = useLiveQuery(() => db.categories.orderBy('name').toArray(), []) || [];
   const units = useLiveQuery(() => db.units.toArray(), []) || [];
-  const catName = new Map(cats.map((c) => [c.id, c.name]));
+  const catName = new Map(cats.map((c) => [c.id, categoryLabel(cats, c.id)]));
   const [bStart, bEnd] = lineBlock({ groupId: target || undefined }, sp);
   const groups = sp.groups || [];
   const avail = new Map(equipment.map((e) => [e.id, availableQty(e, equipment, res, bStart, bEnd, undefined, depot)]));
@@ -409,7 +411,7 @@ function EquipmentPicker({ sp, groupId, depot, discount, equipment, res, existin
   const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const base = equipment.filter((e) => !e.archived && !e.accessoryOnly && words.every((w) => [e.name, e.code, e.barcode, ...(e.extraCodes || []), e.categoryId && catName.get(e.categoryId), ...(e.tags || [])].join(' ').toLowerCase().includes(w)));
   const list = base
-    .filter((e) => (!cat || e.categoryId === cat) && (!tag || e.tags?.includes(tag)) && (!onlyAvail || (avail.get(e.id) || 0) > 0))
+    .filter((e) => inCategory(cats, e.categoryId, cat) && (!tag || e.tags?.includes(tag)) && (!onlyAvail || (avail.get(e.id) || 0) > 0))
     .sort((a, b) => sort === 'dispo' ? (avail.get(b.id) || 0) - (avail.get(a.id) || 0) : sort === 'prix' ? a.dailyPrice - b.dailyPrice : a.name.localeCompare(b.name));
   const selected = equipment.filter((e) => (qty[e.id] || 0) > 0);
   const count = selected.reduce((a, e) => a + (qty[e.id] || 0), 0);
@@ -434,11 +436,27 @@ function EquipmentPicker({ sp, groupId, depot, discount, equipment, res, existin
             }} />
           <div className="chips">
             <button className={'chip' + (!cat ? ' on' : '')} onClick={() => setCat('')}>Tout ({base.length})</button>
-            {cats.map((c) => {
-              const n = base.filter((e) => e.categoryId === c.id).length;
-              return n ? <button key={c.id} className={'chip' + (cat === c.id ? ' on' : '')} onClick={() => setCat(cat === c.id ? '' : c.id)}>{c.name} ({n})</button> : null;
+            {mainCategories(cats).map((c) => {
+              const n = base.filter((e) => inCategory(cats, e.categoryId, c.id)).length;
+              const on = cat === c.id || cats.find((x) => x.id === cat)?.parentId === c.id;
+              return n ? <button key={c.id} className={'chip' + (on ? ' on' : '')} onClick={() => setCat(cat === c.id ? '' : c.id)}>{c.name} ({n})</button> : null;
             })}
           </div>
+          {(() => {
+            // sous-catégories de la catégorie choisie
+            const main = cats.find((x) => x.id === cat);
+            const parentId = main?.parentId || main?.id;
+            const subs = parentId ? subCategories(cats, parentId) : [];
+            if (!subs.length) return null;
+            return (
+              <div className="chips sub-chips" aria-label="Sous-catégories">
+                {subs.map((c) => {
+                  const n = base.filter((e) => e.categoryId === c.id).length;
+                  return n ? <button key={c.id} className={'chip' + (cat === c.id ? ' on' : '')} onClick={() => setCat(cat === c.id ? parentId! : c.id)}>{c.name} ({n})</button> : null;
+                })}
+              </div>
+            );
+          })()}
           <div className="toolbar" style={{ marginBottom: 0 }}>
             <label className="check-row"><input type="checkbox" checked={onlyAvail} onChange={(e) => setOnlyAvail(e.target.checked)} /> Disponibles seulement</label>
             {tags.length > 0 && (

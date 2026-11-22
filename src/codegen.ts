@@ -34,7 +34,12 @@ export function depotLetter(s: Pick<Settings, 'depots' | 'codeLetter'>, depotId?
   return d?.letter || s.codeLetter || 'F';
 }
 
-export function categoryLetter(c?: Pick<Category, 'name' | 'letter'>): string {
+/** lettre d'une catégorie ; une sous-catégorie sans lettre propre prend celle de sa catégorie principale */
+export function categoryLetter(c?: Pick<Category, 'name' | 'letter' | 'parentId'>, cats: Pick<Category, 'id' | 'name' | 'letter'>[] = []): string {
+  if (c && !c.letter && c.parentId) {
+    const p = cats.find((x) => x.id === c.parentId);
+    if (p) return categoryLetter(p);
+  }
   return c?.letter || (c ? suggestCategoryLetter(c.name) : 'X');
 }
 
@@ -56,7 +61,7 @@ export function articleCode(depot: string, cat: string, n: number): string {
 
 /** Code proposé pour un nouvel article. */
 export function newArticleCode(e: Pick<Equipment, 'categoryId' | 'isKit' | 'homeDepotId'>, s: Pick<Settings, 'depots' | 'codeLetter'>, cats: Category[], all: Pick<Equipment, 'code'>[]): string {
-  const cat = e.isKit ? 'K' : categoryLetter(cats.find((c) => c.id === e.categoryId));
+  const cat = e.isKit ? 'K' : categoryLetter(cats.find((c) => c.id === e.categoryId), cats);
   return articleCode(depotLetter(s, e.homeDepotId), cat, nextArticleNumber(all));
 }
 

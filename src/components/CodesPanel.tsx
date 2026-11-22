@@ -24,7 +24,7 @@ export function CodesPanel({ letterOf }: { letterOf: (depotId?: string) => strin
         article suivi de son rang : <code>{letterOf()}-S-0010-03</code> ; au-delà de 99 unités, le rang passe en hexadécimal (0A, 0B… FF).
       </p>
       <div className="cat-letters" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-        {cats.map((c) => (
+        {cats.filter((c) => !c.parentId).map((c) => (
           <label key={c.id} className="check-row">{c.name}
             <input value={c.letter || ''} maxLength={3} placeholder={suggestCategoryLetter(c.name, taken)} style={{ width: 56 }} aria-label={`Lettre de la catégorie ${c.name}`}
               onChange={(e) => patch(db.categories, c.id, { letter: cleanLetter(e.target.value) || undefined })} />
@@ -36,10 +36,10 @@ export function CodesPanel({ letterOf }: { letterOf: (depotId?: string) => strin
         const all = await db.equipment.toArray();
         let n = nextArticleNumber(all);
         // lettres proposées enregistrées pour les catégories qui n'en ont pas
-        for (const c of cats) if (!c.letter) await patch(db.categories, c.id, { letter: suggestCategoryLetter(c.name, taken) });
+        for (const c of cats) if (!c.letter && !c.parentId) await patch(db.categories, c.id, { letter: suggestCategoryLetter(c.name, taken) });
         const fresh = await db.categories.toArray();
         for (const e of missingEq.sort((a, b) => a.name.localeCompare(b.name))) {
-          const cat = e.isKit ? 'K' : categoryLetter(fresh.find((c) => c.id === e.categoryId));
+          const cat = e.isKit ? 'K' : categoryLetter(fresh.find((c) => c.id === e.categoryId), fresh);
           await patch(db.equipment, e.id, { code: articleCode(letterOf(e.homeDepotId), cat, n++) });
         }
         const eqs = await db.equipment.toArray();

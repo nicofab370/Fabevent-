@@ -11,6 +11,9 @@ import { CsvButton, CustomFieldsEditor, exportCsv, TagInput, Tags } from '../com
 import { availableQty, money, save, stockIn, toLocalInput } from '../utils';
 import PrintLabelModal from '../components/PrintLabelModal';
 import { Icon } from '../components/Icon';
+import { CategoryOptions } from '../components/CategoryOptions';
+import { CategoriesModal } from '../components/CategoriesModal';
+import { categoryLabel, inCategory, mainCategories } from '../categories';
 
 type Draft = Omit<Equipment, 'id' | 'createdAt' | 'updatedAt'> & Partial<Equipment>;
 const blank = (): Draft => ({ name: '', quantity: 1, dailyPrice: 0, isKit: false, kitItems: [] });
@@ -19,13 +22,14 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
   const [e, setE] = useState<Draft>(initial || blank());
   const [newCat, setNewCat] = useState('');
   const [newLetter, setNewLetter] = useState('');
+  const [newParent, setNewParent] = useState('');
   const cats = useLiveQuery(() => db.categories.orderBy('name').toArray(), []) || [];
   const settings = useSettings();
   const depots = settings.depots || [];
   // code automatique F-S-0010 tant qu'il n'a pas été saisi à la main (jamais changé pour un article existant)
   const [codeAuto, setCodeAuto] = useState(!initial?.code);
   const letterSuggest = suggestCategoryLetter(newCat, cats.map((c) => c.letter || ''));
-  const previewCats = newCat.trim() ? [...cats, { id: '__new', name: newCat, letter: cleanLetter(newLetter) || letterSuggest } as Category] : cats;
+  const previewCats = newCat.trim() ? [...cats, { id: '__new', name: newCat, parentId: newParent || undefined, letter: newParent ? undefined : cleanLetter(newLetter) || letterSuggest } as Category] : cats;
   const all = useLiveQuery(() => db.equipment.orderBy('name').toArray(), []) || [];
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setE({ ...e, [k]: v });
 
@@ -33,7 +37,7 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
     ev.preventDefault();
     const print = (ev.nativeEvent as SubmitEvent).submitter?.getAttribute('data-print') === '1';
     let categoryId = e.categoryId;
-    if (newCat.trim()) categoryId = (await save(db.categories, { name: newCat.trim(), letter: cleanLetter(newLetter) || letterSuggest })).id;
+    if (newCat.trim()) categoryId = (await save(db.categories, newParent ? { name: newCat.trim(), parentId: newParent } : { name: newCat.trim(), letter: cleanLetter(newLetter) || letterSuggest })).id;
     let code = e.code?.trim();
     if (!code && codeAuto) code = newArticleCode({ ...e, categoryId }, settings, await db.categories.toArray(), await db.equipment.toArray());
     const contents = (e.contents || []).filter((c) => c.name.trim()).map((c) => ({ name: c.name.trim(), qty: c.qty || 1 }));
@@ -53,11 +57,19 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
       <Field label="Catégorie">
         <select value={e.categoryId || ''} onChange={(x) => set('categoryId', x.target.value || undefined)}>
           <option value="">—</option>
-          {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          <CategoryOptions cats={cats} />
         </select>
       </Field>
-      <Field label="…ou nouvelle catégorie"><input value={newCat} onChange={(x) => setNewCat(x.target.value)} placeholder="ex. Son, Lumière, Vidéo" /></Field>
+      <Field label="…ou nouvelle catégorie"><input value={newCat} onChange={(x) => setNewCat(x.target.value)} placeholder="ex. Son, Lumière, Micro" /></Field>
       {newCat.trim() && (
+        <Field label="Sous-catégorie de">
+          <select value={newParent} onChange={(x) => setNewParent(x.target.value)} aria-label="Catégorie principale de la nouvelle catégorie">
+            <option value="">— aucune (catégorie principale) —</option>
+            {mainCategories(cats).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </Field>
+      )}
+      {newCat.trim() && !newParent && (
         <Field label="Lettre de la nouvelle catégorie (dans les codes)">
           <input value={newLetter} maxLength={3} onChange={(x) => setNewLetter(cleanLetter(x.target.value))} placeholder={letterSuggest} aria-label="Lettre de la catégorie" />
         </Field>
@@ -227,14 +239,15 @@ export default function EquipmentList() {
   const [from, setFrom] = useState(toLocalInput(now));
   const [to, setTo] = useState(toLocalInput(new Date(now.getTime() + 86400000)));
 
-  const catName = new Map(cats.map((c) => [c.id, c.name]));
+  const catName = new Map(cats.map((c) => [c.id, categoryLabel(cats, c.id)]));
+  const [showCats, setShowCats] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [showAcc, setShowAcc] = useState(false);
   const allTags = Array.from(new Set(equipment.flatMap((e) => e.tags || []))).sort();
   const filtered = equipment.filter((e) =>
     !!e.archived === showArchived &&
     !!e.accessoryOnly === showAcc &&
-    (!cat || e.categoryId === cat) &&
+    inCategory(cats, e.categoryId, cat) &&
     (!tag || e.tags?.includes(tag)) &&
     [e.name, e.code, e.barcode, ...(e.tags || [])].join(' ').toLowerCase().includes(q.toLowerCase()));
   const toggle = (id: string) => { const n = new Set(selected); if (n.has(id)) n.delete(id); else n.add(id); setSelected(n); };
@@ -248,6 +261,7 @@ export default function EquipmentList() {
         <CsvButton onClick={csv} />
         <button className="secondary" onClick={() => nav('/etiquettes')}>Étiquettes QR</button>
         <button className="secondary" onClick={() => nav('/inventaire')}>Inventaire</button>
+        <button className="secondary" onClick={() => setShowCats(true)}>Catégories</button>
         <button onClick={() => setCreating(true)}>+ Nouvel article</button>
       </PageHead>
       <div className="card">
@@ -255,7 +269,7 @@ export default function EquipmentList() {
           <input placeholder="Rechercher (nom, réf, code-barres, étiquette)…" value={q} onChange={(e) => setQ(e.target.value)} />
           <select value={cat} onChange={(e) => setCat(e.target.value)}>
             <option value="">Toutes catégories</option>
-            {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            <CategoryOptions cats={cats} />
           </select>
           {depots.length > 1 && (
             <select value={depot} onChange={(e) => setDepot(e.target.value)}>
@@ -313,6 +327,7 @@ export default function EquipmentList() {
       </div>
       {creating && <Modal title="Nouvel article" onClose={() => setCreating(false)} wide><EquipmentForm onDone={() => setCreating(false)} onPrint={setPrintId} /></Modal>}
       {printId && <PrintLabelModal equipmentId={printId} onClose={() => setPrintId(null)} />}
+      {showCats && <CategoriesModal onClose={() => setShowCats(false)} />}
       {bulk && <BulkEdit ids={[...selected]} onClose={(done) => { setBulk(false); if (done) setSelected(new Set()); }} />}
     </>
   );
@@ -353,7 +368,7 @@ function BulkEdit({ ids, onClose }: { ids: string[]; onClose: (done: boolean) =>
         <Field label="Catégorie">
           <select value={catId} onChange={(e) => setCatId(e.target.value)}>
             <option value="">— inchangée —</option>
-            {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            <CategoryOptions cats={cats} />
           </select>
         </Field>
         <Field label="Ajouter l'étiquette"><input value={addTag} onChange={(e) => setAddTag(e.target.value)} /></Field>

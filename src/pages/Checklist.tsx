@@ -14,6 +14,7 @@ import { ItemSheet, beep } from './Inventory';
 import { addEquipmentToSub } from './project/EquipmentTab';
 import { warehouseStatus } from './project/status';
 import { Icon, type IconName } from '../components/Icon';
+import { categoryLabel } from '../categories';
 
 /*
  * Checklist de sortie et de retour — reprise de la Checklist FABRI.live (sitefab/checklist), désormais native :
@@ -685,7 +686,7 @@ export function ProjectChecklist() {
   const project = useLiveQuery(() => (sp ? db.projects.get(sp.projectId) : undefined), [sp?.projectId]);
   const av = useAvailability();
   const categories = useLiveQuery(() => db.categories.toArray(), []) || [];
-  const catName = new Map(categories.map((c) => [c.id, c.name]));
+  const catName = new Map(categories.map((c) => [c.id, categoryLabel(categories, c.id)]));
   const [phase, setPhase] = useState<Phase>(() => (sp && ['en_cours', 'execute'].includes(sp.status) ? 'retour' : 'sortie'));
   if (!sp || !project) return <p>Chargement…</p>;
   const eqMap = new Map(av.equipment.map((e) => [e.id, e]));

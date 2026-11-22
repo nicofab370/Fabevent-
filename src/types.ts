@@ -144,6 +144,8 @@ export interface ContactPerson {
 
 export interface Category extends Base {
   name: string;
+  /** sous-catégorie : catégorie principale (Son › Micro) ; un seul niveau */
+  parentId?: ID;
   /** lettre(s) dans les codes du matériel : S son, V vidéo, L lumière, IT informatique, R rigging… */
   letter?: string;
 }
