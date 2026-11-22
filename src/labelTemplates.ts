@@ -338,6 +338,12 @@ function tuneCss(t: LabelTemplate, base: number): string {
     if (st.italic) r.push('font-style:italic');
     if (st.upper) r.push('text-transform:uppercase');
     if (st.wrap === false) r.push('white-space:nowrap');
+    // nom sur une ligne : les « … » coupent le nom, avant le #x
+    if (st.wrap === false && part === 'title') {
+      const centered = ['qr-dessus', 'qr-seul', 'cable', 'code-barres'].includes(t.layout);
+      const j = t.align === 'gauche' ? 'flex-start' : t.align === 'droite' ? 'flex-end' : t.align === 'centre' || centered ? 'center' : 'flex-start';
+      out.push(`.lab .f-title{display:flex;justify-content:${j}}.lab .f-title .nm{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.lab .f-title .no{flex:none;white-space:pre}`);
+    }
     if (st.wrap) r.push('white-space:normal;overflow-wrap:anywhere');
     if (r.length) out.push(`.lab .f-${part}{${r.join(';')}}`);
   }
@@ -370,7 +376,7 @@ export function labelCss(t0: LabelTemplate): string {
   const big = t.layout === 'texte';
   return `.lab{width:${t.w}mm;height:${t0.h}mm;box-sizing:border-box;padding:1.5mm;overflow:hidden;display:flex;gap:1.5mm;font-family:system-ui,sans-serif;color:#000;background:#fff;${t.border ? 'border:0.3mm solid #000;' : ''}}
 .lab .qr svg{width:${qr.toFixed(1)}mm;height:${qr.toFixed(1)}mm;display:block}.lab .qr{flex:none}
-.lab .tx{min-width:0;display:flex;flex-direction:column;justify-content:center}.lab .tx div{overflow:hidden;text-overflow:ellipsis;line-height:1.12}
+.lab .tx{min-width:0;display:flex;flex-direction:column;justify-content:center}.lab .f-title .no{white-space:nowrap}.lab .tx div{overflow:hidden;text-overflow:ellipsis;line-height:1.12}
 .lab .f-title{font-weight:700;font-size:${(base * (big ? 1.9 : 1)).toFixed(1)}pt}.lab .f-code{font:700 ${(base * (big ? 1.25 : 0.9)).toFixed(1)}pt ui-monospace,Menlo,Consolas,monospace}
 .lab .f-serial,.lab .f-category,.lab .f-location{font-size:${(base * (big ? 1.05 : 0.82)).toFixed(1)}pt}
 .lab .f-contents{font-size:${(base * (big ? 0.95 : 0.72)).toFixed(1)}pt}.lab .f-company,.lab .f-footer{font-size:${(base * 0.68).toFixed(1)}pt;color:#444}
@@ -385,6 +391,18 @@ ${tuneCss(t, base)}${fillCss(t)}${my > 0 ? `\n.lab{padding-top:${(my + (t.paddin
 }
 
 /** une étiquette (HTML) */
+/** « Table de mix #3 » → nom et numéro d'unité séparés (le numéro ne doit jamais être coupé par « … ») */
+export function splitUnitNo(title: string): [string, string] {
+  const m = title.match(/^(.*\S)(\s+#\d+)$/);
+  return m ? [m[1], m[2]] : [title, ''];
+}
+/** nom de l'article : seul le nom est raccourci par « … », le « #x » reste toujours visible */
+function titleHtml(x: { cls: string; text: string }): string {
+  const [name, no] = x.cls === 'f-title' ? splitUnitNo(x.text) : [x.text, ''];
+  if (!no) return esc(x.text);
+  return `<span class="nm">${esc(name)}</span><span class="no">${esc(no)}</span>`;
+}
+
 /** mise en page libre, code à gauche ou à droite : zones placées sous le code, sur toute la largeur */
 export const sideLayout = (t: Pick<LabelTemplate, 'layout' | 'symbolPos' | 'symbol'>) => t.layout === 'libre' && t.symbol !== 'aucun' && (!t.symbolPos || t.symbolPos === 'gauche' || t.symbolPos === 'droite');
 const isBelow = (t: LabelTemplate, p: LabelPart) => sideLayout(t) && t.styles?.[p]?.place === 'dessous';
@@ -393,7 +411,7 @@ export const hasBelow = (t: LabelTemplate) => sideLayout(t) && (['header', 'foot
 export function labelHtml(t: LabelTemplate, l: SheetLabel, company: string, qrPayload: (code: string) => string = (c) => c, logo?: string): string {
   const img = logo && t.logo && t.logo !== 'aucun' ? `<img class="logo" src="${esc(logo)}" alt="">` : '';
   const all = lines(t, l, company);
-  const div = (x: { cls: string; text: string }) => `<div class="${x.cls}">${esc(x.text)}</div>`;
+  const div = (x: { cls: string; text: string }) => `<div class="${x.cls}">${titleHtml(x)}</div>`;
   const tx = `<div class="tx">${t.logo === 'haut' ? img : ''}${all.filter((x) => !isBelow(t, x.part)).map(div).join('')}${t.logo === 'bas' ? img : ''}</div>`;
   const below = all.filter((x) => isBelow(t, x.part));
   // pas de bordure blanche dans le QR : la marge de l'étiquette (et l'espace avec le texte) sert de zone blanche
