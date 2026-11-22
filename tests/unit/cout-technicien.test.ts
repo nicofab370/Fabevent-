@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { crewAmount, crewCostProfile, crewCostShown } from '../../src/utils';
+import { crewAmount, crewCostProfile, crewCostShown, fmtHours } from '../../src/utils';
 
 const s = { overtimeAfter: 10, overtimeRate: 50 };
 const jour = (start: string, end: string) => ({ start, end, rate: 400 });
@@ -54,5 +54,14 @@ describe('coût du technicien', () => {
     expect(manual.cost).toBe(8 * 35);
     expect(crewCostShown({ rateUnit: 'jour' }, { hour: 30 })).toEqual({ value: 30, unit: 'heure' });
     expect(crewCostShown({ rateUnit: 'heure' }, { day: 300 })).toEqual({ value: 300, unit: 'jour' });
+  });
+});
+
+describe('affichage des heures', () => {
+  it('12 h, 12 h 30, 24 min', () => {
+    expect(fmtHours(12)).toBe('12 h');
+    expect(fmtHours(12.5)).toBe('12 h 30');
+    expect(fmtHours(0.4)).toBe('24 min');
+    expect(fmtHours(9.999)).toBe('10 h');
   });
 });
