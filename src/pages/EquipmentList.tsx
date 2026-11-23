@@ -15,6 +15,7 @@ import { CategoryOptions } from '../components/CategoryOptions';
 import { CategoriesModal } from '../components/CategoriesModal';
 import { EquipmentChooser } from '../components/EquipmentChooser';
 import { categoryLabel, inCategory, mainCategories } from '../categories';
+import { composeName, splitName } from '../equipmentName';
 
 type Draft = Omit<Equipment, 'id' | 'createdAt' | 'updatedAt'> & Partial<Equipment>;
 const blank = (): Draft => ({ name: '', quantity: 1, dailyPrice: 0, isKit: false, kitItems: [] });
@@ -31,6 +32,12 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
   const depots = settings.depots || [];
   // code automatique F-S-0010 tant qu'il n'a pas été saisi à la main (jamais changé pour un article existant)
   const [codeAuto, setCodeAuto] = useState(!initial?.code);
+  // désignation composée (marque modèle (description)) tant qu'elle n'a pas été écrite à la main
+  const [nameAuto, setNameAuto] = useState(!initial?.name || initial.name === composeName(initial.brand, initial.model, initial.summary));
+  const setPart = (k: 'brand' | 'model' | 'summary', v: string) => setE((x) => {
+    const n = { ...x, [k]: v || undefined };
+    return nameAuto ? { ...n, name: composeName(n.brand, n.model, n.summary) } : n;
+  });
   const letterSuggest = suggestCategoryLetter(newCat, cats.map((c) => c.letter || ''));
   const previewCats = newCat.trim() ? [...cats, { id: '__new', name: newCat, parentId: newParent || undefined, letter: newParent ? undefined : cleanLetter(newLetter) || letterSuggest } as Category] : cats;
   const all = useLiveQuery(() => db.equipment.orderBy('name').toArray(), []) || [];
@@ -51,7 +58,17 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
 
   return (
     <form className="form" onSubmit={submit}>
-      <Field label="Désignation *" full><input required autoFocus value={e.name} onChange={(x) => set('name', x.target.value)} /></Field>
+      <Field label="Marque"><input autoFocus value={e.brand || ''} onChange={(x) => setPart('brand', x.target.value)} placeholder="ex. Shure" aria-label="Marque" list="fab-brands" /></Field>
+      <Field label="Modèle"><input value={e.model || ''} onChange={(x) => setPart('model', x.target.value)} placeholder="ex. SM58s" aria-label="Modèle" /></Field>
+      <Field label="Description courte" full><input value={e.summary || ''} onChange={(x) => setPart('summary', x.target.value)} placeholder="ex. Micro dynamique Switch" aria-label="Description courte" /></Field>
+      <datalist id="fab-brands">{Array.from(new Set(all.map((a) => a.brand).filter(Boolean))).sort().map((b) => <option key={b} value={b} />)}</datalist>
+      <Field label={nameAuto ? 'Désignation * (composée automatiquement)' : 'Désignation *'} full>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <input required value={e.name} onChange={(x) => { set('name', x.target.value); setNameAuto(x.target.value === composeName(e.brand, e.model, e.summary)); }} aria-label="Désignation" />
+          {!nameAuto && (e.brand || e.model || e.summary) && <button type="button" className="ghost small" style={{ whiteSpace: 'nowrap' }} onClick={() => { set('name', composeName(e.brand, e.model, e.summary)); setNameAuto(true); }} title="Marque modèle (description)">Recomposer</button>}
+          {!e.brand && !e.model && !e.summary && e.name.trim() && <button type="button" className="ghost small" style={{ whiteSpace: 'nowrap' }} title="Remplit marque, modèle et description à partir de la désignation (à vérifier)" onClick={() => { const p = splitName(e.name, all.map((a) => a.brand || '')); setE({ ...e, brand: p.brand || undefined, model: p.model || undefined, summary: p.summary || undefined, name: composeName(p.brand, p.model, p.summary) || e.name }); setNameAuto(true); }}>Découper</button>}
+        </div>
+      </Field>
       <Field label="Code (automatique : dépôt-catégorie-numéro)">
         <input value={e.code || ''} onChange={(x) => { set('code', x.target.value); setCodeAuto(!x.target.value); }}
           placeholder={codeAuto ? `auto : ${newArticleCode({ ...e, categoryId: newCat.trim() ? '__new' : e.categoryId }, settings, previewCats, all)}` : ''} />
@@ -266,11 +283,11 @@ export default function EquipmentList() {
     inCategory(cats, e.categoryId, cat) &&
     (!tag || e.tags?.includes(tag)) &&
     inDepot(e, depot, depots, res) &&
-    [e.name, e.code, e.barcode, ...(e.tags || [])].join(' ').toLowerCase().includes(q.toLowerCase()));
+    [e.name, e.brand, e.model, e.summary, e.code, e.barcode, ...(e.tags || [])].join(' ').toLowerCase().includes(q.toLowerCase()));
   const toggle = (id: string) => { const n = new Set(selected); if (n.has(id)) n.delete(id); else n.add(id); setSelected(n); };
 
-  const csv = () => exportCsv('materiel.csv', ['Désignation', 'Référence', 'Catégorie', 'Type', 'Stock', 'Prix HT', "Valeur de remplacement", 'Poids', 'Code-barres', 'Emplacement', 'Étiquettes', 'Archivé'],
-    filtered.map((e) => [e.name, e.code, e.categoryId ? catName.get(e.categoryId) : '', e.isKit ? 'kit' : e.kind || 'location', e.quantity, e.dailyPrice, e.replacementValue, e.weight, e.barcode, e.location, (e.tags || []).join(', '), e.archived ? 'oui' : '']));
+  const csv = () => exportCsv('materiel.csv', ['Désignation', 'Marque', 'Modèle', 'Description courte', 'Référence', 'Catégorie', 'Type', 'Stock', 'Prix HT', "Valeur de remplacement", 'Poids', 'Code-barres', 'Emplacement', 'Étiquettes', 'Archivé'],
+    filtered.map((e) => [e.name, e.brand, e.model, e.summary, e.code, e.categoryId ? catName.get(e.categoryId) : '', e.isKit ? 'kit' : e.kind || 'location', e.quantity, e.dailyPrice, e.replacementValue, e.weight, e.barcode, e.location, (e.tags || []).join(', '), e.archived ? 'oui' : '']));
 
   return (
     <>
@@ -383,7 +400,7 @@ function BulkRow({ label, changed, mixed, onToggle, children, full }: { label: s
   );
 }
 
-type BulkKey = 'categoryId' | 'homeDepotId' | 'kind' | 'dailyPrice' | 'costPrice' | 'replacementValue' | 'weight' | 'inspectionMonths' | 'location' | 'notes' | 'photo' | 'contents' | 'archived';
+type BulkKey = 'brand' | 'summary' | 'categoryId' | 'homeDepotId' | 'kind' | 'dailyPrice' | 'costPrice' | 'replacementValue' | 'weight' | 'inspectionMonths' | 'location' | 'notes' | 'photo' | 'contents' | 'archived';
 
 /**
  * Modification groupée : chaque information commune aux articles sélectionnés est pré-remplie
@@ -441,10 +458,12 @@ function BulkEdit({ ids, onClose }: { ids: string[]; onClose: (done: boolean) =>
           for (const k of on) {
             const v = vals[k];
             if (k === 'categoryId') next.categoryId = (v as string) || undefined;
-            else if (k === 'location' || k === 'notes') (next as unknown as Record<string, unknown>)[k] = (v as string) || undefined;
+            else if (k === 'location' || k === 'notes' || k === 'brand' || k === 'summary') (next as unknown as Record<string, unknown>)[k] = (v as string) || undefined;
             else if (k === 'contents') next.contents = ((v as Equipment['contents']) || []).filter((c) => c.name.trim());
             else (next as unknown as Record<string, unknown>)[k] = v;
           }
+          // désignation composée (marque modèle (description)) : recomposée avec la nouvelle marque / description
+          if ((on.has('brand') || on.has('summary')) && e.name === composeName(e.brand, e.model, e.summary)) next.name = composeName(next.brand, next.model, next.summary) || e.name;
           if (pct) { const price = next.dailyPrice * (1 + pct / 100); next.dailyPrice = round ? Math.round(price * 2) / 2 : Math.round(price * 100) / 100; }
           if (addTags.length || removeTags.length) next.tags = Array.from(new Set([...(next.tags || []), ...addTags])).filter((t) => !removeTags.includes(t));
           if (customOn.size) { const c = { ...(next.custom || {}) }; for (const f of customOn) c[f] = custom[f]; next.custom = c; }
@@ -455,6 +474,8 @@ function BulkEdit({ ids, onClose }: { ids: string[]; onClose: (done: boolean) =>
         setTimeout(() => onClose(true), 700);
       }}>
         <p className="muted field full" style={{ margin: 0 }}>Les informations identiques pour les {ids.length} articles sont pré-remplies. Seules les informations cochées (modifiées) sont appliquées ; le reste ne change pas.</p>
+        <BulkRow {...rowProps('brand')} label="Marque"><input value={str('brand')} placeholder={common('brand').mixed ? 'valeurs différentes' : 'ex. Shure'} onChange={(e) => set('brand', e.target.value)} aria-label="Marque" /></BulkRow>
+        <BulkRow {...rowProps('summary')} label="Description courte"><input value={str('summary')} placeholder={common('summary').mixed ? 'valeurs différentes' : 'ex. Micro dynamique'} onChange={(e) => set('summary', e.target.value)} aria-label="Description courte" /></BulkRow>
         <BulkRow {...rowProps('categoryId')} label="Catégorie">
           <select value={str('categoryId')} onChange={(e) => set('categoryId', e.target.value)} aria-label="Catégorie">
             {common('categoryId').mixed && !on.has('categoryId') && <option value="">— valeurs différentes —</option>}

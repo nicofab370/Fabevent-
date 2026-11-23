@@ -2,6 +2,7 @@ import Papa from 'papaparse';
 import { useState } from 'react';
 import { nextUnitCode, suggestCategoryLetter } from '../codegen';
 import { ensureSerialCodes } from '../autoCodes';
+import { composeName } from '../equipmentName';
 import { ensureUnitNumbers } from '../unitNumbers';
 import { Field, PageHead } from '../components/ui';
 import { db, getSettings, nextNumber } from '../db';
@@ -25,7 +26,10 @@ const RATE = 'Tarifs (une ligne par tarif)';
 
 const FIELDS: Record<Target, ImportField[]> = {
   equipment: [
-    { key: 'name', label: 'Désignation *', guess: ['nom (dans la base de données)', 'nom', 'name', 'désignation', 'designation', 'displayname', 'article'] },
+    { key: 'name', label: 'Désignation * (ou marque + modèle)', guess: ['nom (dans la base de données)', 'nom', 'name', 'désignation', 'designation', 'displayname', 'article'] },
+    { key: 'brand', label: 'Marque', guess: ['marque', 'brand', 'fabricant', 'manufacturer', 'merk'] },
+    { key: 'model', label: 'Modèle', guess: ['modèle', 'modele', 'model', 'type de modèle'] },
+    { key: 'summary', label: 'Description courte', guess: ['description courte', 'short description', 'sous-titre'] },
     { key: 'code', label: 'Référence (code équipement)', guess: ['code', 'référence', 'reference', 'ref', 'numéro', 'number'] },
     { key: 'category', label: 'Catégorie', guess: ['dossier (dossier)', 'catégorie', 'categorie', 'category', 'dossier', 'folder', 'groupe'] },
     { key: 'path', label: 'Chemin (catégorie / sous-catégorie, prioritaire)', guess: ['chemin', 'path', 'category path'] },
@@ -301,7 +305,8 @@ export default function ImportPage() {
       let created = 0; let existing = 0; let added = 0; let skipped = 0;
       const unitCols = !!map.unitBarcode;
       for (const r of rows) {
-        const name = get(r, 'name');
+        // désignation : colonne du fichier, sinon composée de la marque, du modèle et de la description courte
+        const name = get(r, 'name') || composeName(get(r, 'brand'), get(r, 'model'), get(r, 'summary'));
         const code = get(r, 'code');
         const serial = get(r, 'serial');
         if (!name && !code) continue;
@@ -315,6 +320,7 @@ export default function ImportPage() {
           const rowNotes = serial && !unitCols ? undefined : get(r, 'notes');
           e = {
             id: uid(), createdAt: t, updatedAt: t, name: name || code, code: code || undefined, categoryId,
+            brand: get(r, 'brand') || undefined, model: get(r, 'model') || undefined, summary: get(r, 'summary') || undefined,
             quantity: tracked ? 0 : map.quantity ? g.qty : 1, dailyPrice: parseNumber(get(r, 'dailyPrice')),
             costPrice: parseNumber(get(r, 'costPrice')) || undefined,
             replacementValue: parseNumber(get(r, 'replacementValue')) || undefined, weight: parseNumber(get(r, 'weight')) || undefined,
@@ -600,7 +606,7 @@ export default function ImportPage() {
             </table>
           </div>
           <div className="form-actions" style={{ display: 'flex', marginTop: 12 }}>
-            <button onClick={run} disabled={busy || !map[FIELDS[target].find((f) => f.label.endsWith('*'))!.key]}>{busy ? 'Import en cours…' : `Importer ${rows.length} lignes`}</button>
+            <button onClick={run} disabled={busy || !(map[FIELDS[target].find((f) => f.label.includes('*'))!.key] || (target === 'equipment' && (map.brand || map.model)))}>{busy ? 'Import en cours…' : `Importer ${rows.length} lignes`}</button>
           </div>
         </div>
       )}
