@@ -804,3 +804,10 @@ td:not(.n) .hours-cell { align-items: flex-start; }
 @media (max-width: 640px) { .lt-preview-wrap { position: static; } .lt-part { padding-left: 8px; } }
 .lt-card.is-hidden { opacity: .55; border-style: dashed; }
 .danger-txt { color: var(--danger, #b91c1c); }
+/* kits : contenu sous le kit dans la liste du matériel, et sur la fiche */
+.kit-fold { padding: 0 6px; margin-right: 4px; min-height: 0; }
+table.list tr.kit-child td { background: var(--soft); font-size: 13px; padding-top: 4px; padding-bottom: 4px; }
+table.list tr.kit-child td:nth-child(2) { padding-left: 34px; }
+.kit-qty { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--accent); }
+table.list tr.limiting td:first-child, table.list tr.kit-child.limiting td:nth-child(2) { box-shadow: inset 3px 0 #f59e0b; }
+.kit-table tfoot td { border-top: 2px solid var(--border); }

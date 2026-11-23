@@ -57,3 +57,21 @@ describe('stock par dépôt et transferts', async () => {
     expect(inDepot(e0, 'B', [{ id: 'A' }, { id: 'B' }], res)).toBe(true);
   });
 });
+
+describe('contenu des kits avec les quantités', async () => {
+  const { kitBreakdown } = await import('../../src/utils');
+  const e = (id: string, quantity: number, extra: Partial<Equipment> = {}) => ({ id, name: id, quantity, dailyPrice: 0, isKit: false, kitItems: [], ...extra }) as unknown as Equipment;
+  const enceinte = e('enc', 8), cable = e('cab', 30), pied = e('pied', 3);
+  const kit = e('kit', 0, { isKit: true, kitItems: [{ equipmentId: 'enc', qty: 2 }, { equipmentId: 'cab', qty: 4 }, { equipmentId: 'pied', qty: 2 }] } as Partial<Equipment>);
+  const all = [enceinte, cable, pied, kit];
+  it('par élément : par kit, stock, dispo, kits possibles ; l’élément qui limite est marqué', () => {
+    const res = [{ equipmentId: 'enc', qty: 4, start: '2026-06-01T08:00', end: '2026-06-02T20:00', lineId: 'L', subprojectId: 'S', projectId: 'P', source: 'projet' as const }];
+    const b = kitBreakdown(kit, all, res, '2026-06-01T10:00', '2026-06-01T18:00');
+    expect(b.rows.map((r) => [r.equipment.id, r.perKit, r.stock, r.avail, r.kitsStock, r.kitsAvail])).toEqual([
+      ['enc', 2, 8, 4, 4, 2], ['cab', 4, 30, 30, 7, 7], ['pied', 2, 3, 3, 1, 1],
+    ]);
+    expect(b.kitsStock).toBe(1);
+    expect(b.kitsAvail).toBe(1);
+    expect(b.rows.filter((r) => r.limiting).map((r) => r.equipment.id)).toEqual(['pied']);
+  });
+});
