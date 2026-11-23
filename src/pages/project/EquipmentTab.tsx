@@ -432,7 +432,7 @@ function EquipmentPicker({ sp, groupId, initialQ = '', depot, depots = [], disco
   for (const l of existing) if (l.equipmentId && !l.parentLineId) inProject.set(l.equipmentId, (inProject.get(l.equipmentId) || 0) + l.qty);
   const tags = Array.from(new Set(equipment.flatMap((e) => e.tags || []))).sort();
   const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  const base = equipment.filter((e) => !e.archived && !e.accessoryOnly && inDepot(e, where, depots, res) && words.every((w) => [e.name, e.code, e.barcode, ...(e.extraCodes || []), e.categoryId && catName.get(e.categoryId), ...(e.tags || [])].join(' ').toLowerCase().includes(w)));
+  const base = equipment.filter((e) => !e.archived && !e.accessoryOnly && inDepot(e, where, depots, res) && words.every((w) => [e.name, e.brand, e.model, e.summary, e.code, e.barcode, ...(e.extraCodes || []), e.categoryId && catName.get(e.categoryId), ...(e.tags || [])].join(' ').toLowerCase().includes(w)));
   const list = base
     .filter((e) => inCategory(cats, e.categoryId, cat) && (!tag || e.tags?.includes(tag)) && (!onlyAvail || (avail.get(e.id) || 0) > 0))
     .sort((a, b) => sort === 'dispo' ? (avail.get(b.id) || 0) - (avail.get(a.id) || 0) : sort === 'prix' ? a.dailyPrice - b.dailyPrice : a.name.localeCompare(b.name));

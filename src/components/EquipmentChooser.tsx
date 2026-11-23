@@ -29,7 +29,7 @@ export function EquipmentChooser({ title, equipment, exclude = [], withQty = fal
   const [qty, setQty] = useState<Record<string, number>>({});
   const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const base = equipment.filter((e) => !e.archived && !exclude.includes(e.id) && (includeAccessoryOnly || !e.accessoryOnly)
-    && words.every((w) => [e.name, e.code, e.barcode, ...(e.extraCodes || []), categoryLabel(cats, e.categoryId), ...(e.tags || [])].join(' ').toLowerCase().includes(w)));
+    && words.every((w) => [e.name, e.brand, e.model, e.summary, e.code, e.barcode, ...(e.extraCodes || []), categoryLabel(cats, e.categoryId), ...(e.tags || [])].join(' ').toLowerCase().includes(w)));
   const list = base.filter((e) => inCategory(cats, e.categoryId, cat) && (!tag || e.tags?.includes(tag))).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   const tags = Array.from(new Set(equipment.flatMap((e) => e.tags || []))).sort();
   const picked = Object.entries(qty).filter(([, n]) => n > 0).map(([equipmentId, n]) => ({ equipmentId, qty: n }));

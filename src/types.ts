@@ -196,7 +196,12 @@ export interface Transfer extends Base {
 }
 
 export interface Equipment extends Base {
+  /** désignation affichée partout (composée de la marque, du modèle et de la description courte, ou écrite à la main) */
   name: string;
+  /** marque (ex. Shure), modèle (ex. SM58s), description courte (ex. Micro dynamique Switch) */
+  brand?: string;
+  model?: string;
+  summary?: string;
   /** quantités dans les dépôts secondaires (matériel en vrac) ; le dépôt principal a le reste */
   stock?: Record<ID, number>;
   /** calculé, jamais enregistré : quantité par dépôt */
