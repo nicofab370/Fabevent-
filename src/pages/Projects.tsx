@@ -94,7 +94,7 @@ export default function Projects() {
   const nav = useNavigate();
   const projects = useLiveQuery(() => db.projects.orderBy('start').reverse().toArray(), []) || [];
   const contacts = useLiveQuery(() => db.contacts.toArray(), []) || [];
-  const [q, setQ] = useState('');
+  const [q, setQ] = useState(() => new URLSearchParams(window.location.hash.split('?')[1] || '').get('q') || '');
   const [status, setStatus] = useState('');
   const [creating, setCreating] = useState(false);
   const [fromTemplate, setFromTemplate] = useState(false);

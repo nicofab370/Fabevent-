@@ -30,7 +30,8 @@ npm run test:parcours  # nouveautés en contexte : import Rentman, catégories, 
 - Onglet Finances : chiffre d'affaires, coûts (personnel, sous-locations, consommables, frais divers), marge.
 
 **Matériel et stock**
-- Catalogue, catégories, kits, accessoires ajoutés automatiquement (gratuits ou facturés).
+- Catalogue, catégories, kits, accessoires ajoutés automatiquement (gratuits ou facturés) — proposés **à cocher** lors de l'ajout dans un projet (tous cochés par défaut).
+- Fiche produit : modification **directement dans la page** (plus de fenêtre séparée) ; **autres codes (alias)** reconnus au scan (ancienne étiquette, référence fournisseur…).
 - Location (prix/jour × coefficient de durée) ou consommable (vendu à la pièce, déduit du stock quand le projet est terminé).
 - Suivi par numéro de série en option, frise de disponibilité sur 4 semaines, alertes de manque.
 - Lignes en option sur le devis (hors total).
@@ -38,6 +39,7 @@ npm run test:parcours  # nouveautés en contexte : import Rentman, catégories, 
 **Entrepôt**
 - Préparation et retour par scan (douchette USB ou caméra du téléphone sur Chrome Android) ou par comptage.
 - Détection des manquants au retour, déclaration de casse (crée une réparation).
+- **Listes de colisage par date de départ** (montage), marquées « préparées » puis « chargées ».
 
 **Sous-location** : depuis un manque en un clic, bon de commande, email au fournisseur. Une fois confirmée, elle compte dans les disponibilités.
 
@@ -46,6 +48,8 @@ npm run test:parcours  # nouveautés en contexte : import Rentman, catégories, 
 **Documents figés et versionnés** (rien n'est jamais écrasé)
 - Devis, facture d'acompte, facture (acomptes déduits automatiquement), avoir, bon de sortie, feuille de route sans prix.
 - Impression / PDF, export HTML, email, **export Peppol BIS 3.0 (UBL)** pour les factures et les avoirs.
+- **Devis acceptables en ligne** : bouton « Lien d'acceptation en ligne » (lien public `public.php?d=…`) — le client voit le montant TTC
+  et accepte / refuse ; accepté = document « accepté » et projet confirmé (comme un accepté saisi à la main).
 
 **Transport chiffré à la distance** : distance dépôt → lieu calculée automatiquement (OpenStreetMap, connexion requise) ou saisie à la main ;
 prix d'un véhicule = forfait journalier × jours + km (distance × 2 × allers-retours) × prix au km (par véhicule ou par défaut).
@@ -60,6 +64,9 @@ options d'affichage (couleur, police, colonnes, lignes à 0 €) ; aperçu en di
 **Équipe et véhicules** : postes, tarif facturé / coût, indisponibilités, conflits, agenda personnel `.ics`.
 
 **Planning** mensuel et export `.ics` avec lien direct vers chaque projet.
+
+**Recherche globale** (Ctrl+K / Cmd+K) : projets, matériel (articles et unités), contacts, personnes, documents — Entrée ouvre le résultat.
+**Badges d'alerte** dans le menu : pénuries, retours en retard, contrôles à venir, postes à pourvoir.
 
 **Comptabilité et rapports**
 - Toutes les factures d'une période en un seul PDF, journal des ventes en CSV.
@@ -103,6 +110,8 @@ services, techniciens), copie, **modèles de mail par type** (Modèles → Mails
 et montants deviennent des variables). Sans serveur : partage, brouillon .eml ou messagerie.
 
 **Équipe** :
+- **Formulaire d'inscription public** (lien `public.php?s=…`, fiches « à valider ») et **lien « ma fiche » par personne** (`public.php?m=…`) :
+  le technicien met à jour lui-même ses coordonnées, fonctions et tarif ; les changements arrivent « à relire » (garder, ou annuler pour revenir aux valeurs d'avant).
 - « Demander les dispos » sur un ou plusieurs postes : chaque technicien reçoit un lien et répond en un clic, poste par poste.
   La réponse revient sur le poste (en attente, disponible, pas disponible, avec son mot), et on peut aussi la noter à la main.
 - Les personnes disponibles sont proposées en premier.

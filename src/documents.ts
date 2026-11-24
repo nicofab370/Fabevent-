@@ -1,4 +1,5 @@
 import { db, DEFAULT_DOC_STYLE, getSettings, nextNumber } from './db';
+import { newToken } from './mailer';
 import type { Contact, Doc, DocSnapshot, DocType, Lang, ProjectStatus, Settings, SnapshotSub, VatRegime } from './types';
 import { VAT_MENTIONS_I18N } from './i18n';
 import { DEFAULT_VAT_MENTIONS, structuredCommunication } from './payment';
@@ -79,6 +80,9 @@ export async function buildSnapshot(projectId: string, type: DocType, only?: { i
   const eMap = new Map(equipment.map((e) => [e.id, e]));
   const isQuote = type === 'devis';
   const isPacking = type === 'bon_sortie' || type === 'feuille_route';
+  const regime: VatRegime = project.vatRegime || client?.vatRegime || 'normal';
+  const lang: Lang = project.language || client?.language || 'fr';
+  const { rate: vatRate, mention: vatMention } = vatFor(regime, s, lang);
 
   const venueC = project.venueId ? await db.contacts.get(project.venueId) : undefined;
   const snapSubs: SnapshotSub[] = subs
@@ -102,6 +106,7 @@ export async function buildSnapshot(projectId: string, type: DocType, only?: { i
             factor: perPiece ? 1 : l.factor ?? factorFor(days, s),
             discount: l.discount,
             total: lineTotal(l, days, s, perPiece),
+            vatRate: regime === 'normal' && e?.vatRate !== undefined ? e.vatRate : undefined,
             group: (l.groupId && groupName.get(l.groupId)) || l.group,
             optional: !!l.optional,
             unit: perPiece ? 'pièce' as const : 'jour' as const,
@@ -153,14 +158,27 @@ export async function buildSnapshot(projectId: string, type: DocType, only?: { i
   const gross = round2(snapSubs.reduce((a, sp) => a + sp.subtotal, 0) + extras.reduce((a, x) => a + x.total, 0));
   const discountAmount = round2(gross * (project.discount || 0) / 100);
   const totalHT = round2(gross - discountAmount);
-  const regime: VatRegime = project.vatRegime || client?.vatRegime || 'normal';
-  const lang: Lang = project.language || client?.language || 'fr';
-  const { rate: vatRate, mention: vatMention } = vatFor(regime, s, lang);
   const customFields = (s.customFields || []).filter((f) => f.entity === 'projet' || f.entity === 'contact').map((f) => {
     const v = f.entity === 'projet' ? project.custom?.[f.id] : client?.custom?.[f.id];
     return { key: fieldKey(f.label), label: f.label, value: v === undefined || v === '' ? '' : f.type === 'oui_non' ? (v ? 'Oui' : 'Non') : f.type === 'date' ? new Date(String(v)).toLocaleDateString('fr-FR') : String(v) };
   });
-  const vat = round2(totalHT * vatRate / 100);
+  // TVA par article : si des lignes ont un taux spécifique, la TVA est détaillée par taux (détail exigé sur une facture belge)
+  const byRate = new Map<number, number>();
+  const addRate = (rate: number, ht: number) => byRate.set(rate, round2((byRate.get(rate) || 0) + ht));
+  for (const sp of snapSubs) {
+    for (const l of sp.equipment) if (!l.optional) addRate(l.vatRate ?? vatRate, l.total);
+    for (const c of sp.crew) if (c.billable) addRate(vatRate, c.total);
+    for (const v of sp.vehicles) if (v.billable) addRate(vatRate, v.price);
+  }
+  for (const x of extras) addRate(vatRate, x.total);
+  let vatBreakdown: DocSnapshot['vatBreakdown'];
+  if (regime === 'normal' && byRate.size > 1) {
+    const factor = gross ? totalHT / gross : 1; // la remise est répartie au prorata entre les taux
+    const rows = [...byRate.entries()].sort((a, b) => b[0] - a[0]).map(([rate, htGross]) => ({ rate, ht: round2(htGross * factor) }));
+    rows[rows.length - 1].ht = round2(totalHT - rows.slice(0, -1).reduce((a, x) => a + x.ht, 0));
+    vatBreakdown = rows.map((r) => ({ ...r, vat: round2(r.ht * r.rate / 100) }));
+  }
+  const vat = vatBreakdown ? round2(vatBreakdown.reduce((a, x) => a + x.vat, 0)) : round2(totalHT * vatRate / 100);
   const issued = new Date();
   const optionalTotal = round2(snapSubs.reduce((a, sp) => a + sp.equipment.filter((l) => l.optional).reduce((b, l) => b + l.total, 0), 0));
   return {
@@ -169,7 +187,7 @@ export async function buildSnapshot(projectId: string, type: DocType, only?: { i
     project: { number: project.number, name: project.name, venue: project.venue, start: project.start, end: project.end, notes: project.notes, discount: project.discount, externalRef: project.externalRef },
     subprojects: snapSubs,
     extras: isPacking || !extras.length ? undefined : extras,
-    totalHT, discountAmount, vatRate, vat, totalTTC: round2(totalHT + vat), vatRegime: regime, vatMention, lang, customFields,
+    totalHT, discountAmount, vatRate, vat, vatBreakdown, totalTTC: round2(totalHT + vat), vatRegime: regime, vatMention, lang, customFields,
     issuedAt: issued.toISOString(),
     validUntil: isQuote ? new Date(issued.getTime() + s.quoteValidityDays * 86400000).toISOString() : undefined,
     dueDate: INVOICE_TYPES.includes(type) ? new Date(issued.getTime() + (client?.paymentDays ?? s.paymentDays) * 86400000).toISOString() : undefined,
@@ -279,6 +297,8 @@ export async function createDocument(projectId: string, type: DocType, opts: Doc
   return save(db.docs, {
     projectId, type, number, version, status: 'brouillon', note: opts.note, contactPerson: project?.contactPerson, snapshot,
     subprojectIds: type === 'facture' && only?.include ? only.include : undefined,
+    // devis : lien public pour que le client accepte / refuse en ligne (public.php?d=…)
+    publicToken: type === 'devis' ? newToken(24) : undefined,
   });
 }
 

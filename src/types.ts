@@ -240,6 +240,8 @@ export interface Equipment extends Base {
   contents?: { name: string; qty: number }[];
   /** codes en plus (code-barres du fabricant, ancienne étiquette…) qui désignent aussi l'article */
   extraCodes?: string[];
+  /** taux de TVA spécifique de l'article (%) : sinon c'est le taux du client / projet qui s'applique */
+  vatRate?: number;
   /** mouvements de stock (ajout, inventaire, perte…), le plus récent en dernier */
   stockLog?: { at: string; delta: number; text: string; projectId?: ID }[];
   location?: string;
@@ -431,6 +433,8 @@ export interface Subproject extends Base {
   missingSent?: boolean;
   /** ce qui a déjà été déclaré perdu au retour (« u<id d'unité> » ou « b<id de ligne> ») : jamais deux fois */
   lostSent?: string[];
+  /** listes de colisage : état par date de départ (préparé / chargé dans le véhicule) */
+  packing?: Record<string, 'prep' | 'charge'>;
 }
 
 export interface EquipmentLine extends Base {
@@ -504,6 +508,10 @@ export interface Person extends Base {
   pending?: boolean;
   source?: 'formulaire';
   signedUpAt?: string;
+  /** jeton du lien public « ma fiche » (public.php?m=…) : le technicien met à jour ses coordonnées */
+  sheetToken?: string;
+  /** modifications envoyées via « ma fiche », à relire (valeurs d'avant) */
+  sheetReview?: { at: string; prev: Record<string, unknown> };
 }
 
 export interface CrewAssignment extends Base {
@@ -724,6 +732,8 @@ export interface SnapshotLine {
   factor: number;
   discount: number;
   total: number;
+  /** taux de TVA de la ligne (%) quand l'article a un taux spécifique */
+  vatRate?: number;
   group?: string;
   optional?: boolean;
   unit?: 'jour' | 'pièce';
@@ -803,6 +813,8 @@ export interface DocSnapshot {
   discountAmount: number;
   vatRate: number;
   vat: number;
+  /** détail de la TVA par taux quand des lignes ont un taux spécifique (obligatoire sur une facture belge) */
+  vatBreakdown?: { rate: number; ht: number; vat: number }[];
   totalTTC: number;
   issuedAt: string;
   validUntil?: string;
@@ -856,6 +868,8 @@ export interface Doc extends Base {
   contactPerson?: string;
   /** facture partielle : salles facturées */
   subprojectIds?: ID[];
+  /** jeton du lien public d'acceptation en ligne du devis (public.php?d=…) */
+  publicToken?: string;
   snapshot: DocSnapshot;
 }
 
