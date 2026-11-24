@@ -2623,6 +2623,30 @@ await step('Devis : groupes d\'options au choix + version (n° de PR) affichée'
   expect((await page.locator('main').innerText()).includes('v39') && (await page.locator('main').innerText()).includes('PR'), 'version dans les paramètres');
 });
 
+await step('Scan étiquette article sur ligne sérialisée : 1 unité = auto, plusieurs = choix manuel', async () => {
+  await resetDemo();
+  await openProject('Mariage Dupont-Lemaire');
+  await tab('Équipement');
+  const qa = page.locator('input[aria-label="Ajouter un article"]').first();
+  await qa.fill('console yamaha cl5');
+  await qa.press('Enter');
+  await page.waitForTimeout(500);
+  await openChecklist('Mariage Dupont-Lemaire');
+  // LA4X a 3 unités : scan de l'étiquette article → sélecteur manuel (pas de flash, on ne lit pas le flash ici)
+  await scanRaw('DEMO-AMPLI');
+  await page.waitForTimeout(300);
+  expect(await page.locator('.cl-ask button', { hasText: 'LA4X-1002' }).count() === 1, 'sélecteur d\'unités proposé (3 unités)');
+  await page.locator('.cl-ask button', { hasText: 'LA4X-1002' }).click();
+  await page.waitForSelector('.checklist-scan .flash', { timeout: 10000 });
+  const f1 = await page.locator('.checklist-scan .flash').innerText();
+  expect(f1.includes('Sortie : Amplificateur LA4X') && f1.includes('LA4X-1002'), 'unité choisie comptée : ' + f1);
+  // CL5 n'a qu'une unité : scan de l'étiquette article → comptée d'office, sans sélecteur
+  await scan('DEMO-CL5');
+  const f2 = await page.locator('.checklist-scan .flash').innerText();
+  expect(f2.includes('Console Yamaha CL5') && f2.includes('CL5-1001'), 'unité unique prise d\'office : ' + f2);
+  expect(await page.locator('.cl-ask').count() === 0, 'pas de sélecteur quand une seule unité');
+});
+
 await step('Facture : QR code de paiement toujours imprimé (même si le gabarit l’oublie)', async () => {
   await resetDemo();
   await openProject('Gala de fin d');

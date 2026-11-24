@@ -111,6 +111,8 @@ export function ChecklistView({ src }: { src: ChecklistSource }) {
   const [log, setLog] = useState<Flash[]>([]);
   const [ask, setAsk] = useState<Ask | null>(null);
   const [askQty, setAskQty] = useState('');
+  /** choix manuel de l'unité quand on scanne l'étiquette de l'article (plusieurs unités sérialisées) */
+  const [pickUnit, setPickUnit] = useState<{ eq: Equipment; units: SerialUnit[] } | null>(null);
   const [assoc, setAssoc] = useState<string | null>(null);
   const [broken, setBroken] = useState<CLine | null>(null);
   const [sheet, setSheet] = useState<string | null>(null);
@@ -214,6 +216,15 @@ export function ChecklistView({ src }: { src: ChecklistSource }) {
     const line = cands.find((l) => !lineDone(l)) || cands[0];
     const serials = ph === 'sortie' ? line.outSerials : line.inSerials;
     const t = target(line, ph), cur = counted(line, ph);
+    // étiquette de l'article (pas d'une unité) scannée sur une ligne sérialisée :
+    // une seule unité → on la scanne d'office ; plusieurs → choix manuel de l'unité
+    if (!unit && isSerial(line)) {
+      const units = av.units.filter((u) => u.equipmentId === eq.id && u.status !== 'perdu');
+      if (units.length === 1) return await handle(units[0].barcode || units[0].serial);
+      if (units.length > 1) { setPickUnit({ eq, units }); return false; }
+      say({ ok: false, msg: `${eq.name} : aucune unité sérialisée déclarée (fiche article → « + Unité »).` });
+      return false;
+    }
     if (unit && isSerial(line)) {
       if (serials.includes(unit.serial)) { say({ ok: false, msg: `${name} est déjà ${verb}, pas compté deux fois.` }); return false; }
       if (ph === 'retour' && line.outSerials.length && !line.outSerials.includes(unit.serial)) {
@@ -395,6 +406,21 @@ export function ChecklistView({ src }: { src: ChecklistSource }) {
         <label className="check-row cl-perscan"><input type="checkbox" checked={perScan} onChange={(e) => { setPerScan(e.target.checked); try { localStorage.setItem('fab.cl.perScan', e.target.checked ? '1' : '0'); } catch { /* sans stockage */ } }} />
           Chaque scan compte 1 (sinon le scan d'un article en vrac demande combien, le reste par défaut)</label>
         {camera && <Scanner onCode={handle} onClose={() => setCamera(false)} />}
+        {pickUnit && (
+          <div className="cl-ask">
+            <b>{pickUnit.eq.name} : quelle unité a été scannée ?</b>
+            <div className="cl-asklist">
+              {pickUnit.units.map((u) => (
+                <button key={u.id} type="button" className="secondary" style={{ display: 'block', width: '100%', marginBottom: 6, textAlign: 'left' }}
+                  onClick={async () => { setPickUnit(null); await handle(u.barcode || u.serial); }}>
+                  {unitNo(u)} · n° {u.serial}{u.barcode !== u.serial ? ` · ${u.barcode}` : ''}
+                  {u.status !== 'ok' && <span className="badge st-annule" style={{ marginLeft: 6 }}>{u.status === 'hs' ? 'hors service' : u.status}</span>}
+                </button>
+              ))}
+            </div>
+            <div className="toolbar"><button type="button" className="secondary" onClick={() => { setPickUnit(null); inputRef.current?.focus(); }}>Annuler</button></div>
+          </div>
+        )}
         {ask && (
           <form className="cl-ask" onSubmit={(e) => { e.preventDefault(); confirmAsk(); }}>
             <b>{ask.title}</b>

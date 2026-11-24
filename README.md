@@ -85,6 +85,8 @@ remises par défaut du client.
 
 **Matériel** : étiquettes imprimables (planches A4, rouleau), articles de remplacement proposés en cas de manque,
 archivage, photos, inventaire par scan avec mise à jour du stock, valeur du parc.
+Scan de l'étiquette **article** sur une ligne sérialisée : s'il n'y a **qu'une seule unité**, elle est comptée d'office ;
+s'il y en a **plusieurs**, un sélecteur propose de choisir laquelle a été scannée.
 Dans l'inventaire d'un kit, les articles à numéro de série se comptent aussi à la main (+ / −, ou en touchant le numéro de l'unité).
 
 **Étiquettes** : 11 formats standard (planches A4 de 8 à 65 étiquettes, rouleaux 50 × 25, 62 × 29, 57 × 32, 102 × 51 mm,
