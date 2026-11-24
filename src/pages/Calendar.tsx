@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Field, Modal, PageHead, useSettings } from '../components/ui';
 import { appBaseUrl, db } from '../db';
 import type { Appointment, Person, ProjectStatus } from '../types';
@@ -15,6 +15,7 @@ const DOW = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 export default function Calendar() {
+  const nav = useNavigate();
   const settings = useSettings();
   const [cursor, setCursor] = useState(() => { const d = new Date(); d.setDate(1); return d; });
   const [hideCancelled, setHideCancelled] = useState(true);
@@ -32,6 +33,8 @@ export default function Calendar() {
   const appointments = useLiveQuery(() => db.appointments.toArray(), []) || [];
   const people = useLiveQuery(() => db.people.orderBy('name').toArray(), []) || [];
   const [appt, setAppt] = useState<Partial<Appointment> | null>(null);
+  /** jour cliqué : petit menu « + rendez-vous / + projet à cette date » */
+  const [dayMenu, setDayMenu] = useState('');
   const events = visible.flatMap((s) => (s.periods?.length ? s.periods : [{ id: s.id, name: '', kind: undefined, start: s.start, end: s.end }]).map((pe) => ({
     id: pe.id, sub: s, label: pe.name, kind: pe.kind, start: pe.start, end: pe.end,
   })));
@@ -67,7 +70,15 @@ export default function Calendar() {
           const evs = events.filter((ev) => ev.start.slice(0, 10) <= key && ev.end.slice(0, 10) >= key);
           return (
             <div key={key} className={'day' + (d.getMonth() !== cursor.getMonth() ? ' out' : '') + (key === today ? ' today' : '')}>
-              <span className="num">{d.getDate()}</span>
+              <span className="num" role="button" tabIndex={0} title="Ajouter un rendez-vous ou un projet ce jour" style={{ cursor: 'pointer' }}
+                onClick={() => setDayMenu(dayMenu === key ? '' : key)}
+                onKeyDown={(e) => { if (e.key === 'Enter') setDayMenu(dayMenu === key ? '' : key); }}>{d.getDate()}</span>
+              {dayMenu === key && (
+                <div className="day-menu">
+                  <button type="button" onClick={() => { setDayMenu(''); const s = new Date(d); s.setHours(9, 0, 0, 0); const e = new Date(s); e.setHours(11, 0, 0, 0); setAppt({ title: '', start: toLocalInput(s), end: toLocalInput(e), personIds: [] }); }}>+ Rendez-vous</button>
+                  <button type="button" onClick={() => { setDayMenu(''); nav('/projets?date=' + key); }}>+ Projet</button>
+                </div>
+              )}
               {appointments.filter((a) => a.start.slice(0, 10) <= key && a.end.slice(0, 10) >= key).map((a) => (
                 <a key={a.id} href="#" className="ev appt" title={`${a.title}${a.location ? ' — ' + a.location : ''}`} onClick={(e) => { e.preventDefault(); setAppt(a); }}>
                   {a.start.slice(0, 10) === key ? a.start.slice(11, 16) + ' ' : ''}{a.title}

@@ -760,6 +760,8 @@ export interface SnapshotSub {
 /** Style commun des documents (éditeur de modèles simplifié). */
 export interface DocStyle {
   color: string;
+  /** deuxième couleur contrastante : titres de section, étiquettes (h3, libellés de cartes) */
+  color2?: string;
   /** moderne : en-têtes de tableaux colorés, cartes ; sobre : noir et blanc, filets fins */
   theme?: 'moderne' | 'sobre';
   font: 'sans' | 'serif' | 'arrondie';
@@ -782,6 +784,8 @@ export interface DocTypeTemplate {
   title?: string;
   intro?: string;
   outro?: string;
+  /** sections (blocs) affichées pour ce type de document ; absent = toutes */
+  blocks?: string[];
 }
 
 /** Gabarit HTML commun à tous les documents, avec variables {{…}}. */

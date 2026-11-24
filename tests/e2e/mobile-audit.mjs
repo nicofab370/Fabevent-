@@ -35,7 +35,7 @@ for (const v of viewports) {
   await page.waitForSelector('.demo-badge', { timeout: 20000 });
   await page.waitForTimeout(800);
 
-  const audit = () => page.evaluate((tactile) => {
+  const audit = (modals = false) => page.evaluate(({ tactile, modals }) => {
     const W = window.innerWidth;
     const out = { pageOverflow: document.documentElement.scrollWidth - W, beyond: [], small: [], narrow: [] };
     const vis = (el) => { const r = el.getBoundingClientRect(); const s = getComputedStyle(el); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
@@ -46,7 +46,7 @@ for (const v of viewports) {
       return `${el.tagName.toLowerCase()}${el.className && typeof el.className === 'string' ? '.' + el.className.split(' ').filter(Boolean).slice(0, 2).join('.') : ''} « ${t} »`;
     };
     for (const el of document.querySelectorAll('main *')) {
-      if (!vis(el) || el.closest('.modal-bg, .fv-bg')) continue;
+      if (!vis(el) || (!modals && el.closest('.modal-bg, .fv-bg'))) continue;
       const r = el.getBoundingClientRect();
       if (r.right > W + 1 && !inScroller(el) && !['svg', 'path', 'circle', 'option'].includes(el.tagName.toLowerCase())) {
         // on ne garde que l'élément le plus haut qui dépasse
@@ -61,12 +61,12 @@ for (const v of viewports) {
       }
     }
     return out;
-  }, v.tactile);
+  }, { tactile: v.tactile, modals });
 
   const report = [];
-  const check = async (name) => {
+  const check = async (name, modals = false) => {
     await page.waitForTimeout(500);
-    const a = await audit();
+    const a = await audit(modals);
     if (a.pageOverflow > 1 || a.beyond.length || a.small.length || a.narrow.length) report.push({ name, ...a });
   };
   for (const r of routes) { await page.goto(U + '#/' + r); await page.waitForTimeout(700); await check('/' + r); }
@@ -84,6 +84,27 @@ for (const v of viewports) {
   await page.locator('table.list tr.click').first().click(); await page.waitForSelector('.checklist-scan'); await check('checklist');
   await page.goto(U + '#/lieux'); await page.waitForTimeout(600);
   await page.locator('table.list tr.click, table.list tr a').first().click().catch(() => {}); await check('fiche lieu');
+  // modales principales : ouvertes, donc auditées aussi
+  const openModal = async (route, sel, name) => {
+    await page.goto(U + '#/' + route); await page.waitForTimeout(600);
+    const b = page.locator(`main ${sel}`).first();
+    if (!(await b.count())) return;
+    await b.click(); await page.waitForTimeout(500);
+    await check(name, true);
+    await page.locator('.modal-bg button[aria-label="Fermer"]').first().click().catch(() => {});
+    await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+  };
+  await openModal('projets', 'button:has-text("+ Nouveau projet")', 'modale nouveau projet');
+  await openModal('materiel', 'button:has-text("+ Nouvel article")', 'modale nouvel article');
+  await openModal('contacts', 'button:has-text("+ Nouveau contact")', 'modale nouveau contact');
+  await openModal('equipe', 'button:has-text("+ Nouvelle personne")', 'modale nouvelle personne');
+  // modale sous-projet (horaires) depuis le planning du projet
+  await page.goto(U + '#/projets'); await page.waitForTimeout(600);
+  await page.click('text=Festival des Lumières'); await page.waitForSelector('.project-tabs');
+  await page.locator('.project-tabs button:text-is("Planning")').click(); await page.waitForTimeout(400);
+  await page.locator('main button:has-text("+ Ajouter un sous-projet")').first().click(); await page.waitForTimeout(500);
+  await check('modale sous-projet (horaires)', true);
+  await page.locator('.modal-bg button[aria-label="Fermer"]').first().click().catch(() => {});
 
   console.log(`\n== ${v.name} ==`);
   for (const r of report) {
@@ -92,7 +113,7 @@ for (const v of viewports) {
     for (const x of r.small.slice(0, 12)) console.log('  trop petit : ' + x);
     for (const x of r.narrow.slice(0, 8)) console.log('  trop étroit : ' + x);
   }
-  const n = routes.length + projectTabs.length + 3;
+  const n = routes.length + projectTabs.length + 3 + 5;
   console.log(`${report.length} page(s) avec des problèmes sur ${n} — ${v.name}`);
   totalProblems += report.length; totalPages += n;
   await ctx.close();

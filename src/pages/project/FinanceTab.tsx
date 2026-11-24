@@ -191,7 +191,7 @@ function ActualInput({ value, placeholder, onSave, suffix }: { value?: number; p
   const [v, setV] = useState(value === undefined ? '' : String(value).replace('.', ','));
   useEffect(() => setV(value === undefined ? '' : String(value).replace('.', ',')), [value]);
   return (
-    <input className="w-price" inputMode="decimal" value={v} placeholder={String(placeholder).replace('.', ',') + (suffix || '')} onChange={(e) => setV(e.target.value)}
+    <input className="w-price" inputMode="decimal" value={v} placeholder={String(placeholder).replace('.', ',') + (suffix || '')} aria-label={`Montant réel (défaut ${String(placeholder).replace('.', ',')}${suffix || ''})`} title="Montant réel constaté ; vide = valeur prévue" onChange={(e) => setV(e.target.value)}
       onBlur={() => {
         const n = v.trim() === '' ? undefined : parseFloat(v.replace(',', '.'));
         if (n !== value && (n === undefined || !isNaN(n))) onSave(n);

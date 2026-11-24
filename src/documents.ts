@@ -87,12 +87,14 @@ export async function buildSnapshot(projectId: string, type: DocType, only?: { i
   const { rate: vatRate, mention: vatMention } = vatFor(regime, s, lang);
 
   const venueC = project.venueId ? await db.contacts.get(project.venueId) : undefined;
+  // lignes enfants d'un kit : le prix du kit les inclut, on ne les met pas en double sur le document
+  const kitLineIds = new Set(lines.filter((l) => !l.parentLineId && l.equipmentId && eMap.get(l.equipmentId)?.isKit).map((l) => l.id));
   const snapSubs: SnapshotSub[] = subs
     .filter((sp) => sp.status !== 'annule' && (!only?.include || only.include.includes(sp.id)) && !only?.exclude?.includes(sp.id))
     .map((sp) => {
       const groupName = new Map((sp.groups || []).map((g) => [g.id, g.name]));
       const eq = lines
-        .filter((l) => l.subprojectId === sp.id && (isQuote || isPacking || !l.optional))
+        .filter((l) => l.subprojectId === sp.id && (isQuote || isPacking || !l.optional) && !(l.parentLineId && kitLineIds.has(l.parentLineId)))
         .sort((a, b) => a.order - b.order)
         .map((l) => {
           const e = l.equipmentId ? eMap.get(l.equipmentId) : undefined;

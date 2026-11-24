@@ -131,7 +131,8 @@ export function ChecklistView({ src }: { src: ChecklistSource }) {
   const kids = new Map<string, CLine[]>();
   if (src.kitMode) for (const l of src.lines) if (l.parentKey) kids.set(l.parentKey, [...(kids.get(l.parentKey) || []), l]);
   const kidsOf = (l: CLine) => (kids.get(l.key) || []).filter((k) => inPhase(k, ph));
-  const isKit = (l: CLine) => (kids.get(l.key) || []).length > 0;
+  // vrai kit : article isKit avec des lignes de contenu (un simple accessoire ne fait pas un kit) ; en checklist libre, tout parent avec contenu
+  const isKit = (l: CLine) => (kids.get(l.key) || []).length > 0 && (!src.projectId || !!(l.equipmentId && eqMap.get(l.equipmentId)?.isKit));
   const leaves = src.lines.filter((l) => !isKit(l) && inPhase(l, ph));
   const lineDone = (l: CLine) => counted(l, ph) >= target(l, ph);
   const stateOf = (l: CLine): 'done' | 'part' | 'none' => {
@@ -224,7 +225,8 @@ export function ChecklistView({ src }: { src: ChecklistSource }) {
         beep(false);
         setAsk({
           title: `${eq.name} : les ${line.qty} prévus sont déjà sortis. Ajouter ${unitLabel(eq.id, unit.serial)} en plus ?`, okLabel: 'Oui, +1',
-          onOk: async () => { await src.bumpQty(line.key, 1); await src.setSerials(line.key, ph, [...serials, unit.serial]); say({ ok: true, msg: `Sortie : ${name} en plus (${cur + 1}/${t + 1})` }); },
+          // en plus que prévu : le nombre prévu (t) ne change pas, seuls les sortis augmentent (6/5)
+          onOk: async () => { await src.setSerials(line.key, ph, [...serials, unit.serial]); say({ ok: true, msg: `Sortie : ${name} en plus (${cur + 1}/${t})` }); },
         });
         return false;
       }
@@ -238,7 +240,7 @@ export function ChecklistView({ src }: { src: ChecklistSource }) {
       beep(false);
       setAsk({
         title: `${eq.name} : les ${line.qty} prévus sont déjà sortis. Combien en plus ?`, qty: { def: 1 }, okLabel: 'Ajouter en plus',
-        onOk: async (n) => { await src.bumpQty(line.key, n); await src.setCount(line.key, ph, cur + n); say({ ok: true, msg: `Sortie : ${eq.name} +${n} en plus (${cur + n}/${t + n})` }); },
+        onOk: async (n) => { await src.setCount(line.key, ph, cur + n); say({ ok: true, msg: `Sortie : ${eq.name} +${n} en plus (${cur + n}/${t})` }); },
       });
       return false;
     }
@@ -309,7 +311,10 @@ export function ChecklistView({ src }: { src: ChecklistSource }) {
           <div className="cl-count" onClick={(e) => e.stopPropagation()}>
             {!kit && !serial && t > 1 && <button type="button" className="ghost" aria-label="Moins" onClick={() => setN(l, n - 1)}>−</button>}
             {!kit && <span className="cl-n" title={serial ? 'Scanne chaque unité' : undefined}>{serial && <Icon name="camera" />}<b>{n}</b>/{t}</span>}
-            {!kit && !serial && t > 1 && <button type="button" className="ghost" aria-label="Plus" onClick={() => (n < t || ph === 'retour' ? setN(l, n + 1) : src.bumpQty(l.key, 1).then(() => setN(l, n + 1)))}>+</button>}
+            {!kit && !serial && t > 1 && <button type="button" className="ghost" aria-label="Plus" title="Ajouter un exemplaire sorti" onClick={() => {
+              if (n < t || ph === 'retour') return setN(l, n + 1);
+              setAsk({ title: `Plus que les ${t} prévus ?`, body: `Le nombre prévu reste à ${t} : seuls les sortis augmentent (${n + 1}/${t}).`, okLabel: 'Ajouter quand même', onOk: () => setN(l, n + 1) });
+            }}>+</button>}
             {l.equipmentId && <button type="button" className="ghost small" aria-label={`Infos ${l.name}`} title="Infos (stock, unités, où est-il ?)" onClick={() => setSheet(l.equipmentId!)}><Icon name="info" /></button>}
             {ph === 'retour' && l.equipmentId && !kit && <button type="button" className="secondary small" onClick={() => setBroken(l)}>Cassé</button>}
             {kit && <button type="button" className="ghost small" aria-label="Déplier" aria-expanded={!fold[`${src.title}|k|${l.key}`]} onClick={() => setFold(`${src.title}|k|${l.key}`, !fold[`${src.title}|k|${l.key}`])}><Icon name={fold[`${src.title}|k|${l.key}`] ? 'chevron-right' : 'chevron-down'} /></button>}
@@ -331,7 +336,14 @@ export function ChecklistView({ src }: { src: ChecklistSource }) {
         rows.push(lineRow(t));
         if (open) rows.push(<div key={t.key + '-kids'} className="cl-kids">{kv.map((x) => lineRow(x, true))}
           {editing && src.edit && <button type="button" className="ghost small cl-addrow" onClick={() => setLineEdit({ cat: t.cat, parentKey: t.key })}>+ Ajouter dans ce kit</button>}</div>);
-      } else if (pass(t) && match(t)) rows.push(lineRow(t, !src.kitMode && !!t.parentKey));
+      } else if (pass(t) && match(t)) {
+        rows.push(lineRow(t, !src.kitMode && !!t.parentKey));
+        // accessoires (lignes enfants d'un article non-kit) : cochés individuellement sous leur parent
+        if (src.kitMode) {
+          const kv = (kids.get(t.key) || []).filter((x) => pass(x) && match(x));
+          if (kv.length) rows.push(<div key={t.key + '-kids'} className="cl-kids">{kv.map((x) => lineRow(x, true))}</div>);
+        }
+      }
     }
     if (!rows.length && !(editing && !qn && filter === 'all')) return null;
     const lv = leaves.filter((l) => (src.kitMode && l.parentKey ? src.lines.find((p) => p.key === l.parentKey)?.cat : l.cat) === cat);
@@ -704,6 +716,7 @@ export function ProjectChecklist() {
   };
   const after = () => warehouseStatus(sp.id);
   const src: ChecklistSource = {
+    kitMode: true,
     title: `${project.name} · ${sp.name}`,
     subtitle: `${project.number} · ${fmtDate(sp.prepStart || sp.start)} → ${fmtDate(sp.returnEnd || sp.end)}${project.venue ? ` · ${project.venue}` : ''}`,
     backTo: { to: '/projets/' + project.id, label: 'Projet' },

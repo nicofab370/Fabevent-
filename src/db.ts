@@ -146,7 +146,7 @@ export function multiDepot(s: Pick<Settings, 'depots'>): boolean {
 }
 
 export const DEFAULT_DOC_STYLE: DocStyle = {
-  color: '#1d4ed8', theme: 'moderne', font: 'sans', logoPosition: 'gauche', showCode: true, showFactor: true, showDiscount: true, showGroups: true,
+  color: '#1d4ed8', color2: '#0f766e', theme: 'moderne', font: 'sans', logoPosition: 'gauche', showCode: true, showFactor: true, showDiscount: true, showGroups: true,
   showSubtotals: true, showPeriods: true, hideZero: false, hideEquipmentDetail: false, showSignature: true,
 };
 

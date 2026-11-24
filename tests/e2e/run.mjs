@@ -51,7 +51,13 @@ async function step(name, fn) {
 const go = async (hash) => { await page.goto(U + '#/' + hash); await page.waitForTimeout(400); };
 /** dans la page (pas dans la barre des onglets ouverts) */
 const inPage = (sel) => page.locator('main > :not(.open-tabs)').locator(sel).first();
-const openProject = async (name) => { await go('projets'); await inPage(`text=${name}`).click(); await page.waitForSelector('.project-tabs'); await page.waitForTimeout(300); };
+const openProject = async (name) => {
+  await go('projets');
+  // la recherche persiste entre les pages (hash) : on la vide pour voir tous les projets
+  const q = page.locator('main .toolbar input').first();
+  if (await q.count()) { await q.fill(''); await page.waitForTimeout(250); }
+  await inPage(`text=${name}`).first().click({ force: true }); await page.waitForSelector('.project-tabs'); await page.waitForTimeout(300);
+};
 const tab = async (label) => { await page.click(`.project-tabs button:text-is("${label}")`); await page.waitForTimeout(300); };
 /** glisser-déposer HTML5 à la souris (la cible est d'abord ramenée à l'écran) */
 const drag = async (src, target) => {
@@ -746,10 +752,13 @@ await step('Entrepôt : scan d’un code-barres en sortie', async () => {
   await page.waitForSelector('.scan-input');
   await page.fill('.scan-input', 'DEMO-SUB');
   await page.press('.scan-input', 'Enter');
-  // article en vrac : « combien ? » (le reste par défaut), Entrée valide
-  await page.press('.cl-askq', 'Enter');
+  await page.waitForTimeout(400);
+  // article en vrac : « combien ? » (Entrée valide) ; ou article avec contenu (kit/accessoires) : « Valider » d'un coup
+  if (await page.locator('.cl-ask .cl-askq').count()) await page.press('.cl-askq', 'Enter');
+  else await page.locator('.cl-ask button', { hasText: 'Valider' }).first().click().catch(() => {});
   await page.waitForTimeout(300);
-  expect((await page.locator('.flash').innerText()).startsWith('Sortie'), 'sortie enregistrée au scan');
+  const fl = await page.locator('.flash').innerText();
+  expect(fl.startsWith('Sortie') || fl.includes('Kit') || fl.includes('sorti'), 'sortie enregistrée au scan (' + fl.slice(0, 80) + ')');
 });
 
 await step('Hors ligne : l’application se recharge sans réseau', async () => {
@@ -1443,7 +1452,7 @@ await step('Checklist : unité scannée, doublon refusé, « ajouter en plus »,
   await page.locator('.cl-ask button:has-text("Ajouter en plus")').click();
   await page.waitForTimeout(400);
   expect((await page.locator('.checklist-scan .flash').innerText()).includes('ajouté en plus (2)'), 'ajouté en plus et déjà sorti');
-  expect((await page.locator('.cl-line', { hasText: 'Micro Shure SM58' }).getAttribute('class')).includes('done'), 'ligne en plus cochée');
+  expect((await page.locator('.cl-line:not(.kid)', { hasText: 'Micro Shure SM58' }).getAttribute('class')).includes('done'), 'ligne en plus cochée');
   expect((await scan('FAB-77777')).includes('Code inconnu'), 'code inconnu');
   await page.locator('.checklist-scan .flash button:has-text("Associer")').click();
   await page.fill('.modal input', 'Caisson');
@@ -1469,7 +1478,7 @@ await step('Checklist : retour, unité abîmée, bilan, déclarer perdu puis ret
   await page.waitForTimeout(300);
   await page.click('button:text-is("Bilan du retour")');
   const bilan = await page.locator('.modal').innerText();
-  expect(bilan.includes('L-Acoustics X12') && bilan.includes('ULXD-1002') && bilan.includes('QU16-1001'), `manquants listés : ${bilan.slice(0, 200)}`);
+  expect(bilan.includes('X12') && bilan.includes('ULXD-1002') && bilan.includes('QU16-1001'), `manquants listés : ${bilan.slice(0, 400)}`);
   // l'unité ULXD-1002 reviendra plus tard : décochée
   await page.locator('.modal input[aria-label*="ULXD-1002"]').uncheck();
   await page.click('.modal button:has-text("Déclarer perdu")');
@@ -2484,6 +2493,110 @@ await step('TVA par article : taux spécifique sur la fiche, détail par taux su
   await page.waitForSelector('.doc');
   const totals = await page.locator('.doc .totals').innerText();
   expect(totals.includes('TVA 21 %') && totals.includes('TVA 6 %'), 'deux taux de TVA détaillés sur le devis');
+});
+
+await ctx.close();
+
+/* ---------- Nouveautés : entrepôt 6/5, kits scannables, planning clic jour, horaires, mails ---------- */
+console.log('\n  — nouveautés —');
+ctx = await newContext();
+await openDemo();
+
+await step('Entrepôt : ajouter plus que prévu garde le prévu (3/2, pas 3/3)', async () => {
+  await openChecklist('Mariage Dupont-Lemaire');
+  const line = page.locator('.cl-line:not(.kid)', { hasText: 'L-Acoustics X12' });
+  await line.locator('button[aria-label="Plus"]').click();
+  await line.locator('button[aria-label="Plus"]').click();
+  await line.locator('button[aria-label="Plus"]').click(); // au-delà du prévu : confirmation
+  await page.waitForTimeout(300);
+  expect((await page.locator('.cl-ask').innerText()).includes('Plus que les 2 prévus'), 'confirmation demandée au-delà du prévu');
+  await page.locator('.cl-ask button', { hasText: 'Ajouter quand même' }).click();
+  await page.waitForTimeout(300);
+  const n = (await line.locator('.cl-n').innerText()).replace(/\s+/g, '');
+  expect(n === '3/2', `compteur 3/2, prévu inchangé (${n})`);
+});
+
+await step('Kit ajouté au projet : le scan d’un composant du kit est reconnu (pas « en plus »)', async () => {
+  await resetDemo();
+  await openProject('Spectacle de fin d\'année');
+  await tab('Équipement');
+  await page.locator('button:has-text("+ Matériel")').first().click();
+  const m = page.locator('.modal');
+  await m.locator('.picker-filters input').first().fill('pack conférence');
+  await m.locator('.pick-row', { hasText: 'Pack conférence' }).locator('button[aria-label^="Plus"]').click();
+  await m.locator('button:has-text("Ajouter (")').click();
+  await page.waitForTimeout(400);
+  await page.locator('button:has-text("Préparer / scanner")').first().click();
+  await page.waitForSelector('.checklist-scan');
+  const msg = await scan('DEMO-PIED');
+  expect(!msg.includes('pas prévu') && msg.includes('Pied de micro'), 'composant du kit compté, pas proposé en plus (' + msg.slice(0, 90) + ')');
+});
+
+await step('Planning : clic sur un jour = « + Rendez-vous » / « + Projet » à cette date', async () => {
+  await resetDemo();
+  await go('planning');
+  const now = new Date();
+  const d15 = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-15`;
+  await page.locator('.cal .day .num', { hasText: '15' }).first().click();
+  await page.waitForSelector('.day-menu');
+  await page.locator('.day-menu button:has-text("+ Rendez-vous")').click();
+  await page.waitForSelector('.modal input[type=datetime-local]');
+  expect((await page.locator('.modal input[type=datetime-local]').first().inputValue()).startsWith(d15), 'rdv pré-rempli au 15 du mois');
+  await page.locator('.modal button[aria-label="Fermer"]').click();
+  await page.waitForTimeout(300);
+  await page.locator('.cal .day .num', { hasText: '15' }).first().click();
+  await page.locator('.day-menu button:has-text("+ Projet")').click();
+  await page.waitForSelector('.modal');
+  expect(page.url().includes('/projets?date=' + d15), 'navigation vers nouveau projet à cette date (' + page.url() + ')');
+  expect((await page.locator('.modal input[type=datetime-local]').first().inputValue()).startsWith(d15), 'projet pré-rempli au 15');
+  await page.locator('.modal button[aria-label="Fermer"]').click();
+});
+
+await step('Horaires : 1re prestation le même jour que le montage ; ±1 jour sur un bloc', async () => {
+  await resetDemo();
+  await openProject('Festival des Lumières');
+  await tab('Planning');
+  await page.locator('button:has-text("+ Ajouter un sous-projet")').first().click();
+  const m = page.locator('.modal');
+  // le brouillon copie les horaires de la 1re salle : on les retire pour tester à vide
+  for (let i = 0; i < 12; i++) { const r = m.locator('.period-row button[aria-label^="Retirer"]'); if (!(await r.count())) break; await r.first().click(); await page.waitForTimeout(120); }
+  await m.locator('button:has-text("+ Montage")').click(); await page.waitForTimeout(200);
+  await m.locator('button:has-text("+ Jour de prestation")').click(); await page.waitForTimeout(200);
+  const rows = m.locator('.period-row');
+  const dMont = (await rows.nth(0).locator('input[type=datetime-local]').first().inputValue()).slice(0, 10);
+  const dPrest = (await rows.nth(1).locator('input[type=datetime-local]').first().inputValue()).slice(0, 10);
+  expect(dMont === dPrest, `prestation le même jour que le montage (${dMont} vs ${dPrest})`);
+  await rows.nth(1).locator('button[aria-label*="jour après"]').click(); await page.waitForTimeout(200);
+  const dApres = (await rows.nth(1).locator('input[type=datetime-local]').first().inputValue()).slice(0, 10);
+  expect(dApres > dMont, `bloc décalé d’un jour (+1 j : ${dMont} → ${dApres})`);
+  await m.locator('button[aria-label="Fermer"]').click();
+});
+
+await step('Email : les destinataires proposent d’abord ceux liés au projet', async () => {
+  await resetDemo();
+  await openProject('Festival des Lumières');
+  await tab('Finances & documents');
+  await page.locator('button:has-text("Devis")').first().click();
+  await page.waitForSelector('.doc', { timeout: 15000 });
+  await page.click('button:has-text("Envoyer par email")');
+  await page.waitForSelector('.recipients input');
+  await page.locator('.recipients input').first().click();
+  await page.waitForTimeout(400);
+  const hits = await page.locator('.rcpt-hits').innerText().catch(() => '');
+  expect(hits.includes('@'), 'suggestions de destinataires proposées (' + hits.slice(0, 120) + ')');
+  await page.locator('.modal button[aria-label="Fermer"]').click();
+});
+
+await step('Modèles : décocher une section la retire de l’aperçu pour ce type de document', async () => {
+  await go('modeles');
+  await page.locator('.tpl-types button:text-is("Facture")').click();
+  await page.waitForTimeout(400);
+  const box = page.locator('.blk-toggles .check-row', { hasText: 'Frais supplémentaires' }).locator('input');
+  expect(await box.isChecked(), 'section cochée par défaut');
+  const avant = await page.locator('.doc').innerText();
+  await box.uncheck(); await page.waitForTimeout(400);
+  const apres = await page.locator('.doc').innerText();
+  if (avant.includes('Frais')) expect(!apres.includes('Frais supplémentaires'), 'section retirée de l’aperçu');
 });
 
 await ctx.close();

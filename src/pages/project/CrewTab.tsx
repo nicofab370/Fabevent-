@@ -394,7 +394,7 @@ function RoomCrew({ d, sp, pMap, mode, ctx, actionsFor }: { d: ProjectData; sp: 
                           {v.kmManual && <button className="ghost small" title="Recalculer depuis la distance du projet" onClick={() => updVaPriced(v, { kmManual: false, km: tripKm(d.project.distanceKm, v.trips ?? d.settings.defaultTrips ?? 2) })} aria-label="Recalculer les km"><Icon name="reset" /></button>}
                         </td>
                         <td><NumInput className="w-qty" min={0} value={perKmFor(v, vMap.get(v.vehicleId), d.settings)} onChange={(n) => updVaPriced(v, { perKm: n })} /></td>
-                        <td><NumInput className="w-price" value={v.price} onChange={(n) => updVa(v, { price: n })} /></td>
+                        <td><NumInput className="w-price" value={v.price} aria-label={`Prix facturé pour ${vMap.get(v.vehicleId)?.name || 'le véhicule'}`} title="Prix du transport facturé au client" onChange={(n) => updVa(v, { price: n })} /></td>
                         <td><input type="checkbox" checked={v.billable} onChange={(e) => updVa(v, { billable: e.target.checked })} /></td>
                         <td><button className="ghost" onClick={() => db.vehicleAssignments.delete(v.id)} aria-label="Retirer"><Icon name="x" /></button></td>
                       </tr>
@@ -451,6 +451,8 @@ function SendPlanningAll({ people, withProv, items, mail, ics, onSent, onClose }
   const [pick, setPick] = useState<Set<string>>(() => new Set(people.filter((p) => p.email && items(p).length).map((p) => p.id)));
   const [res, setRes] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  /** un seul email pour tous, avec un agenda .ics par personne, plutôt qu'un mail à chacun */
+  const [oneMail, setOneMail] = useState(false);
   useEffect(() => { mailServer().then(setServer); }, []);
   return (
     <Modal title={`Envoyer le planning${withProv ? ' (postes provisoires compris)' : ''}`} onClose={onClose}>
@@ -468,11 +470,27 @@ function SendPlanningAll({ people, withProv, items, mail, ics, onSent, onClose }
         );
       })}</tbody></table>
       {server && !server.ok && <p className="muted">Envoi direct indisponible ({server.error}) : ouvre chaque mail dans ta messagerie (l'agenda .ics n'est pas joint).</p>}
+      {server?.ok && pick.size > 1 && (
+        <label className="check-row" title="Un seul email avec tous les destinataires ; chacun reçoit son propre agenda .ics en pièce jointe">
+          <input type="checkbox" checked={oneMail} onChange={(e) => setOneMail(e.target.checked)} /> Un seul email commun (un agenda .ics par personne)
+        </label>
+      )}
       <div className="form-actions">
         <button type="button" className="secondary" onClick={onClose}>Fermer</button>
         {server?.ok && <button type="button" disabled={busy || !pick.size} onClick={async () => {
           setBusy(true);
-          for (const p of people.filter((x) => pick.has(x.id))) {
+          const sel = people.filter((x) => pick.has(x.id) && x.email);
+          if (oneMail && sel.length > 1) {
+            try {
+              const drafts = sel.map((p) => mail(p));
+              const files = sel.map((p) => { const f = ics(p); return { name: f.name, type: 'text/calendar', blob: new Blob([f.text], { type: 'text/calendar;charset=utf-8' }) }; });
+              await sendMail({ to: drafts.map((b) => b.to).filter(Boolean).join(', '), subject: drafts[0].subject, body: drafts.map((b, i) => `— ${sel[i].name} —\n${b.body}`).join('\n\n'), replyTo: settings.company.email }, files);
+              for (const p of sel) { await onSent(p); setRes((r) => ({ ...r, [p.id]: 'Envoyé (mail commun)' })); }
+            } catch (e) { for (const p of sel) setRes((r) => ({ ...r, [p.id]: (e as Error).message })); }
+            setBusy(false);
+            return;
+          }
+          for (const p of sel) {
             try {
               const f = ics(p);
               await sendMail({ ...mail(p), replyTo: settings.company.email }, [{ name: f.name, type: 'text/calendar', blob: new Blob([f.text], { type: 'text/calendar;charset=utf-8' }) }]);
@@ -481,7 +499,7 @@ function SendPlanningAll({ people, withProv, items, mail, ics, onSent, onClose }
             } catch (e) { setRes((r) => ({ ...r, [p.id]: (e as Error).message })); }
           }
           setBusy(false);
-        }}>{busy ? 'Envoi…' : `Envoyer à ${pick.size} personne(s)`}</button>}
+        }}>{busy ? 'Envoi…' : oneMail ? `Envoyer 1 email à ${pick.size} personne(s)` : `Envoyer à ${pick.size} personne(s)`}</button>}
       </div>
     </Modal>
   );

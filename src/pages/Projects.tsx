@@ -1,7 +1,7 @@
 import { ContactField } from '../components/ContactField';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Empty, Field, Modal, NumInput, PageHead, StatusBadge, useSettings } from '../components/ui';
 import { DEFAULT_PROJECT_TYPES, db, nextNumber } from '../db';
 import { copyProject, shiftBetween } from '../projectOps';
@@ -96,7 +96,10 @@ export default function Projects() {
   const contacts = useLiveQuery(() => db.contacts.toArray(), []) || [];
   const [q, setQ] = useState(() => new URLSearchParams(window.location.hash.split('?')[1] || '').get('q') || '');
   const [status, setStatus] = useState('');
-  const [creating, setCreating] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  // ?date=AAAA-MM-JJ (clic sur un jour du planning) : nouveau projet pré-rempli à cette date
+  const dateParam = searchParams.get('date');
+  const [creating, setCreating] = useState(!!dateParam);
   const [fromTemplate, setFromTemplate] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const cMap = new Map(contacts.map((c) => [c.id, c.company]));
@@ -170,8 +173,11 @@ export default function Projects() {
       </div>
       {fromTemplate && <FromTemplateModal templates={templates} onClose={() => setFromTemplate(false)} />}
       {creating && (
-        <Modal title="Nouveau projet" onClose={() => setCreating(false)}>
-          <ProjectForm onDone={(p) => { setCreating(false); if (p) nav('/projets/' + p.id); }} />
+        <Modal title="Nouveau projet" onClose={() => { setCreating(false); setSearchParams({}); }}>
+          <ProjectForm
+            initial={dateParam ? { name: '', status: 'brouillon', start: dateParam + 'T08:00', end: dateParam + 'T23:00', discount: 0 } as Draft : undefined}
+            onDone={(p) => { setCreating(false); setSearchParams({}); if (p) nav('/projets/' + p.id); }}
+          />
         </Modal>
       )}
     </>

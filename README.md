@@ -24,7 +24,7 @@ npm run test:parcours  # nouveautés en contexte : import Rentman, catégories, 
 - *Coûts supplémentaires* (refacturés ou non, bon de commande), *Finances & documents* (marge par catégorie, déjà facturé),
   *Sous-locations & commandes*, *Registre* (historique des modifications).
 - Projets découpés en **sous-projets** (une salle, une scène, une zone, un jour…), chacun avec son matériel, son équipe et ses véhicules. Duplication d'un sous-projet.
-- **Horaires par sous-projet** : montage, Prestation J1, J2…, démontage. Le matériel est bloqué du premier au dernier créneau ;
+- **Horaires par sous-projet** : montage, Prestation J1, J2… La première prestation a lieu le même jour que le montage ; chaque bloc se décale de ±1 jour d'un clic., démontage. Le matériel est bloqué du premier au dernier créneau ;
   seuls les jours de prestation sont facturés (une fin de soirée après minuit compte pour la veille). Les postes de l'équipe se rattachent à un créneau.
 - Statuts, duplication de projet, interlocuteur client.
 - Onglet Finances : chiffre d'affaires, coûts (personnel, sous-locations, consommables, frais divers), marge.
@@ -57,13 +57,13 @@ prix d'un véhicule = forfait journalier × jours + km (distance × 2 × allers-
 **Dépôts et transferts** : plusieurs dépôts, stock par dépôt, dépôt de départ par projet, transferts définitifs ou temporaires
 (proposés automatiquement en cas de manque), bon de transfert.
 
-**Modèles de documents** : style commun éditable en HTML (en-tête, mise en page, pied de page, CSS) avec une liste de variables
+**Modèles de documents** : deux couleurs (principale + secondaire contrastante pour les titres de section), sections affichables choisies par type de document ; style commun éditable en HTML (en-tête, mise en page, pied de page, CSS) avec une liste de variables
 cliquables ({{client.nom}}, {{total.ttc}}…) et de blocs générés ({{bloc.salles}}, {{bloc.totaux}}…) ; titre et textes par type de document ;
 options d'affichage (couleur, police, colonnes, lignes à 0 €) ; aperçu en direct. Le modèle est figé dans chaque document émis.
 
 **Équipe et véhicules** : postes, tarif facturé / coût, indisponibilités, conflits, agenda personnel `.ics`.
 
-**Planning** mensuel et export `.ics` avec lien direct vers chaque projet.
+**Planning** mensuel et export `.ics` avec lien direct vers chaque projet. Clic sur un jour : « + Rendez-vous » ou « + Projet » pré-rempli à cette date.
 
 **Recherche globale** (Ctrl+K / Cmd+K) : projets, matériel (articles et unités), contacts, personnes, documents — Entrée ouvre le résultat.
 **Badges d'alerte** dans le menu : pénuries, retours en retard, contrôles à venir, postes à pourvoir.
@@ -73,7 +73,7 @@ options d'affichage (couleur, police, colonnes, lignes à 0 €) ; aperçu en di
 - Chiffre d'affaires par mois, meilleurs clients, matériel le plus rentable et taux d'utilisation.
 
 **Facturation belge** : régimes de TVA (normal, autoliquidation UE, exonéré, hors UE) par client ou par projet, avec mention légale ;
-communication structurée +++…+++ et QR code de virement sur les factures ; factures échues et rappels de paiement (3 niveaux) ;
+communication structurée +++…+++ et QR code de virement sur les factures (le bloc paiement est toujours imprimé, même sur les anciens modèles personnalisés) ; factures échues et rappels de paiement (3 niveaux) ;
 remises par défaut du client.
 
 **Planning avancé** : décaler un projet (durée ou nouvelle date), modèles de projet, projets récurrents.
@@ -104,7 +104,7 @@ Audit automatique de chaque page sur téléphone (390 px) et sur ordinateur (140
 
 **Icônes** : un seul jeu d'icônes dessinées au trait (SVG, `src/components/Icon.tsx`), à la couleur et à la taille du texte ; aucun emoji dans l'interface.
 
-**Mails depuis la plateforme** : devis, factures, bons, plannings, demandes de dispo partent directement de FabEvent avec leurs
+**Mails depuis la plateforme** : devis, factures, bons, plannings, demandes de dispo partent directement de FabEvent. Feuille de route et bon de sortie : envoyés aux techniciens concernés, pas au client. Destinataires : ceux liés au projet (client, lieu, équipe) proposés d'abord. Planning : un mail à chacun, ou un seul email commun (un .ics par personne). avec leurs
 pièces jointes (serveur `mail.php` sur l'hébergement, SMTP). Destinataires depuis le carnet d'adresses (contacts, interlocuteurs,
 services, techniciens), copie, **modèles de mail par type** (Modèles → Mails, ou « Enregistrer comme modèle » : les noms, dates
 et montants deviennent des variables). Sans serveur : partage, brouillon .eml ou messagerie.
@@ -153,7 +153,7 @@ par fournisseur (impression, email), coûts par fournisseur dans les finances. P
 la facture finale excluant les sous-projets déjà facturés. **Champs personnalisés** (projets, contacts, matériel) utilisables dans les documents,
 **étiquettes** et filtres, **rendez-vous** hors projet dans le planning, **export CSV** de toutes les listes, **modification groupée** du matériel (les informations communes aux articles cochés sont pré-remplies, seules celles qu'on change sont appliquées : catégorie, dépôt, type, prix ou variation en %, prix d'achat, valeur de remplacement, poids, contrôle, emplacement, archivage, étiquettes à ajouter ou retirer, photo, contenu fourni, notes, champs personnalisés).
 Filtre **par dépôt** dans la liste du matériel et dans « + Matériel » d'un projet (seul le matériel présent dans ce dépôt, disponibilité calculée dans ce dépôt). Les filtres de catégorie regroupent les catégories en double (même nom, créées par deux imports ou deux appareils), rangent un troisième niveau sous sa catégorie principale et proposent « Sans catégorie ».
-**Stock par dépôt** : un transfert définitif passé à « Effectué » déplace vraiment le stock (quantité propre de chaque dépôt ; pour un article sérialisé, les unités choisies dans le transfert changent de dépôt) ; un transfert planifié ou temporaire reste une réservation datée. Modifier ou repasser un transfert effectué remet d'abord le stock en place ; à la suppression, FabEvent propose de le remettre. Les transferts définitifs déjà effectués sont convertis une fois au démarrage. À l'inventaire d'un dépôt : l'attendu compte les transferts en cours, « Appliquer les écarts » corrige le stock de la différence (sans écraser les transferts), une unité scannée alors qu'elle est enregistrée dans un autre dépôt est comptée et rangée dans ce dépôt (historique), et une unité d'un dépôt supprimé compte au dépôt principal, comme dans la liste du matériel.
+**Stock par dépôt** : un transfert définitif passé à « Effectué » déplace vraiment le stock (quantité propre de chaque dépôt ; pour un article sérialisé, les unités choisies dans le transfert changent de dépôt) ; un transfert planifié ou temporaire reste une réservation datée. Modifier ou repasser un transfert effectué remet d'abord le stock en place ; à la suppression, FabEvent propose de le remettre. Les transferts définitifs déjà effectués sont convertis une fois au démarrage. À l'inventaire d'un dépôt : l'attendu compte les transferts en cours, « Appliquer les écarts » corrige le stock de la différence (sans écraser les transferts), une unité scannée alors qu'elle est enregistrée dans un autre dépôt est comptée et rangée dans ce dépôt (historique) ; un article en vrac attendu dans un autre dépôt propose d'ouvrir un transfert ou de le compter ici, et une unité d'un dépôt supprimé compte au dépôt principal, comme dans la liste du matériel.
 **Étiqueteuses dans les modèles** : support « ruban » (largeur du ruban, longueur au choix) en plus des planches A4 et des rouleaux. Modèles standard pour la **Brother PT-P750W** sur tous les rubans TZe (3,5, 6, 9, 12, 18, 24 mm ; zone imprimable d'après la table Brother), la **Dymo LabelManager** (rubans D1 6 à 24 mm) et la **Dymo LabelWriter** (11355, 11352, 11354, 30332, 99010, 99012, 99014, S0904980). Un modèle PT-P750W s'imprime en USB directement (l'étiquette du modèle est convertie à 180 dpi, aperçu noir et blanc de ce qui sort), en image PNG ou via le pilote ; un modèle Dymo via le pilote Dymo ou en image PNG pour Dymo Connect. Le ruban de 3,5 mm est reconnu par la machine.
 **Code automatique d'un article sérialisé** : un article suivi par n° de série sans code interne reçoit un code logique, comme un nouvel article (dépôt-catégorie-numéro, ex. F-S-0042) ; ses unités sans code prennent ce code suivi de leur numéro #x (#3 → F-S-0042-03). Fait au démarrage, après un import, après une synchronisation et avant d'ajouter la première unité ; les codes existants ne changent jamais.
 **Marque, modèle, description courte** : sur la fiche d'un article, la désignation se compose toute seule (« Shure SM58s (Micro dynamique Switch) ») tant qu'elle n'est pas écrite à la main (« Recomposer » pour y revenir) ; « Découper » remplit les trois champs à partir d'une désignation existante (marques en plusieurs mots reconnues). Marques déjà saisies proposées, recherche sur la marque, le modèle et la description, colonnes dans l'export CSV et l'import (désignation composée si le fichier n'en a pas), marque et description dans la modification groupée.
@@ -215,7 +215,7 @@ passe au statut « Envoyé ».
 **Entrepôt (Checklist FABRI.live reprise)** : checklist de sortie puis de retour par sous-projet.
 - Scan à la douchette ou à la caméra (ZXing intégré, fonctionne sur iPhone et hors ligne). Une unité sérialisée ne compte qu'une fois.
 - Article en vrac scanné : « combien ? », le reste par défaut (ou « chaque scan compte 1 »).
-- Kit scanné : tout son contenu d'un coup. Hors liste : « ajouter en plus », déjà compté.
+- Kit scanné : tout son contenu d'un coup ; un composant scanné seul est reconnu dans son kit (jamais proposé « en plus »). Hors liste : « ajouter en plus », déjà compté. Sortir plus que prévu demande confirmation et ne change pas le nombre prévu (6/5).
 - Catégories et kits repliables avec leur compteur (« KIT · 3/5 »), filtres Tout / Restant / Fait, recherche.
 - On touche une ligne pour la cocher, − / + pour une partie, pour la fiche.
 - Au retour :

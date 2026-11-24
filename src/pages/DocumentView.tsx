@@ -29,6 +29,30 @@ export default function DocumentView() {
     async () => (doc ? (await db.docs.where({ projectId: doc.projectId }).toArray()).filter((d) => d.type === doc.type).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) : []),
     [doc?.projectId, doc?.type],
   ) || [];
+  /** emails des techniciens affectés au projet */
+  const crewEmails = useLiveQuery(async () => {
+    if (!doc) return [];
+    const crew = await db.crew.where({ projectId: doc.projectId }).toArray();
+    const people = await db.people.toArray();
+    const pm = new Map(people.map((x) => [x.id, x]));
+    return crew.map((c) => (c.personId ? pm.get(c.personId)?.email : undefined)).filter((e): e is string => !!e);
+  }, [doc?.id, doc?.projectId]) || [];
+  /** adresses liées au projet, proposées en premier dans les destinataires ; feuille de route / bon de sortie : les techniciens seuls, pas le client */
+  const hints = useLiveQuery(async () => {
+    if (!doc) return [];
+    const p = await db.projects.get(doc.projectId);
+    const client = p?.clientId ? await db.contacts.get(p.clientId) : undefined;
+    const venue = p?.venueId ? await db.contacts.get(p.venueId) : undefined;
+    const out: string[] = [];
+    const push = (e?: string) => { if (e && !out.includes(e)) out.push(e); };
+    if (doc.type === 'feuille_route' || doc.type === 'bon_sortie') for (const e of crewEmails) push(e);
+    else {
+      push(client?.email); for (const pe of client?.persons || []) push(pe.email); for (const d of client?.departments || []) push(d.email);
+      push(venue?.email); for (const pe of venue?.persons || []) push(pe.email);
+      for (const e of crewEmails) push(e);
+    }
+    return out;
+  }, [doc?.id, doc?.projectId, doc?.type, crewEmails.join(',')]) || [];
   if (!doc) return <p>Chargement…</p>;
 
   const isInvoice = INVOICE_TYPES.includes(doc.type);
@@ -62,7 +86,8 @@ export default function DocumentView() {
     return list;
   };
   const mailDraft = () => ({
-    to: doc.snapshot.contactEmail || doc.snapshot.department?.email || doc.snapshot.client?.email || '',
+    // feuille de route / bon de sortie : envoyés aux techniciens concernés, jamais au client
+    to: (doc.type === 'feuille_route' || doc.type === 'bon_sortie') ? crewEmails.join(', ') : doc.snapshot.contactEmail || doc.snapshot.department?.email || doc.snapshot.client?.email || '',
     subject: `${title} — ${doc.snapshot.project.name}`,
     body: `Bonjour${doc.contactPerson ? ' ' + doc.contactPerson.split(' ')[0] : ''},\n\nVeuillez trouver ci-joint notre ${DOC_LABELS[doc.type].toLowerCase()} ${doc.number} pour « ${doc.snapshot.project.name} ».\n\nCordialement,\n${doc.snapshot.company.name}`,
   });
@@ -132,7 +157,7 @@ export default function DocumentView() {
       {doc.type === 'devis' && quoteUrl === '' && qMsg && <div className="no-print" style={{ marginBottom: 10 }}><div className="info">{qMsg}</div></div>}
       <div className="doc-wrap" ref={ref}><DocRender doc={doc} /></div>
       {mailing && (
-        <EmailModal initial={mailDraft()} prepare={attachments} onClose={() => setMailing(false)} kind={doc.type} vars={mailVars()}
+        <EmailModal initial={mailDraft()} prepare={attachments} onClose={() => setMailing(false)} kind={doc.type} vars={mailVars()} hints={hints}
           onSent={() => { if (doc.status === 'brouillon') save(db.docs, { ...doc, status: 'envoye' }); }} />
       )}
       <div className="no-print" style={{ marginTop: 12 }}>

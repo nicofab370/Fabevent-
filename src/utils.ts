@@ -180,9 +180,12 @@ export function buildReservations(lines: EquipmentLine[], subs: Subproject[], eq
       out.push({ equipmentId: eqId, qty, start, end: sold ? FOREVER : end, lineId: l.id, subprojectId: sp.id, projectId: sp.projectId, source: 'projet', depotId: depotOf(sp.projectId), firm: FIRM.includes(sp.status) || !!sp.reserve });
     }
   };
+  // lignes enfants d'un kit : le kit réserve déjà ses composants (dépliés dans push), on ne les compte pas deux fois
+  const kitLines = new Set(lines.filter((l) => !l.parentLineId && l.equipmentId && eqMap.get(l.equipmentId)?.isKit).map((l) => l.id));
   for (const l of lines) {
     const sp = subMap.get(l.subprojectId);
     if (!sp || !l.equipmentId || l.optional || !RESERVING.includes(sp.status)) continue;
+    if (l.parentLineId && kitLines.has(l.parentLineId)) continue;
     push(l.equipmentId, l.qty, l, sp, 0);
   }
   for (const r of extras.repairs || []) {

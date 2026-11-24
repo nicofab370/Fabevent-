@@ -341,7 +341,7 @@ function Tasks({ project }: { project: Project }) {
       {tasks.length === 0 && <p className="muted">Aucune tâche.</p>}
       {[...tasks].sort((a, b) => Number(a.done) - Number(b.done) || (a.due || '9').localeCompare(b.due || '9')).map((t) => (
         <div key={t.id} className={'task' + (t.done ? ' done' : '')}>
-          <input type="checkbox" checked={t.done} onChange={(e) => setTasks(tasks.map((x) => (x.id === t.id ? { ...x, done: e.target.checked } : x)))} />
+          <input type="checkbox" checked={t.done} aria-label={`Tâche terminée : ${t.text}`} title="Marquer la tâche comme terminée" onChange={(e) => setTasks(tasks.map((x) => (x.id === t.id ? { ...x, done: e.target.checked } : x)))} />
           <span style={{ flex: 1 }}>{t.text}</span>
           {t.due && <span className={!t.done && t.due < today ? 'avail ko' : 'muted'} style={{ fontSize: 12 }}>{fmtDate(t.due, false)}</span>}
           <button className="ghost" onClick={() => setTasks(tasks.filter((x) => x.id !== t.id))} aria-label="Supprimer"><Icon name="x" /></button>

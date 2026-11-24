@@ -396,9 +396,7 @@ export async function addEquipmentToSub(sp: Subproject, equipment: Equipment[], 
       lineId = uid();
       await db.lines.put({ id: lineId, createdAt: t, updatedAt: t, projectId: sp.projectId, subprojectId: sp.id, groupId, equipmentId: eqId, name: eq.name, qty: n, unitPrice: eq.dailyPrice, discount, order: order++ });
     }
-    // accessoires proposés à cocher ; par défaut tous (rétrocompatible), sinon seulement ceux choisis
-    const accSel = accPick?.[eqId];
-    for (const a of (eq.accessories || []).filter((x) => !accSel || accSel.includes(x.equipmentId))) {
+
       const acc = eqMap.get(a.equipmentId);
       if (!acc) continue;
       const child = existing.find((l) => l.parentLineId === lineId && l.equipmentId === a.equipmentId);
@@ -522,7 +520,7 @@ function EquipmentPicker({ sp, groupId, initialQ = '', depot, depots = [], disco
                 {e.photo ? <img src={e.photo} alt="" className="thumb" /> : <span className="thumb" />}
                 <div className="pick-name">
                   <div><strong>{e.name}</strong> {e.isKit && <span className="badge">Kit</span>} {e.kind === 'vente' && <span className="badge">vente</span>}</div>
-                  <div className="muted" style={{ fontSize: 11 }}>{[e.code, e.categoryId && catName.get(e.categoryId), inProject.get(e.id) ? `déjà ${inProject.get(e.id)} dans le projet` : '', e.contents?.length ? `avec ${e.contents.map((c) => c.name).join(', ')}` : ''].filter(Boolean).join(' · ')}</div>
+                  <div className="muted" style={{ fontSize: 11 }}>{[e.code, e.categoryId && catName.get(e.categoryId), inProject.get(e.id) ? `déjà ${inProject.get(e.id)} dans le projet` : '', e.isKit && e.kitItems?.length ? `kit : ${e.kitItems.map((k) => `${k.qty} × ${equipment.find((x) => x.id === k.equipmentId)?.name || '?'}`).join(', ')}` : '', e.contents?.length ? `avec ${e.contents.map((c) => c.name).join(', ')}` : ''].filter(Boolean).join(' · ')}</div>
                 </div>
                 <div className="pick-stock">
                   <span className={'avail ' + (a - n >= 0 ? 'ok' : 'ko')} title={n ? `Disponible ${a}, reste ${a - n} après cet ajout` : 'Disponible sur la période'}>

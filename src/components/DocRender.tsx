@@ -9,11 +9,11 @@ import { INVOICE_TYPES } from '../types';
 import { fmtDate, money } from '../utils';
 
 export const DOC_CSS = `
-.doc{--accent:#1d4ed8;--accent-soft:#eef2fd;--accent-line:#c7d4f7;--accent-ink:#fff;font-family:Inter,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#1c2330;background:#fff;max-width:820px;margin:0 auto;padding:0 40px 36px;font-size:12.5px;line-height:1.5;border-top:8px solid var(--accent);-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.doc{--accent:#1d4ed8;--accent-soft:#eef2fd;--accent-line:#c7d4f7;--accent-ink:#fff;--accent2:#0f766e;--accent2-soft:#f0fdfa;font-family:Inter,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#1c2330;background:#fff;max-width:820px;margin:0 auto;padding:0 40px 36px;font-size:12.5px;line-height:1.5;border-top:8px solid var(--accent);-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .doc.f-serif{font-family:Georgia,'Times New Roman',serif}.doc.f-arrondie{font-family:'Trebuchet MS','Segoe UI',Verdana,sans-serif}
 .doc h1{font-size:28px;line-height:1.1;margin:0;color:var(--accent);font-weight:800;letter-spacing:-.01em}
 .doc h2{font-size:14px;margin:26px 0 8px;padding:7px 12px;background:var(--accent-soft);border-left:4px solid var(--accent);border-radius:0 6px 6px 0;color:#111}
-.doc h3{font-size:10.5px;margin:14px 0 4px;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;font-weight:700}
+.doc h3{font-size:10.5px;margin:14px 0 4px;color:var(--accent2);text-transform:uppercase;letter-spacing:.07em;font-weight:700}
 .doc section>.muted:first-of-type{margin:-2px 0 6px 2px}
 .doc .head{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;padding:26px 0 18px;border-bottom:1px solid var(--accent-line);margin-bottom:16px}
 .doc .head img,.doc .logo-centre img{max-height:64px;max-width:200px;display:block;margin-bottom:8px}
@@ -23,7 +23,7 @@ export const DOC_CSS = `
 .doc .d-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:0 0 18px}
 .doc .d-card{background:var(--accent-soft);border-radius:8px;padding:10px 12px}
 .doc .d-card:has(>.d-lbl:only-child){display:none}
-.doc .d-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.08em;font-weight:700;color:var(--accent);margin-bottom:3px}
+.doc .d-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.08em;font-weight:700;color:var(--accent2);margin-bottom:3px}
 .doc .logo-centre{text-align:center;margin-bottom:12px}
 .doc .box{border:1px solid var(--accent-line);border-top:3px solid var(--accent);border-radius:8px;padding:10px 12px;min-width:220px}
 .doc .muted{color:#6b7280}.doc .right{text-align:right}
@@ -75,7 +75,7 @@ export function DocRender({ doc, mark, highlight, onPick }: { doc: Doc; mark?: b
   return (
     <>
       {highlight && <style>{`.doc [data-bloc="${highlight.replace(/[^\w]/g, '')}"]{outline:2px solid ${st.color}!important;outline-offset:4px}`}</style>}
-      <div className={`doc f-${st.font} t-${st.theme || 'moderne'}${mark ? ' marking' : ''}`} style={accentVars(st.color)}
+      <div className={`doc f-${st.font} t-${st.theme || 'moderne'}${mark ? ' marking' : ''}`} style={accentVars(st.color, st.color2)}
         onClick={onPick ? (e) => { const b = (e.target as HTMLElement).closest('[data-bloc]'); if (b) onPick(b.getAttribute('data-bloc')!); } : undefined}
         dangerouslySetInnerHTML={{ __html: html }} />
     </>
@@ -86,16 +86,20 @@ export function DocRender({ doc, mark, highlight, onPick }: { doc: Doc; mark?: b
 export function docStyle(doc: Doc): DocStyle {
   const st = { ...DEFAULT_DOC_STYLE, ...doc.snapshot.template?.style };
   if (/^#1{6}$/i.test(st.color)) st.color = DEFAULT_DOC_STYLE.color;
+  if (!/^#([0-9a-f]{6})$/i.test(st.color2 || '')) st.color2 = DEFAULT_DOC_STYLE.color2;
   return st;
 }
 
 /** variables de couleur : teinte claire, filet et couleur du texte sur l'accent (calculés, pour le PDF aussi) */
-export function accentVars(color: string): CSSProperties {
-  const m = /^#?([0-9a-f]{6})$/i.exec(color.trim());
-  const [r, g, b] = m ? [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16)) : [29, 78, 216];
-  const mix = (t: number) => `rgb(${[r, g, b].map((c) => Math.round(c + (255 - c) * t)).join(',')})`;
-  const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-  return { '--accent': `rgb(${r},${g},${b})`, '--accent-soft': mix(0.92), '--accent-line': mix(0.75), '--accent-ink': lum > 0.62 ? '#111' : '#fff' } as CSSProperties;
+export function accentVars(color: string, color2?: string): CSSProperties {
+  const vars = (hex: string, prefix: 'accent' | 'accent2') => {
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+    const [r, g, b] = m ? [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16)) : [29, 78, 216];
+    const mix = (t: number) => `rgb(${[r, g, b].map((c) => Math.round(c + (255 - c) * t)).join(',')})`;
+    const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+    return { [`--${prefix}`]: `rgb(${r},${g},${b})`, [`--${prefix}-soft`]: mix(0.92), ...(prefix === 'accent' ? { '--accent-line': mix(0.75), '--accent-ink': lum > 0.62 ? '#111' : '#fff' } : {}) } as CSSProperties;
+  };
+  return { ...vars(color, 'accent'), ...(color2 ? vars(color2, 'accent2') : {}) } as CSSProperties;
 }
 
 export function buildDocHtml(doc: Doc, opts: { mark?: boolean } = {}): string {
@@ -178,8 +182,13 @@ export function buildDocHtml(doc: Doc, opts: { mark?: boolean } = {}): string {
       <section className="terms"><h2>{tr(doc, 'terms')}</h2><div style={{ whiteSpace: 'pre-wrap', fontSize: '0.85em' }}>{s.terms}</div></section>,
     ) : '',
   };
+  // sections choisies pour ce type de document (modèle figé) : les autres sont retirées
+  const allowed = s.template?.blocks;
+  if (allowed) for (const k of Object.keys(blocks)) if (!allowed.includes(k.slice(5)) && k !== 'bloc.entete' && k !== 'bloc.pied') blocks[k] = '';
   // gabarits personnalisés plus anciens : on place les nouveaux blocs à un endroit raisonnable
   if (!h.layout.includes('bloc.notes')) blocks['bloc.salles'] = blocks['bloc.notes'] + blocks['bloc.salles'];
+  // le paiement (IBAN, communication, QR) doit toujours apparaître sur les factures, même sans {{bloc.paiement}} dans le gabarit
+  if (!h.layout.includes('bloc.paiement')) blocks['bloc.totaux'] += blocks['bloc.paiement'];
   if (!h.layout.includes('bloc.caution')) blocks['bloc.totaux'] += blocks['bloc.caution'];
   // la mention de TVA suit les totaux, sauf si le gabarit la place lui-même
   if (!h.layout.includes('bloc.mention_tva')) blocks['bloc.totaux'] += blocks['bloc.mention_tva'];
