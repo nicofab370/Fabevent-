@@ -462,7 +462,8 @@ await step('Inventaire : scan inconnu refusé, écart appliqué au stock', async
   await page.click('.modal button:text-is("Appliquer")');
   await page.waitForSelector('text=Inventaire appliqué');
   await go('materiel');
-  expect((await page.locator('table.list tr', { hasText: 'Pied de micro perche' }).innerText()).includes('18'), 'stock mis à 18');
+  // la liste affiche aussi le contenu des kits (lignes kit-child) : on vise la ligne de l'article lui-même
+  expect((await page.locator('table.list tr:not(.kit-child)', { hasText: 'Pied de micro perche' }).innerText()).includes('18'), 'stock mis à 18');
 });
 
 const tickAll = async (except) => {
@@ -962,8 +963,8 @@ await step('Rendez-vous : affiché au planning et rend le participant indisponib
 await step('Export CSV et modification groupée des prix', async () => {
   await go('materiel');
   const [dl] = await Promise.all([page.waitForEvent('download'), page.click('text=Exporter (CSV)')]);
-  expect(readFileSync(await dl.path(), 'utf8').includes('Désignation;Référence'), 'export CSV du matériel');
-  const price = async (name) => (await page.locator('table.list tr', { hasText: name }).locator('td').last().innerText()).trim();
+  expect(readFileSync(await dl.path(), 'utf8').includes('Désignation;Marque;Modèle;Description courte;Référence'), 'export CSV du matériel');
+  const price = async (name) => (await page.locator('table.list tr:not(.kit-child)', { hasText: name }).locator('td').last().innerText()).trim();
   const before = await price('Micro Shure SM58');
   await page.locator('table.list tr', { hasText: 'Micro Shure SM58' }).locator('input[type=checkbox]').check();
   await page.locator('table.list tr', { hasText: 'Boîte de direct DI passive' }).locator('input[type=checkbox]').check();
@@ -1434,7 +1435,8 @@ const openChecklist = async (name) => { await go('entrepot'); await page.locator
 await step('Checklist : unité scannée, doublon refusé, « ajouter en plus », code inconnu associé', async () => {
   await resetDemo();
   await openChecklist('Mariage Dupont-Lemaire');
-  expect((await scan('SN-LA4X-1001')).includes('Sortie : Amplificateur LA4X n° LA4X-1001'), 'unité sortie');
+  const outMsg = await scan('SN-LA4X-1001');
+  expect(outMsg.includes('Sortie : Amplificateur LA4X') && outMsg.includes('n° LA4X-1001'), 'unité sortie (' + outMsg + ')');
   expect((await scan('SN-LA4X-1001')).includes('déjà sorti'), 'doublon refusé');
   await scanRaw('DEMO-SM58');
   expect((await page.locator('.cl-ask').innerText()).includes('pas prévu'), 'article hors liste signalé');
