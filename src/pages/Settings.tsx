@@ -6,6 +6,7 @@ import type { InvoiceMoment, Settings } from '../types';
 import { MOMENT_TRIGGERS, VAT_REGIME_LABELS } from '../types';
 import { SyncPanel } from '../components/SyncPanel';
 import { CodesPanel } from '../components/CodesPanel';
+import { APP_PR, APP_PR_URL, APP_VERSION } from '../version';
 import { cleanLetter, depotLetter } from '../codegen';
 import { settingsMoments } from '../invoicing';
 import { DEFAULT_VAT_MENTIONS } from '../payment';
@@ -334,6 +335,11 @@ export default function SettingsPage() {
           <input placeholder="Nom de la nouvelle base" value={newWs} onChange={(e) => setNewWs(e.target.value)} />
           <button className="secondary" disabled={!newWs.trim()} onClick={() => switchWorkspace(newWs.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-'))}>Créer et ouvrir</button>
         </div>
+      </div>
+      <div className="card">
+        <h2>Version</h2>
+        <p style={{ margin: '0 0 6px' }}>FabEvent <strong>v{APP_VERSION}</strong> — pull request <a href={APP_PR_URL} target="_blank" rel="noreferrer">#{APP_PR}</a></p>
+        <p className="muted" style={{ margin: 0, fontSize: 12 }}>Le numéro de version est le numéro de la PR GitHub fusionnée : chaque merge publie une nouvelle version. Après une mise à jour, recharge la page (éventuellement deux fois) pour vider le cache du service worker.</p>
       </div>
     </>
   );

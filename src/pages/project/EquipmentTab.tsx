@@ -286,7 +286,7 @@ function LineModal({ sp, line, accessories, onClose }: { sp: Subproject; line: E
       <form className="form" onSubmit={async (e) => {
         e.preventDefault();
         const periodIds = l.periodIds?.length ? l.periodIds : undefined;
-        await patch(db.lines, line.id, { periodIds, remark: l.remark?.trim() || undefined, internalRemark: l.internalRemark?.trim() || undefined, unitPrice: l.unitPrice, discount: l.discount, optional: l.optional || undefined, groupId: l.groupId || undefined });
+        await patch(db.lines, line.id, { periodIds, remark: l.remark?.trim() || undefined, internalRemark: l.internalRemark?.trim() || undefined, unitPrice: l.unitPrice, discount: l.discount, optional: l.optional || undefined, optionGroup: l.optional ? (l.optionGroup?.trim() || undefined) : undefined, groupId: l.groupId || undefined });
         if (l.groupId !== line.groupId) for (const c of accessories) await patch(db.lines, c.id, { groupId: l.groupId || undefined });
         // les accessoires suivent l'horaire de leur article
         for (const c of accessories) await patch(db.lines, c.id, { periodIds });
@@ -321,6 +321,8 @@ function LineModal({ sp, line, accessories, onClose }: { sp: Subproject; line: E
           </Field>
         )}
         <Field label=" "><label className="check-row"><input type="checkbox" checked={!!l.optional} onChange={(e) => setL({ ...l, optional: e.target.checked })} /> En option sur le devis (hors total)</label></Field>
+        {l.optional && <Field label="Groupe d'options (devis)" full><input value={l.optionGroup || ''} onChange={(e) => setL({ ...l, optionGroup: e.target.value })} placeholder="ex. Son, Lumière, Transport" aria-label="Groupe d'options" />
+          <small className="muted">Les lignes d'un même groupe sont proposées au choix au client (acceptation en ligne) : il peut en retenir une par groupe.</small></Field>}
         <Field label="Remarque pour le client (devis, facture)" full><input value={l.remark || ''} onChange={(e) => setL({ ...l, remark: e.target.value })} placeholder="ex. livré monté sur pied" /></Field>
         <Field label="Remarque pour l'entrepôt (bon de sortie)" full><input value={l.internalRemark || ''} onChange={(e) => setL({ ...l, internalRemark: e.target.value })} placeholder="ex. prendre les câbles neufs" /></Field>
         <div className="form-actions">
@@ -396,7 +398,10 @@ export async function addEquipmentToSub(sp: Subproject, equipment: Equipment[], 
       lineId = uid();
       await db.lines.put({ id: lineId, createdAt: t, updatedAt: t, projectId: sp.projectId, subprojectId: sp.id, groupId, equipmentId: eqId, name: eq.name, qty: n, unitPrice: eq.dailyPrice, discount, order: order++ });
     }
-
+    // contenu du kit (lignes enfants scannables une à une) + accessoires proposés à cocher ; par défaut tous, sinon seulement ceux cochés
+    const accSel = accPick?.[eqId];
+    const children = [...(eq.kitItems || []).map((k) => ({ equipmentId: k.equipmentId, qty: k.qty, free: true })), ...(eq.accessories || []).filter((x) => !accSel || accSel.includes(x.equipmentId))];
+    for (const a of children) {
       const acc = eqMap.get(a.equipmentId);
       if (!acc) continue;
       const child = existing.find((l) => l.parentLineId === lineId && l.equipmentId === a.equipmentId);

@@ -279,7 +279,18 @@ function Rooms({ doc, st }: { doc: Doc; st: DocStyle }) {
                 {optLines.length > 0 && (
                   <div className="doc-options">
                     <h3>{tr(doc, 'options')}</h3>
-                    {table(optLines)}
+                    {(() => {
+                      // options groupées : dans chaque groupe, le client choisit (acceptation en ligne)
+                      const groups = new Map<string, typeof optLines>();
+                      for (const l of optLines) { const g = l.optionGroup || ''; groups.set(g, [...(groups.get(g) || []), l]); }
+                      return [...groups.entries()].map(([g, ls]) => (
+                        <div key={g || '_'} style={{ marginBottom: 8 }}>
+                          {g ? <div className="muted" style={{ fontWeight: 700 }}>{tr(doc, 'optionsGroup')} « {g} »</div> : null}
+                          {table(ls)}
+                          {showPrices && g ? <div className="right muted">{money(ls.reduce((a, l) => a + l.total, 0))} HT</div> : null}
+                        </div>
+                      ));
+                    })()}
                     {showPrices && <div className="right muted">{tr(doc, 'optionsTotal')} : <strong>{money(optLines.reduce((a, l) => a + l.total, 0))}</strong> HT</div>}
                   </div>
                 )}

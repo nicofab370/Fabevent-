@@ -245,6 +245,10 @@ if (isset($_GET['d'])) {
     $client = is_array($sn['client'] ?? null) ? (string)($sn['client']['company'] ?? $sn['client']['name'] ?? '') : '';
     $projName = is_array($sn['project'] ?? null) ? (string)($sn['project']['name'] ?? '') : '';
     $head = '<h1>Devis ' . h((string)($d['number'] ?? '')) . '</h1><div class="m">' . h($projName) . ($client !== '' ? ' · ' . h($client) : '') . '</div>';
+    // options proposées (hors total), groupées : le client choisit une option par groupe
+    $opts = [];
+    foreach ((array)($sn['subprojects'] ?? []) as $sp) foreach ((array)($sp['equipment'] ?? []) as $l) if (!empty($l['optional'])) $opts[] = $l;
+    $optIds = array_values(array_filter(array_map(fn($l) => (string)($l['optId'] ?? ''), $opts)));
     if (in_array((string)($d['status'] ?? ''), ['accepte', 'refuse'], true))
         page('Devis ' . h((string)($d['number'] ?? '')), $head . '<div class="c"><div class="msg ' . ($d['status'] === 'accepte' ? 'ok' : 'ko') . '">Réponse déjà enregistrée : ' . ($d['status'] === 'accepte' ? 'devis accepté' : 'devis refusé') . '.</div></div>');
     if ($post) {
@@ -252,6 +256,10 @@ if (isset($_GET['d'])) {
         $ans = (string)($_POST['answer'] ?? '');
         if (!in_array($ans, ['accepte', 'refuse'], true)) page('Erreur', '<h1>Erreur</h1>', 400);
         $d['status'] = $ans;
+        // options retenues par le client (une par groupe au maximum, validées contre le snapshot)
+        $accepted = [];
+        if ($ans === 'accepte') foreach ((array)($_POST['opt'] ?? []) as $v) { $v = (string)$v; if ($v !== '' && in_array($v, $optIds, true)) $accepted[] = $v; }
+        $d['acceptedOptions'] = $accepted;
         put_row($db, $row['space'], 'docs', $row['id'], $d);
         if ($ans === 'accepte') {
             // devis accepté = projet confirmé (et ses salles non annulées), comme dans FabEvent
@@ -275,19 +283,43 @@ if (isset($_GET['d'])) {
                 }
             }
         }
+        $extra = 0; foreach ($opts as $l) if (in_array((string)($l['optId'] ?? ''), $accepted, true)) $extra += (float)($l['total'] ?? 0);
+        $ttcAll = number_format((float)($sn['totalTTC'] ?? 0) + $extra * (1 + (float)($sn['vatRate'] ?? 0) / 100), 2, ',', ' ') . ' € TTC';
         page('Merci', $head . '<div class="c"><div class="msg ' . ($ans === 'accepte' ? 'ok' : 'ko') . '">'
-            . ($ans === 'accepte' ? 'Merci ! Le devis est accepté : le projet est confirmé et le matériel réservé.' : 'Devis refusé, c\'est noté. N\'hésite pas à nous contacter si tu as des questions.')
+            . ($ans === 'accepte'
+                ? 'Merci ! Le devis est accepté' . ($accepted ? ' avec ' . count($accepted) . ' option(s) — total ' . $ttcAll : '') . ' : le projet est confirmé et le matériel réservé.'
+                : 'Devis refusé, c\'est noté. N\'hésite pas à nous contacter si tu as des questions.')
             . '</div></div>');
     }
     $ttc = number_format((float)($sn['totalTTC'] ?? 0), 2, ',', ' ') . ' € TTC';
     $dates = !empty($sn['project']['start']) ? fdate((string)$sn['project']['start']) . ' → ' . fdate((string)($sn['project']['end'] ?? $sn['project']['start'])) : '';
     $valid = !empty($sn['validUntil']) ? fdate((string)$sn['validUntil']) : '';
+    // formulaire des options : un choix (radio) par groupe d'options
+    $optHtml = '';
+    if ($opts) {
+        $rate = (float)($sn['vatRate'] ?? 0);
+        $groups = [];
+        foreach ($opts as $l) $groups[(string)($l['optionGroup'] ?? '')][] = $l;
+        $optHtml = '<p style="margin:0 0 6px"><b>Options proposées (hors total)</b> — choisis dans chaque groupe :</p>';
+        foreach ($groups as $g => $ls) {
+            $gid = 'g' . substr(md5($g), 0, 8);
+            $optHtml .= '<p style="margin:10px 0 4px"><b>' . h($g !== '' ? 'Groupe « ' . $g . ' »' : 'Autres options') . '</b></p>';
+            $optHtml .= '<div class="row"><input type="radio" name="opt[' . $gid . ']" value="" id="' . $gid . 'x" checked><label for="' . $gid . 'x">Aucune</label></div>';
+            foreach ($ls as $l) {
+                $id = h((string)($l['optId'] ?? ''));
+                $ttcL = number_format((float)($l['total'] ?? 0) * (1 + $rate / 100), 2, ',', ' ') . ' € TTC';
+                $optHtml .= '<div class="row"><input type="radio" name="opt[' . $gid . ']" value="' . $id . '" id="' . $gid . '-' . $id . '"><label for="' . $gid . '-' . $id . '"><b>' . h((string)($l['name'] ?? '')) . '</b> × ' . h((string)($l['qty'] ?? 1)) . ' — ' . $ttcL . '</label></div>';
+            }
+        }
+    }
     page('Devis ' . h((string)($d['number'] ?? '')), $head
         . '<div class="c"><p><b>' . h($projName) . '</b>' . ($dates !== '' ? '<br><span class="m">' . $dates . '</span>' : '') . '</p>'
-        . '<p>Montant : <b>' . $ttc . '</b>' . ($valid !== '' ? '<br><span class="m">valable jusqu\'au ' . $valid . '</span>' : '') . '</p>'
+        . '<p>Montant : <b>' . $ttc . '</b>' . ($valid !== '' ? '<br><span class="m">valable jusqu\'au ' . $valid . '</span>' : '')
+        . ($opts ? '<br><span class="m">' . count($opts) . ' option(s) proposée(s) au choix, hors total.</span>' : '') . '</p>'
         . (!empty($sn['note']) ? '<p style="white-space:pre-wrap" class="m">' . h((string)$sn['note']) . '</p>' : '')
         . '</div>'
         . '<form method="post" action="' . $self . '" class="c"><input type="hidden" name="t" value="' . h($tok) . '">'
+        . ($optHtml ? '<div class="c" style="margin-top:0">' . $optHtml . '</div>' : '')
         . '<button class="ok" name="answer" value="accepte">' . ICO_CHECK . 'J\'accepte ce devis</button>'
         . '<button class="ko" name="answer" value="refuse">' . ICO_X . 'Je refuse ce devis</button></form>');
 }

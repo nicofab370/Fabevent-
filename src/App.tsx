@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Route, Routes, useLocation } from 'react-router-dom';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { useAlerts } from './alerts';
 import { GlobalSearch } from './components/GlobalSearch';
-import { currentWorkspace } from './db';
+import { currentWorkspace, db } from './db';
+import { patch, save } from './utils';
+import { APP_PR, APP_PR_URL, APP_VERSION } from './version';
 import { DEMO_WORKSPACE } from './demo';
 import Accounting from './pages/Accounting';
 import Calendar from './pages/Calendar';
@@ -70,6 +73,14 @@ export default function App() {
     '/equipe': [alerts.postes, 'postes prévus sans technicien'],
     '/attribution': [alerts.postes, 'postes prévus sans technicien'],
   };
+  // devis accepté en ligne avec des options choisies : les lignes passent en « non optionnelles » (facturées), une seule fois
+  const pendingOpts = useLiveQuery(() => db.docs.filter((d) => d.type === 'devis' && d.status === 'accepte' && (d.acceptedOptions || []).length > 0 && !d.optionsApplied).toArray(), []) || [];
+  useEffect(() => {
+    for (const d of pendingOpts) void (async () => {
+      for (const id of d.acceptedOptions || []) await patch(db.lines, id, { optional: false });
+      await save(db.docs, { ...d, optionsApplied: true });
+    })();
+  }, [pendingOpts]);
   useEffect(() => setMenu(false), [loc.pathname]);
   useEffect(() => {
     const on = () => setOnline(true), off = () => setOnline(false);
@@ -94,6 +105,7 @@ export default function App() {
         </nav>
         <UndoButton />
         <SyncBadge online={online} />
+        <div className="side-version">v{APP_VERSION} · <a href={APP_PR_URL} target="_blank" rel="noreferrer">PR #{APP_PR}</a></div>
       </aside>
       <GlobalSearch />
       <div className="topbar">

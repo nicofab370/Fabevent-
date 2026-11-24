@@ -836,3 +836,6 @@ table.list tr.limiting td:first-child, table.list tr.kit-child.limiting td:nth-c
 
 /* puces « où est … » : cible tactile sur mobile */
 @media (pointer:coarse),(max-width:820px) { .link-btn.use-chips { min-height: 32px; align-items: center; } }
+
+.side-version { font-size: 11px; padding: 8px 12px; border-top: 1px solid var(--border); }
+.side-version a { color: inherit; }

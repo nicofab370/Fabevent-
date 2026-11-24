@@ -111,6 +111,8 @@ export async function buildSnapshot(projectId: string, type: DocType, only?: { i
             discount: l.discount,
             total: lineTotal(l, days, s, perPiece),
             vatRate: regime === 'normal' && e?.vatRate !== undefined ? e.vatRate : undefined,
+            optionGroup: l.optional ? (l.optionGroup?.trim() || undefined) : undefined,
+            optId: l.id,
             group: (l.groupId && groupName.get(l.groupId)) || l.group,
             optional: !!l.optional,
             unit: perPiece ? 'pièce' as const : 'jour' as const,
