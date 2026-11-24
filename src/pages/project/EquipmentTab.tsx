@@ -213,6 +213,9 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
                               {l.periodIds?.length ? <div className="muted eq-sub" style={{ fontSize: 11 }}><Icon name="clock" />{periods.filter((p) => l.periodIds!.includes(p.id)).map((p) => p.name).join(', ')} · {fmtRange(b0, b1)}</div> : null}
                               {l.remark && <div className="muted eq-sub" style={{ fontSize: 11 }}>Devis : {l.remark}</div>}
                               {l.internalRemark && <div className="muted eq-sub" style={{ fontSize: 11 }}>Entrepôt : {l.internalRemark}</div>}
+                              {eq?.isKit && !!eq.kitItems?.length && !lines.some((c) => c.parentLineId === l.id) && (
+                                <div className="muted eq-sub" style={{ fontSize: 11 }}>kit : {eq.kitItems.map((k) => `${k.qty} × ${eqMap.get(k.equipmentId)?.name || '?'}`).join(', ')}</div>
+                              )}
                             {eq && avail !== null && avail < l.qty && !l.optional && (eq.alternatives || []).map((altId) => {
                               const alt = eqMap.get(altId);
                               if (!alt || alt.archived) return null;
@@ -271,16 +274,26 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
           <UsageBreakdown eq={usesOf.eq} uses={usesOf.uses} stock={usesOf.stock} here={usesOf.here} avail={usesOf.avail} />
         </Modal>
       )}
-      {editLine && <LineModal sp={sp} line={editLine} accessories={lines.filter((c) => c.parentLineId === editLine.id)} onClose={() => setEditLine(null)} />}
+      {editLine && <LineModal sp={sp} line={editLine} accessories={lines.filter((c) => c.parentLineId === editLine.id)} eq={editLine.equipmentId ? eqMap.get(editLine.equipmentId) : undefined} allEquipment={d.av.equipment} onClose={() => setEditLine(null)} />}
     </div>
   );
 }
 
 /** Détails d'une ligne : horaire propre (créneaux) et remarques pour le client ou l'entrepôt. */
-function LineModal({ sp, line, accessories, onClose }: { sp: Subproject; line: EquipmentLine; accessories: EquipmentLine[]; onClose: () => void }) {
+function LineModal({ sp, line, accessories, eq, allEquipment, onClose }: { sp: Subproject; line: EquipmentLine; accessories: EquipmentLine[]; eq?: Equipment; allEquipment: Equipment[]; onClose: () => void }) {
   const periods = sortPeriods(sp.periods || []);
   const [l, setL] = useState(line);
   const groupName = sp.groups?.find((g) => g.id === line.groupId)?.name;
+  const toggleAcc = async (a: { equipmentId: string; qty: number; free?: boolean }, on: boolean) => {
+    const cur = accessories.find((c) => c.equipmentId === a.equipmentId);
+    if (on && !cur) {
+      const accEq = allEquipment.find((x) => x.id === a.equipmentId);
+      const t = nowIso();
+      await db.lines.put({ id: uid(), createdAt: t, updatedAt: t, projectId: line.projectId, subprojectId: line.subprojectId, groupId: l.groupId || line.groupId, equipmentId: a.equipmentId, name: accEq?.name || '?', qty: a.qty * line.qty, unitPrice: a.free ? 0 : accEq?.dailyPrice || 0, discount: 0, order: line.order + 0.5, parentLineId: line.id, periodIds: l.periodIds?.length ? l.periodIds : undefined });
+    } else if (!on && cur) {
+      await db.lines.delete(cur.id);
+    }
+  };
   return (
     <Modal title={`Ligne — ${line.name}`} onClose={onClose} wide>
       <form className="form" onSubmit={async (e) => {
@@ -323,6 +336,26 @@ function LineModal({ sp, line, accessories, onClose }: { sp: Subproject; line: E
         <Field label=" "><label className="check-row"><input type="checkbox" checked={!!l.optional} onChange={(e) => setL({ ...l, optional: e.target.checked })} /> En option sur le devis (hors total)</label></Field>
         {l.optional && <Field label="Groupe d'options (devis)" full><input value={l.optionGroup || ''} onChange={(e) => setL({ ...l, optionGroup: e.target.value })} placeholder="ex. Son, Lumière, Transport" aria-label="Groupe d'options" />
           <small className="muted">Les lignes d'un même groupe sont proposées au choix au client (acceptation en ligne) : il peut en retenir une par groupe.</small></Field>}
+        {!line.parentLineId && eq?.isKit && !!eq.kitItems?.length && (
+          <div className="field full"><span>Contenu du kit (lignes enfants, gratuites)</span>
+            <p className="muted" style={{ margin: '2px 0 0' }}>{eq.kitItems.map((k) => `${k.qty} × ${allEquipment.find((x) => x.id === k.equipmentId)?.name || '?'}`).join(', ')}</p>
+          </div>
+        )}
+        {!line.parentLineId && !!eq?.accessories?.length && (
+          <div className="field full">
+            <span>Accessoires facultatifs (lignes enfants sous celle-ci)</span>
+            {eq.accessories.map((a) => {
+              const accEq = allEquipment.find((x) => x.id === a.equipmentId);
+              const on = accessories.some((c) => c.equipmentId === a.equipmentId);
+              return (
+                <label key={a.equipmentId} className="check-row" title={`${a.qty} × ${accEq?.name || '?'}${a.free ? ' (offert)' : ''} avec ${line.name}`}>
+                  <input type="checkbox" checked={on} onChange={(e) => toggleAcc(a, e.target.checked)} />
+                  {a.qty} × {accEq?.name || '?'}{a.free ? ' (offert)' : ''}
+                </label>
+              );
+            })}
+          </div>
+        )}
         <Field label="Remarque pour le client (devis, facture)" full><input value={l.remark || ''} onChange={(e) => setL({ ...l, remark: e.target.value })} placeholder="ex. livré monté sur pied" /></Field>
         <Field label="Remarque pour l'entrepôt (bon de sortie)" full><input value={l.internalRemark || ''} onChange={(e) => setL({ ...l, internalRemark: e.target.value })} placeholder="ex. prendre les câbles neufs" /></Field>
         <div className="form-actions">
@@ -543,10 +576,10 @@ function EquipmentPicker({ sp, groupId, initialQ = '', depot, depots = [], disco
               {openUses === e.id && <div className="pick-uses"><UsageBreakdown eq={e} uses={uses} stock={stockAt(e, where || depot, res)} here={n || undefined} avail={a - n} hereLabel="cet ajout" /></div>}
               {!!e.accessories?.length && (
                 <div className="pick-acc">
-                  <button type="button" className="link-btn small" aria-expanded={accOpen === e.id} onClick={(ev) => { ev.stopPropagation(); setAccOpen(accOpen === e.id ? '' : e.id); }}>
-                    {accOpen === e.id ? '−' : '+'} {e.accessories.length} accessoire(s) proposé(s) — {selAcc(e).length} coché(s)
+                  <button type="button" className="link-btn small" aria-expanded={accOpen === e.id || n > 0} onClick={(ev) => { ev.stopPropagation(); setAccOpen(accOpen === e.id ? '' : e.id); }}>
+                    {accOpen === e.id && n === 0 ? '−' : '+'} Accessoires facultatifs ({e.accessories.length}) — {selAcc(e).length} coché(s)
                   </button>
-                  {accOpen === e.id && (
+                  {(accOpen === e.id || n > 0) && (
                     <div className="pick-acc-list">
                       {e.accessories.map((a) => {
                         const acc = equipment.find((x) => x.id === a.equipmentId);

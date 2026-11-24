@@ -361,6 +361,17 @@ function Tasks({ project }: { project: Project }) {
   );
 }
 
+/** Ajoute des fichiers au projet (bouton ou glisser-déposer sur la page). Renvoie le nombre ajoutés. */
+export async function addProjectFiles(projectId: string, files: File[]): Promise<number> {
+  let added = 0;
+  for (const file of files) {
+    if (file.size > 25 * 1024 * 1024) { alert(`${file.name} dépasse 25 Mo.`); continue; }
+    await db.files.put({ id: uid(), projectId, name: file.name, type: file.type, size: file.size, blob: file, createdAt: new Date().toISOString() });
+    added++;
+  }
+  return added;
+}
+
 function Files({ projectId }: { projectId: string }) {
   const files = useLiveQuery(() => db.files.where({ projectId }).toArray(), [projectId]) || [];
   // ouvert dans FabEvent, sans téléchargement
@@ -379,14 +390,11 @@ function Files({ projectId }: { projectId: string }) {
       <label className="btn secondary" style={{ background: 'var(--soft)', color: 'var(--text)', border: '1px solid var(--border)', marginTop: 8 }}>
         + Joindre des fichiers (plans, fiches techniques, photos…)
         <input type="file" multiple hidden onChange={async (e) => {
-          for (const file of Array.from(e.target.files || [])) {
-            if (file.size > 25 * 1024 * 1024) { alert(`${file.name} dépasse 25 Mo.`); continue; }
-            await db.files.put({ id: uid(), projectId, name: file.name, type: file.type, size: file.size, blob: file, createdAt: new Date().toISOString() });
-          }
+          await addProjectFiles(projectId, Array.from(e.target.files || []));
           e.target.value = '';
         }} />
       </label>
-      <p className="muted" style={{ marginBottom: 0, fontSize: 12 }}>Stockés sur cet appareil avec le projet.</p>
+      <p className="muted" style={{ marginBottom: 0, fontSize: 12 }}>Stockés sur cet appareil avec le projet — ou glisse des fichiers n'importe où sur la page.</p>
       {viewing && <FileViewer file={viewing} onClose={() => setViewing(null)} />}
     </div>
   );

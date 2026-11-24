@@ -5,3 +5,4 @@ tests/e2e/bon-test.pdf
 server/mail-config.php
 tsconfig.tsbuildinfo
 tests/e2e/plan-test.pdf
+tests/e2e/ux-shots/

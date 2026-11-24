@@ -15,6 +15,7 @@ import FinanceTab from './project/FinanceTab';
 import GeneralTab from './project/GeneralTab';
 import LogTab from './project/LogTab';
 import PlanningTab, { SubprojectModal } from './project/PlanningTab';
+import { addProjectFiles } from './project/GeneralTab';
 import { useProjectData, type ProjectData } from './project/shared';
 import { setProjectStatus } from './project/status';
 import SubrentTab from './project/SubrentTab';
@@ -45,6 +46,7 @@ function ProjectPage({ d }: { d: ProjectData }) {
   const goTab = (t: string) => setParams(t === 'general' ? {} : { onglet: t }, { replace: true });
   const [editSub, setEditSub] = useState<Partial<Subproject> | null>(null);
   const [repeat, setRepeat] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const { project, client, settings, subs, finance, conflicts, projectCrew } = d;
   const venueAlerts = (d.contacts.find((c) => c.id === project.venueId)?.comments || []).filter((c) => c.important);
   const open = projectCrew.filter((c) => !c.personId).length;
@@ -66,8 +68,21 @@ function ProjectPage({ d }: { d: ProjectData }) {
     nav('/projets/' + t.id);
   };
 
+  // glisser-déposer d'un fichier n'importe où sur la page : joint au projet
+  const onDragOver = (e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; setDragOver(true); }
+  };
+  const onDragLeave = (e: React.DragEvent) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false); };
+  const onDrop = async (e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault(); e.stopPropagation(); setDragOver(false);
+    const added = await addProjectFiles(project.id, Array.from(e.dataTransfer.files));
+    if (added > 0) goTab('general');
+  };
+
   return (
-    <>
+    <div className={'project-page' + (dragOver ? ' dropping' : '')} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
+      {dragOver && <div className="drop-overlay"><Icon name="upload" /> Déposer pour joindre au projet « {project.name} »</div>}
       <PageHead title={`${project.number} · ${project.name}`}>
         {project.typeName && <span className="badge" style={{ background: project.color || undefined, color: project.color ? '#fff' : undefined }}>{project.typeName}</span>}
         <select value={project.status} onChange={(e) => setProjectStatus(d, e.target.value as ProjectStatus)} style={{ width: 'auto' }}>
@@ -125,7 +140,7 @@ function ProjectPage({ d }: { d: ProjectData }) {
 
       {repeat && <RepeatModal project={project} onClose={() => setRepeat(false)} />}
       {editSub && <SubprojectModal sp={editSub} project={project} onClose={() => setEditSub(null)} />}
-    </>
+    </div>
   );
 }
 

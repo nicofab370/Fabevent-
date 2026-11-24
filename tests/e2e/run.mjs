@@ -645,6 +645,20 @@ await step('Projet : tâches, notes, fichiers et registre', async () => {
   expect((await page.locator('.card').innerText()).includes('modifié'), 'modifications dans le registre');
 });
 
+await step('Projet : glisser-déposer un fichier sur la page le joint au projet', async () => {
+  await openProject('Mariage Dupont-Lemaire');
+  await tab('Équipement'); // dépose depuis un autre onglet que Général
+  const dt = await page.evaluateHandle(() => { const d = new DataTransfer(); d.items.add(new File(['plan de feu'], 'plan-de-feu.pdf', { type: 'application/pdf' })); return d; });
+  const target = page.locator('.project-page').first();
+  await target.dispatchEvent('dragover', { dataTransfer: dt });
+  await page.waitForSelector('.drop-overlay', { timeout: 5000 });
+  await target.dispatchEvent('drop', { dataTransfer: dt });
+  await page.waitForTimeout(700);
+  expect(!page.url().includes('onglet=equipement'), 'retour sur l’onglet Général après le dépôt');
+  const main = await page.locator('main').innerText();
+  expect(main.includes('plan-de-feu.pdf'), 'fichier déposé joint au projet (carte Fichiers)');
+});
+
 await step('Distance (cartographie simulée) : transport recalculé', async () => {
   await page.route('https://nominatim.openstreetmap.org/**', (r) => r.fulfill({ contentType: 'application/json', body: JSON.stringify([{ lat: '50.6', lon: '5.5' }]) }));
   await page.route('https://router.project-osrm.org/**', (r) => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ code: 'Ok', routes: [{ distance: 100000, duration: 4200 }] }) }));
@@ -1675,6 +1689,38 @@ await step('Inventaire : unités en pastilles, scan limité à l’article, scan
   await m.locator('button:text-is("Terminé")').click();
 });
 
+await step('Inventaire : scan de l’étiquette article sérialisé → 1 unité = comptée d’office, plusieurs = sélecteur manuel', async () => {
+  await go('inventaire');
+  await page.waitForTimeout(600);
+  // étiquette de l’article ampli (3 unités) : le sélecteur s’ouvre
+  await page.fill('.scan-input', 'DEMO-AMPLI');
+  await page.press('.scan-input', 'Enter');
+  const ask = page.locator('.inv-tools .cl-ask');
+  await ask.waitFor({ timeout: 5000 });
+  expect((await ask.locator('.cl-asklist button').count()) === 3, '3 unités proposées au choix');
+  await ask.locator('button', { hasText: 'LA4X-1002' }).click();
+  await page.waitForTimeout(400);
+  expect((await page.locator('.flash').first().innerText()).includes('LA4X-1002'), 'unité choisie comptée');
+  // article à une seule unité (cl5) : comptée d’office, pas de sélecteur
+  await page.fill('.scan-input', 'DEMO-CL5');
+  await page.press('.scan-input', 'Enter');
+  await page.waitForTimeout(400);
+  expect(await page.locator('.inv-tools .cl-ask').count() === 0, 'pas de sélecteur pour 1 seule unité');
+  expect((await page.locator('.flash').first().innerText()).includes('CL5'), 'unité unique comptée d’office');
+  // dans la modale d’un article sérialisé aussi
+  await page.locator('.inv-row', { hasText: 'Amplificateur LA4X' }).click();
+  await page.waitForSelector('.modal');
+  await page.locator('.modal input[aria-label="Scanner une unité"]').fill('DEMO-AMPLI');
+  await page.locator('.modal input[aria-label="Scanner une unité"]').press('Enter');
+  const ask2 = page.locator('.modal .cl-ask');
+  await ask2.waitFor({ timeout: 5000 });
+  expect((await ask2.locator('.cl-asklist button').count()) === 3, 'sélecteur aussi dans la modale');
+  await ask2.locator('button', { hasText: 'LA4X-1003' }).click();
+  await page.waitForTimeout(400);
+  expect((await page.locator('.modal .flash').innerText()).includes('LA4X-1003'), 'unité choisie cochée dans la modale');
+  await page.locator('.modal button:text-is("Terminé")').click();
+});
+
 await step('Inventaire : fiche (ajout de stock, état d’une unité, où est-il ?), unité perdue retrouvée au scan', async () => {
   // « Infos » : scanner pour tout voir, sans compter
   await page.click('button:has-text("Infos")');
@@ -2456,6 +2502,41 @@ await step('Projet : accessoires proposés à cocher (décochables) dans le sél
   await page.waitForTimeout(600);
   expect((await page.locator('main table.list tr', { hasText: 'Caisson SB18' }).count()) >= 1, 'caisson ajouté au sous-projet');
   expect((await page.locator('main table.list tr', { hasText: 'Câble NL4' }).count()) === nl4Before, 'accessoire décoché non ajouté');
+});
+
+await step('Projet : contenu du kit affiché sous la ligne (lignes enfants)', async () => {
+  await resetDemo();
+  await openProject('Festival des Lumières');
+  await tab('Équipement');
+  const kitRow = page.locator('.eq-table tbody tr', { hasText: 'Pack ambiance 8 PAR LED' }).first();
+  await kitRow.waitFor();
+  const next = kitRow.locator('xpath=following-sibling::tr[1]');
+  expect((await next.innerText()).includes('PAR LED'), 'ligne enfant du kit affichée juste sous le kit');
+});
+
+await step('Projet : fiche de ligne — accessoires facultatifs à cocher/décocher, contenu du kit', async () => {
+  await openProject('Festival des Lumières');
+  await tab('Équipement');
+  const row = page.locator('.eq-table tbody tr', { hasText: 'Caisson SB18' }).first();
+  const nl4Before = await page.locator('.eq-table tbody tr', { hasText: 'Câble NL4' }).count();
+  await row.locator('button[aria-label="Détails de la ligne"]').click();
+  const m = page.locator('.modal');
+  await m.waitFor();
+  const accBox = m.locator('.check-row', { hasText: 'NL4' }).locator('input');
+  expect(await accBox.isChecked(), 'accessoire déjà présent = coché dans la fiche');
+  await accBox.click();
+  await page.waitForTimeout(600);
+  expect((await page.locator('.eq-table tbody tr', { hasText: 'Câble NL4' }).count()) === nl4Before - 1, 'accessoire décoché retiré de la ligne');
+  await accBox.click();
+  await page.waitForTimeout(600);
+  expect((await page.locator('.eq-table tbody tr', { hasText: 'Câble NL4' }).count()) === nl4Before, 'accessoire re-coché réajouté');
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(300);
+  // fiche d'un kit : contenu listé
+  await page.locator('.eq-table tbody tr', { hasText: 'Pack ambiance 8 PAR LED' }).first().locator('button[aria-label="Détails de la ligne"]').click();
+  await page.waitForSelector('.modal');
+  expect((await page.locator('.modal').innerText()).includes('Contenu du kit') && (await page.locator('.modal').innerText()).includes('PAR LED'), 'contenu du kit affiché dans la fiche');
+  await page.locator('.modal .form-actions button[type=submit]').click();
 });
 
 await step('Équipe : bouton « Lien ma fiche » par personne', async () => {
