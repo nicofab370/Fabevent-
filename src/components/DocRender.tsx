@@ -121,7 +121,7 @@ export function buildDocHtml(doc: Doc, opts: { mark?: boolean } = {}): string {
         <h2>{tr(doc, 'extras')}</h2>
         <table>
           <thead><tr><th className="n">{tr(doc, 'qty')}</th><th>{tr(doc, 'item')}</th><th className="n">{tr(doc, 'unitPrice')}</th><th className="n">{tr(doc, 'totalExcl')}</th></tr></thead>
-          <tbody>{s.extras.map((x, i) => <tr key={i}><td className="n">{x.qty}</td><td>{x.label}</td><td className="n">{money(x.unitPrice)}</td><td className="n">{money(x.total)}</td></tr>)}</tbody>
+          <tbody>{s.extras.map((x, i) => <tr key={i}><td className="n">{x.qty}</td><td>{x.label}{x.supplier && <span className="muted"> — {x.supplier}</span>}</td><td className="n">{money(x.unitPrice)}</td><td className="n">{money(x.total)}</td></tr>)}</tbody>
         </table>
       </section>,
     ) : '',

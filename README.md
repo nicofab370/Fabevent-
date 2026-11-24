@@ -96,11 +96,11 @@ leur ordre (nom, code, n° de série, catégorie, emplacement, contenu, sociét�
 - **Tarifs d'un technicien selon la fonction** (vidéo, son, road…).
 - **Envoi du planning à tous**, provisoire compris si souhaité. FabEvent retient ce qui a été envoyé, signale les horaires de début et de fin changés depuis (« à renvoyer »), et le mail les marque « MODIFIÉ ».
 
-**Coûts supplémentaires** : fournisseur en texte libre (absent des documents s'il est vide), montants saisis HTVA ou TVAC.
+**Coûts supplémentaires** : fournisseur en texte libre, imprimé sur les devis/factures et le bon de commande quand il est renseigné (absent des documents s'il est vide), montants saisis HTVA ou TVAC.
 **Documents du projet** : le plus récent de chaque type, les anciens avec « Plus anciens ».
 
 **Téléphone** : boutons et champs à la taille du doigt, textes sur plusieurs lignes, grands tableaux en fiches.
-Audit automatique de chaque page à 390 px : `npm run test:mobile`.
+Audit automatique de chaque page sur téléphone (390 px) et sur ordinateur (1400 px) : `npm run test:mobile`.
 
 **Icônes** : un seul jeu d'icônes dessinées au trait (SVG, `src/components/Icon.tsx`), à la couleur et à la taille du texte ; aucun emoji dans l'interface.
 

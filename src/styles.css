@@ -598,6 +598,8 @@ tr.post-open td:first-child { box-shadow: inset 4px 0 0 #d97706; }
   .cl-chead { min-height: 38px; }
   .cl-count .ghost, .stepper .ghost { width: 38px; height: 38px; }
   .uchip, .req-chip { min-height: 32px; }
+  /* pastilles « où est le matériel » : .link-btn remet min-height à 0, on rétablit une cible tactile */
+  .link-btn.use-chips { min-height: 32px; align-items: center; }
   .seg button { min-height: 38px; }
   .inv-row { min-height: 52px; }
 }
