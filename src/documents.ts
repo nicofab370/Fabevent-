@@ -64,8 +64,9 @@ export async function buildSnapshot(projectId: string, type: DocType, only?: { i
   const s = await getSettings();
   const project = await db.projects.get(projectId);
   if (!project) throw new Error('Projet introuvable');
-  const [client, subs, lines, crew, vas, people, vehicles, equipment] = await Promise.all([
+  const [client, allContacts, subs, lines, crew, vas, people, vehicles, equipment] = await Promise.all([
     project.clientId ? db.contacts.get(project.clientId) : undefined,
+    db.contacts.toArray(),
     db.subprojects.where({ projectId }).sortBy('order'),
     db.lines.where({ projectId }).toArray(),
     db.crew.where({ projectId }).toArray(),
@@ -75,6 +76,7 @@ export async function buildSnapshot(projectId: string, type: DocType, only?: { i
     db.equipment.toArray(),
   ]);
   const pMap = new Map(people.map((p) => [p.id, p]));
+  const cMap = new Map(allContacts.map((c) => [c.id, c]));
   const vMap = new Map(vehicles.map((v) => [v.id, v]));
   const eMap = new Map(equipment.map((e) => [e.id, e]));
   const isQuote = type === 'devis';
@@ -147,7 +149,11 @@ export async function buildSnapshot(projectId: string, type: DocType, only?: { i
 
   const costs = await db.costs.where({ projectId }).toArray();
   // les frais supplémentaires vont sur la facture finale, pas sur une facture partielle par salle
-  const extras = only?.include ? [] : costs.filter((c) => c.billable && c.price).map((c) => ({ label: c.label, qty: c.qty || 1, unitPrice: c.price!, total: round2((c.qty || 1) * c.price!) }));
+  // fournisseur en texte libre, ou nom du contact relié ; absent du document s'il est vide
+  const extras: NonNullable<DocSnapshot['extras']> = only?.include ? [] : costs.filter((c) => c.billable && c.price).map((c) => ({
+    label: c.label, qty: c.qty || 1, unitPrice: c.price!, total: round2((c.qty || 1) * c.price!),
+    supplier: c.supplierName?.trim() || (c.supplierId ? cMap.get(c.supplierId)?.company?.trim() : '') || undefined,
+  }));
   // assurance du matériel loué (sur les salles du document)
   const insPct = project.insurancePct ?? s.insurancePct ?? 0;
   const rentalHT = snapSubs.reduce((a, sp) => a + sp.equipment.filter((l) => !l.optional && l.unit === 'jour').reduce((b, l) => b + l.total, 0), 0);

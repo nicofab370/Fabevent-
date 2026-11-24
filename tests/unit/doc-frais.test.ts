@@ -14,6 +14,24 @@ const doc = (extras: NonNullable<Doc['snapshot']['extras']>): Doc => ({
   },
 });
 
+describe('frais supplémentaires dans les documents', () => {
+  it('affiche le fournisseur quand il est renseigné', () => {
+    const html = buildDocHtml(doc([{ label: 'Location nacelle 12 m', qty: 1, unitPrice: 480, total: 480, supplier: 'SonoPro' }]));
+    expect(html).toContain('Location nacelle 12 m');
+    expect(html).toContain('SonoPro');
+  });
+  it("n'affiche aucun fournisseur quand il est vide", () => {
+    const html = buildDocHtml(doc([{ label: 'Hôtel équipe', qty: 2, unitPrice: 100, total: 200 }]));
+    expect(html).toContain('Hôtel équipe');
+    expect(html).not.toContain('—');
+  });
+  it('échappe le fournisseur saisi en texte libre', () => {
+    const html = buildDocHtml(doc([{ label: 'Déplacement', qty: 1, unitPrice: 50, total: 50, supplier: '<b>X</b>' }]));
+    expect(html).toContain('&lt;b&gt;X&lt;/b&gt;');
+    expect(html).not.toContain('<b>X</b>');
+  });
+});
+
 describe('bloc paiement (QR) sur les factures', () => {
   const facture = (template?: Doc['snapshot']['template']): Doc => ({
     id: 'd', createdAt: now, updatedAt: now, projectId: 'p', type: 'facture', number: 'F-2026-007', version: 1, status: 'envoye',

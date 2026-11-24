@@ -336,7 +336,14 @@ export function ChecklistView({ src }: { src: ChecklistSource }) {
         rows.push(lineRow(t));
         if (open) rows.push(<div key={t.key + '-kids'} className="cl-kids">{kv.map((x) => lineRow(x, true))}
           {editing && src.edit && <button type="button" className="ghost small cl-addrow" onClick={() => setLineEdit({ cat: t.cat, parentKey: t.key })}>+ Ajouter dans ce kit</button>}</div>);
-      } else if (pass(t) && match(t)) rows.push(lineRow(t, !src.kitMode && !!t.parentKey));
+      } else if (pass(t) && match(t)) {
+        rows.push(lineRow(t, !src.kitMode && !!t.parentKey));
+        // accessoires (lignes enfants d'un article non-kit) : cochés individuellement sous leur parent
+        if (src.kitMode) {
+          const kv = (kids.get(t.key) || []).filter((x) => pass(x) && match(x));
+          if (kv.length) rows.push(<div key={t.key + '-kids'} className="cl-kids">{kv.map((x) => lineRow(x, true))}</div>);
+        }
+      }
     }
     if (!rows.length && !(editing && !qn && filter === 'all')) return null;
     const lv = leaves.filter((l) => (src.kitMode && l.parentKey ? src.lines.find((p) => p.key === l.parentKey)?.cat : l.cat) === cat);
