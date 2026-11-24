@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react';
-import { NavLink, Route, Routes, useLocation } from 'react-router-dom';
+import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useAlerts } from './alerts';
+import { hasUsers, logout, useUser } from './auth';
+import { Login } from './components/Login';
 import { GlobalSearch } from './components/GlobalSearch';
+import { pathAllowed, ROLE_DEFAULT } from './roles';
+import { ROLE_LABELS } from './types';
 import { currentWorkspace, db } from './db';
 import { patch, save } from './utils';
 import { APP_PR, APP_PR_URL, APP_VERSION } from './version';
@@ -65,6 +69,11 @@ export default function App() {
   const [menu, setMenu] = useState(false);
   const loc = useLocation();
   const alerts = useAlerts();
+  // comptes utilisateurs : verrouillage de la base + menu restreint par rôle
+  const me = useUser();
+  const anyUsers = hasUsers();
+  const locked = anyUsers === true && !me;
+  const role = me?.role;
   /** badge d'alerte par entrée du menu */
   const badge: Record<string, [number, string]> = {
     '/penuries': [alerts.penuries, 'manques réels de matériel à venir'],
@@ -89,6 +98,8 @@ export default function App() {
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
   }, []);
 
+  if (locked) return <Login />;
+
   return (
     <div className="layout">
       <aside className={'sidebar' + (menu ? ' open' : '')}>
@@ -96,18 +107,19 @@ export default function App() {
         <div className="ws">Base : {currentWorkspace()}</div>
         {currentWorkspace() === DEMO_WORKSPACE && <NavLink to="/parametres" className="demo-badge">Données fictives de démo</NavLink>}
         <nav>
-          {NAV.map(([to, label, icon]) => (
+          {NAV.filter(([to]) => !role || role === 'admin' || pathAllowed(to, role)).map(([to, label, icon]) => (
             <NavLink key={to} to={to} end={to === '/'}>
-              <Icon name={icon} />{label}
+              <Icon name={icon} />{role === 'subcontractor' && to === '/attribution' ? 'Mon planning' : label}
               {badge[to]?.[0] > 0 && <span className="nav-badge" title={badge[to][1]}>{badge[to][0]}</span>}
             </NavLink>
           ))}
         </nav>
         <UndoButton />
         <SyncBadge online={online} />
+        {me && anyUsers === true && <button className="side-user" onClick={() => { logout(); location.reload(); }} title="Se déconnecter">{me.name} · {ROLE_LABELS[me.role].split(' (')[0]} — se déconnecter</button>}
         <div className="side-version">v{APP_VERSION} · <a href={APP_PR_URL} target="_blank" rel="noreferrer">PR #{APP_PR}</a></div>
       </aside>
-      <GlobalSearch />
+      <GlobalSearch role={role} />
       <div className="topbar">
         <button className="ghost" onClick={() => setMenu(!menu)} aria-label="Menu"><Icon name="menu" /></button>
         <div className="brand">Fab<span>Event</span></div>
@@ -115,6 +127,7 @@ export default function App() {
       </div>
       <main className="main">
         <OpenTabs />
+        {role && role !== 'admin' && !pathAllowed(loc.pathname, role) ? <Navigate to={ROLE_DEFAULT[role]} replace /> : null}
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/projets" element={<Projects />} />

@@ -146,6 +146,9 @@ export default function DocumentView() {
             <Link key={d.id} to={'/documents/' + d.id} style={{ marginRight: 8 }}>{d.number} v{d.version} ({fmtDate(d.createdAt, false)})</Link>
           ))}</>}
         </div>
+        {isInvoice && !doc.snapshot.company.iban && (
+          <div className="info">Pas d'IBAN renseigné : ajoute-le (et le BIC) dans <Link to="/parametres">Paramètres → Ma société</Link> pour que le QR code de paiement s'imprime sur les factures.</div>
+        )}
         {doc.type === 'devis' && (doc.acceptedOptions || []).length > 0 && (
           <div className="info">
             Options acceptées en ligne par le client ({doc.acceptedOptions!.length}) : {doc.snapshot.subprojects.flatMap((s) => s.equipment).filter((l) => l.optId && doc.acceptedOptions!.includes(l.optId)).map((l) => l.name).join(', ')} — passées en lignes facturées.

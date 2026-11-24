@@ -55,4 +55,16 @@ describe('bloc paiement (QR) sur les factures', () => {
     expect(html).toContain('BE68 5390 0754 7034');
     expect(html).toContain('<svg');
   });
+  it('QR toujours présent même si la liste des sections du gabarit oublie « paiement »', () => {
+    const t = { style: {} as never, blocks: ['salles', 'totaux'], html: { header: '{{bloc.entete}}', layout: '{{bloc.salles}}{{bloc.totaux}}', footer: '', css: '' } };
+    const html = buildDocHtml(facture(t as Doc['snapshot']['template']));
+    expect(html).toContain('<svg');
+    expect(html).toContain('BE68 5390 0754 7034');
+    expect(html).toContain('+++000/2026/00745+++');
+  });
+  it('pas de QR sur un devis (paiement réservé aux factures)', () => {
+    const d = facture();
+    d.type = 'devis';
+    expect(buildDocHtml(d)).not.toContain('<svg');
+  });
 });

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { Field, NumInput, PageHead, useSettings } from '../components/ui';
 import { currentWorkspace, db, DEFAULT_PROJECT_TYPES, deleteWorkspace, listWorkspaces, switchWorkspace, TABLES } from '../db';
 import { DEMO_WORKSPACE, seedDemo } from '../demo';
@@ -7,6 +8,9 @@ import { MOMENT_TRIGGERS, VAT_REGIME_LABELS } from '../types';
 import { SyncPanel } from '../components/SyncPanel';
 import { CodesPanel } from '../components/CodesPanel';
 import { APP_PR, APP_PR_URL, APP_VERSION } from '../version';
+import { createUser, useUser } from '../auth';
+import { canManageUsers } from '../roles';
+import { ROLE_LABELS, type Role } from '../types';
 import { cleanLetter, depotLetter } from '../codegen';
 import { settingsMoments } from '../invoicing';
 import { DEFAULT_VAT_MENTIONS } from '../payment';
@@ -336,12 +340,87 @@ export default function SettingsPage() {
           <button className="secondary" disabled={!newWs.trim()} onClick={() => switchWorkspace(newWs.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-'))}>Créer et ouvrir</button>
         </div>
       </div>
+      <UsersCard />
       <div className="card">
         <h2>Version</h2>
         <p style={{ margin: '0 0 6px' }}>FabEvent <strong>v{APP_VERSION}</strong> — pull request <a href={APP_PR_URL} target="_blank" rel="noreferrer">#{APP_PR}</a></p>
         <p className="muted" style={{ margin: 0, fontSize: 12 }}>Le numéro de version est le numéro de la PR GitHub fusionnée : chaque merge publie une nouvelle version. Après une mise à jour, recharge la page (éventuellement deux fois) pour vider le cache du service worker.</p>
       </div>
     </>
+  );
+}
+
+/** Gestion des comptes utilisateurs (admin seulement) : rôles admin / entrepôt / sous-traitant. */
+function UsersCard() {
+  const me = useUser();
+  const users = useLiveQuery(() => db.users.toArray(), []) || [];
+  const people = useLiveQuery(() => db.people.toArray().then((ps) => ps.filter((p) => !p.pending)), []) || [];
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [pass, setPass] = useState('');
+  const [role, setRole] = useState<Role>('warehouse');
+  const [personId, setPersonId] = useState('');
+  const [msg, setMsg] = useState('');
+  if (!canManageUsers(me)) return null;
+  const pMap = new Map(people.map((p) => [p.id, p]));
+  const add = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMsg('');
+    try {
+      await createUser(name, email, pass, role, role === 'subcontractor' ? personId || undefined : undefined);
+      setName(''); setEmail(''); setPass(''); setPersonId('');
+      setMsg('Compte créé.');
+    } catch (e2) { setMsg((e2 as Error).message); }
+  };
+  return (
+    <div className="card">
+      <h2>Utilisateurs de cette base</h2>
+      <p className="muted" style={{ marginTop: 0 }}>
+        <strong>Administrateur</strong> : tout. <strong>Entrepôt</strong> : inventaire, liste du matériel, ajout/modification d'équipements
+        <em> sans les prix</em>, préparation des sorties et retours. <strong>Sous-traitant</strong> : lié à une personne de l'équipe,
+        il ne voit que son planning, le matériel et les horaires de ses jobs (lecture seule). Les comptes sont synchronisés avec la base.
+      </p>
+      {users.length === 0 && <p className="muted">Aucun compte : la base est ouverte. Crée au moins un administrateur pour la verrouiller.</p>}
+      {users.length > 0 && (
+        <table className="list"><tbody>
+          {users.map((u) => (
+            <tr key={u.id}>
+              <td><strong>{u.name}</strong>{u.id === me?.id && <span className="muted"> (toi)</span>}<div className="muted">{u.email}</div></td>
+              <td>{ROLE_LABELS[u.role].split(' (')[0]}{u.role === 'subcontractor' && u.personId && <div className="muted">{pMap.get(u.personId)?.name}</div>}{!u.active && <span className="badge st-annule" style={{ marginLeft: 6 }}>désactivé</span>}</td>
+              <td style={{ whiteSpace: 'nowrap' }}>
+                {u.id !== me?.id && (
+                  <>
+                    <button className="secondary small" onClick={() => db.users.update(u.id, { active: !u.active, updatedAt: new Date().toISOString() })}>{u.active ? 'Désactiver' : 'Réactiver'}</button>{' '}
+                    <button className="secondary small" onClick={async () => { const p = prompt(`Nouveau mot de passe pour ${u.name} (min. 6 caractères) :`); if (p && p.length >= 6) { const salt = (await import('../auth')).newSalt(); await db.users.update(u.id, { salt, passHash: await (await import('../auth')).hashPass(p, salt), updatedAt: new Date().toISOString() }); setMsg('Mot de passe changé.'); } }}>Mot de passe…</button>{' '}
+                    <button className="ghost small" onClick={() => confirm(`Supprimer le compte de ${u.name} ?`) && db.users.delete(u.id)}>Supprimer</button>
+                  </>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody></table>
+      )}
+      <form className="form" style={{ marginTop: 10 }} onSubmit={add}>
+        <div className="field full"><span>Nouvel utilisateur</span>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <input placeholder="Nom" value={name} onChange={(e) => setName(e.target.value)} aria-label="Nom du nouvel utilisateur" />
+            <input placeholder="Email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} aria-label="Email du nouvel utilisateur" />
+            <input placeholder="Mot de passe (min. 6)" type="password" required minLength={6} value={pass} onChange={(e) => setPass(e.target.value)} aria-label="Mot de passe du nouvel utilisateur" />
+            <select value={role} onChange={(e) => setRole(e.target.value as Role)} aria-label="Rôle du nouvel utilisateur">
+              {(Object.keys(ROLE_LABELS) as Role[]).map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+            </select>
+            {role === 'subcontractor' && (
+              <select value={personId} onChange={(e) => setPersonId(e.target.value)} aria-label="Personne liée (sous-traitant)">
+                <option value="">— lier à une personne de l'équipe —</option>
+                {people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            )}
+            <button className="small" type="submit">+ Ajouter</button>
+          </div>
+        </div>
+        {msg && <p className="avail ok field full" style={{ margin: 0 }}>{msg}</p>}
+      </form>
+    </div>
   );
 }
 

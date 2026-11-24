@@ -549,6 +549,27 @@ export interface CrewAssignment extends Base {
  * Il répond en cliquant sur le lien (page publique du serveur) ; on peut aussi noter sa réponse à la main.
  * Les infos affichées sur la page publique sont recopiées ici (le serveur ne lit rien d'autre).
  */
+/** Rôle d'un utilisateur de la base. */
+export type Role = 'admin' | 'warehouse' | 'subcontractor';
+
+export const ROLE_LABELS: Record<Role, string> = {
+  admin: 'Administrateur (tout)',
+  warehouse: 'Entrepôt (inventaire, matériel sans les prix, sorties/retours)',
+  subcontractor: 'Sous-traitant (son planning, le matériel, ses horaires)',
+};
+
+/** Compte utilisateur local (synchronisé dans l'espace de la société). Le mot de passe n'est jamais stocké en clair. */
+export interface User extends Base {
+  name: string;
+  email: string;
+  salt: string;
+  passHash: string;
+  role: Role;
+  /** sous-traitant : personne de l'équipe liée (il ne voit que ses postes) */
+  personId?: ID;
+  active: boolean;
+}
+
 export interface CrewRequest extends Base {
   token: string;
   personId: ID;

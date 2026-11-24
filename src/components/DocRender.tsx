@@ -185,6 +185,9 @@ export function buildDocHtml(doc: Doc, opts: { mark?: boolean } = {}): string {
   // sections choisies pour ce type de document (modèle figé) : les autres sont retirées
   const allowed = s.template?.blocks;
   if (allowed) for (const k of Object.keys(blocks)) if (!allowed.includes(k.slice(5)) && k !== 'bloc.entete' && k !== 'bloc.pied') blocks[k] = '';
+  // le paiement (IBAN, communication, QR) ne doit JAMAIS disparaître d'une facture / acompte / rappel,
+  // même si la liste des sections du gabarit l'a retiré
+  if (doc.type === 'facture' || doc.type === 'acompte' || doc.type === 'rappel') blocks['bloc.paiement'] = paymentBlock(doc);
   // gabarits personnalisés plus anciens : on place les nouveaux blocs à un endroit raisonnable
   if (!h.layout.includes('bloc.notes')) blocks['bloc.salles'] = blocks['bloc.notes'] + blocks['bloc.salles'];
   // le paiement (IBAN, communication, QR) doit toujours apparaître sur les factures, même sans {{bloc.paiement}} dans le gabarit

@@ -839,3 +839,10 @@ table.list tr.limiting td:first-child, table.list tr.kit-child.limiting td:nth-c
 
 .side-version { font-size: 11px; padding: 8px 12px; border-top: 1px solid var(--border); }
 .side-version a { color: inherit; }
+
+.login-bg { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--bg, #f5f6f8); padding: 20px; }
+.login-card { width: 100%; max-width: 380px; background: var(--card, #fff); border: 1px solid var(--border); border-radius: 10px; padding: 20px; box-shadow: 0 6px 24px rgba(0,0,0,.08); }
+.login-card h1 { font-size: 18px; margin: 0 0 4px; }
+.login-card .muted { font-size: 12px; margin-bottom: 14px; }
+.side-user { display: block; width: 100%; text-align: left; font-size: 11px; padding: 8px 12px; border: 0; border-top: 1px solid var(--border); background: none; color: var(--muted); cursor: pointer; }
+.side-user:hover { color: var(--text); }
