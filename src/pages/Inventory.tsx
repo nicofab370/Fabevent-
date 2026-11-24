@@ -88,6 +88,8 @@ export default function Inventory() {
   const [sending, setSending] = useState(false);
   const [sheet, setSheet] = useState<string | null>(null);
   const [assoc, setAssoc] = useState<string | null>(null);
+  /** choix manuel de l'unité quand on scanne l'étiquette de l'article (plusieurs unités sérialisées) */
+  const [pickUnit, setPickUnit] = useState<{ eq: Equipment; units: SerialUnit[] } | null>(null);
   const [open, setOpen] = useState<{ id: string; unit?: string } | null>(null);
   const [printFor, setPrintFor] = useState<{ id: string; unitIds?: string[] } | null>(null);
   const [addStock, setAddStock] = useState<string | null>(null);
@@ -195,8 +197,12 @@ export default function Inventory() {
       return true;
     }
     if (e.trackSerials) {
-      if (!ui.burst) { beep(true); setFlash({ ok: true, msg: `${e.name} : ouvert pour le comptage` }); setOpen({ id: e.id }); return true; }
-      say({ ok: false, msg: `${e.name} est suivi par numéro de série : scanne l'étiquette de chaque unité.`, actions: [{ label: 'Ouvrir', run: () => setOpen({ id: e.id }) }] });
+      // étiquette de l'article scannée sur un article à n° de série :
+      // une seule unité → comptée d'office ; plusieurs → choix manuel de l'unité vue
+      const units = av.units.filter((u) => u.equipmentId === e.id && u.status !== 'perdu');
+      if (units.length === 1) return await scan(units[0].barcode || units[0].serial);
+      if (units.length > 1) { setPickUnit({ eq: e, units }); ref.current?.focus(); return false; }
+      say({ ok: false, msg: `${e.name} : aucune unité sérialisée déclarée (fiche article → « + Unité »).`, actions: [{ label: 'Ouvrir', run: () => setOpen({ id: e.id }) }] });
       return false;
     }
     // article en vrac attendu dans un autre dépôt : proposer un transfert, ou compter ici quand même
@@ -271,7 +277,22 @@ export default function Inventory() {
         <label className="check-row"><input type="checkbox" checked={ui.burst} onChange={(e) => setUiP({ burst: e.target.checked })} />
           Scan en continu : chaque scan compte 1 (une unité à numéro de série ne compte qu'une fois). Décoché : le scan ouvre l'article pour taper la quantité.</label>
         {camera && <Scanner onCode={scan} onClose={() => setCamera(false)} />}
-        {flash && <div className={'flash ' + (flash.ok ? 'ok' : 'ko')}>{flash.msg}{flash.actions?.map((a) => <button key={a.label} className="small" style={{ marginLeft: 10 }} onClick={a.run}>{a.label}</button>)}</div>}
+        {pickUnit && (
+          <div className="cl-ask">
+            <b>{pickUnit.eq.name} : quelle unité a été scannée ?</b>
+            <div className="cl-asklist" style={{ paddingLeft: 0, maxHeight: 220 }}>
+              {pickUnit.units.map((u) => (
+                <button key={u.id} type="button" className="secondary" style={{ display: 'block', width: '100%', marginBottom: 6, textAlign: 'left' }}
+                  onClick={async () => { setPickUnit(null); await scan(u.barcode || u.serial); }}>
+                  {unitNo(u)} · n° {u.serial}{u.barcode !== u.serial ? ` · ${u.barcode}` : ''}
+                  {u.status !== 'ok' && <span className="badge st-annule" style={{ marginLeft: 6 }}>{u.status === 'hs' ? 'hors service' : u.status}</span>}
+                </button>
+              ))}
+            </div>
+            <div className="toolbar"><button type="button" className="secondary" onClick={() => { setPickUnit(null); ref.current?.focus(); }}>Annuler</button></div>
+          </div>
+        )}
+        {flash && !pickUnit && <div className={'flash ' + (flash.ok ? 'ok' : 'ko')}>{flash.msg}{flash.actions?.map((a) => <button key={a.label} className="small" style={{ marginLeft: 10 }} onClick={a.run}>{a.label}</button>)}</div>}
         <div className="toolbar inv-filters">
           <input type="search" placeholder="Nom, code, emplacement…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Rechercher" />
           <select value={ui.cat} onChange={(e) => setUiP({ cat: e.target.value })} aria-label="Catégorie">
@@ -443,11 +464,14 @@ function UnitsModal({ e, here, all, found, flash, equipment, units, bringHere, o
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null);
   const [code, setCode] = useState('');
   const [camera, setCamera] = useState(false);
+  const [pick, setPick] = useState<SerialUnit[] | null>(null);
   const [serial, setSerial] = useState('');
   const seen = here.filter((u) => found.has(u.id));
   const miss = here.filter((u) => !found.has(u.id));
   const started = seen.length > 0;
   const label = (u: SerialUnit) => u.barcode || u.serial;
+  /** libellé parlant dans les messages : n° de série (+ code-barres si différent) */
+  const say = (u: SerialUnit) => (u.barcode && u.barcode !== u.serial ? `n° ${u.serial} (${u.barcode})` : `n° ${u.serial}`);
   const lost = all.filter((u) => u.status === 'perdu'), rep = all.filter((u) => u.status === 'hs'), fix = here.filter((u) => u.defect);
   const scanHere = async (raw: string) => {
     const c = raw.trim(); setCode('');
@@ -456,14 +480,20 @@ function UnitsModal({ e, here, all, found, flash, equipment, units, bringHere, o
     const ko = (t: string) => { setMsg({ ok: false, t }); beep(false); return false; };
     if (!hit) return ko(`Code « ${c} » inconnu.`);
     if (hit.equipment.id !== e.id) return ko(`Ce code est celui de « ${hit.equipment.name} », pas de cet article.`);
-    if (!hit.unit) return ko("C'est l'étiquette de l'article : scanne celle de chaque unité.");
+    if (!hit.unit) {
+      // étiquette de l'article : une seule unité → cochée d'office, plusieurs → choix manuel
+      const us = all.filter((u) => u.status !== 'perdu');
+      if (us.length === 1) return await scanHere(us[0].barcode || us[0].serial);
+      if (us.length > 1) { setPick(us); return false; }
+      return ko("Aucune unité sérialisée déclarée (fiche article → « + Unité »).");
+    }
     const u = hit.unit, st = unitState(u);
-    if (st === 'repair') return ko(`${label(u)} est en réparation (hors service) : pas comptée.`);
-    if (st === 'lost') { await setUnitState(u.id, 'ok', "retrouvée à l'inventaire"); onMark([u.id]); setHl(u.id); setMsg({ ok: true, t: `${label(u)} était perdue : retrouvée et remise en stock` }); beep(true); return true; }
-    if (found.has(u.id) && here.includes(u)) return ko(`${label(u)} déjà scannée, pas comptée deux fois.`);
+    if (st === 'repair') return ko(`${say(u)} est en réparation (hors service) : pas comptée.`);
+    if (st === 'lost') { await setUnitState(u.id, 'ok', "retrouvée à l'inventaire"); onMark([u.id]); setHl(u.id); setMsg({ ok: true, t: `${say(u)} était perdue : retrouvée et remise en stock` }); beep(true); return true; }
+    if (found.has(u.id) && here.includes(u)) return ko(`${say(u)} déjà scannée, pas comptée deux fois.`);
     const moved = await bringHere(u);
     onMark([u.id]); setHl(u.id); beep(true);
-    setMsg({ ok: true, t: `${label(u)} — ${seen.length + 1} / ${here.length + (moved ? 1 : 0)}${moved}` });
+    setMsg({ ok: true, t: `${say(u)} — ${seen.length + 1} / ${here.length + (moved ? 1 : 0)}${moved}` });
     return true;
   };
   return (
@@ -476,7 +506,22 @@ function UnitsModal({ e, here, all, found, flash, equipment, units, bringHere, o
         <button type="button" className="secondary" onClick={() => setCamera(!camera)}>{camera ? 'Fermer la caméra' : <><Icon name="camera" />Caméra</>}</button>
       </div>
       {camera && <Scanner onCode={scanHere} onClose={() => setCamera(false)} />}
-      {msg && <div className={'flash ' + (msg.ok ? 'ok' : 'ko')}>{msg.t}</div>}
+      {pick && (
+        <div className="cl-ask">
+          <b>Quelle unité a été scannée ?</b>
+          <div className="cl-asklist" style={{ paddingLeft: 0, maxHeight: 200 }}>
+            {pick.map((u) => (
+              <button key={u.id} type="button" className="secondary" style={{ display: 'block', width: '100%', marginBottom: 6, textAlign: 'left' }}
+                onClick={async () => { setPick(null); await scanHere(u.barcode || u.serial); }}>
+                {unitNo(u)} · n° {u.serial}{u.barcode !== u.serial ? ` · ${u.barcode}` : ''}
+                {u.status !== 'ok' && <span className="badge st-annule" style={{ marginLeft: 6 }}>{u.status === 'hs' ? 'hors service' : u.status}</span>}
+              </button>
+            ))}
+          </div>
+          <div className="toolbar"><button type="button" className="secondary" onClick={() => setPick(null)}>Annuler</button></div>
+        </div>
+      )}
+      {msg && !pick && <div className={'flash ' + (msg.ok ? 'ok' : 'ko')}>{msg.t}</div>}
       <div className="uchips">
         {here.map((u) => (
           <button key={u.id} type="button" className={'uchip' + (found.has(u.id) ? ' on' : '') + (u.id === hl ? ' hl' : '') + (u.defect ? ' fix' : '')}
