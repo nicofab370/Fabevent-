@@ -452,6 +452,8 @@ export interface EquipmentLine extends Base {
   order: number;
   /** ligne facultative : affichée sur le devis mais hors total */
   optional?: boolean;
+  /** groupe d'options du devis (ex. « Son ») : dans chaque groupe, le client choisit (une option ou aucune) */
+  optionGroup?: string;
   /** accessoire ajouté automatiquement avec une autre ligne */
   parentLineId?: ID;
   /** consommable déjà déduit du stock */
@@ -736,6 +738,10 @@ export interface SnapshotLine {
   vatRate?: number;
   group?: string;
   optional?: boolean;
+  /** groupe d'options repris du devis */
+  optionGroup?: string;
+  /** id de la ligne d'origine (acceptation d'options en ligne) */
+  optId?: ID;
   unit?: 'jour' | 'pièce';
   remark?: string;
   periods?: string;
@@ -874,6 +880,10 @@ export interface Doc extends Base {
   subprojectIds?: ID[];
   /** jeton du lien public d'acceptation en ligne du devis (public.php?d=…) */
   publicToken?: string;
+  /** lignes d'option acceptées en ligne par le client (ids de lignes) */
+  acceptedOptions?: ID[];
+  /** acceptedOptions déjà appliquées aux lignes du projet */
+  optionsApplied?: boolean;
   snapshot: DocSnapshot;
 }
 

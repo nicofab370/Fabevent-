@@ -146,6 +146,11 @@ export default function DocumentView() {
             <Link key={d.id} to={'/documents/' + d.id} style={{ marginRight: 8 }}>{d.number} v{d.version} ({fmtDate(d.createdAt, false)})</Link>
           ))}</>}
         </div>
+        {doc.type === 'devis' && (doc.acceptedOptions || []).length > 0 && (
+          <div className="info">
+            Options acceptées en ligne par le client ({doc.acceptedOptions!.length}) : {doc.snapshot.subprojects.flatMap((s) => s.equipment).filter((l) => l.optId && doc.acceptedOptions!.includes(l.optId)).map((l) => l.name).join(', ')} — passées en lignes facturées.
+          </div>
+        )}
       </div>
       {doc.type === 'devis' && quoteUrl !== null && quoteUrl && (
         <div className="no-print toolbar" style={{ marginBottom: 10 }}>

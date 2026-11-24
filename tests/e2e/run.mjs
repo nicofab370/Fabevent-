@@ -1444,7 +1444,8 @@ const openChecklist = async (name) => { await go('entrepot'); await page.locator
 await step('Checklist : unité scannée, doublon refusé, « ajouter en plus », code inconnu associé', async () => {
   await resetDemo();
   await openChecklist('Mariage Dupont-Lemaire');
-
+  const s1 = await scan('SN-LA4X-1001');
+  expect(s1.includes('Sortie : Amplificateur LA4X') && s1.includes('LA4X-1001'), 'unité sortie : ' + s1);
   expect((await scan('SN-LA4X-1001')).includes('déjà sorti'), 'doublon refusé');
   await scanRaw('DEMO-SM58');
   expect((await page.locator('.cl-ask').innerText()).includes('pas prévu'), 'article hors liste signalé');
@@ -2597,6 +2598,29 @@ await step('Modèles : décocher une section la retire de l’aperçu pour ce ty
   await box.uncheck(); await page.waitForTimeout(400);
   const apres = await page.locator('.doc').innerText();
   if (avant.includes('Frais')) expect(!apres.includes('Frais supplémentaires'), 'section retirée de l’aperçu');
+});
+
+await step('Devis : groupes d\'options au choix + version (n° de PR) affichée', async () => {
+  await resetDemo();
+  await openProject('Marché de Noël');
+  await tab('Équipement');
+  for (const name of ['Enceinte L-Acoustics X12', 'Projecteur PAR LED']) {
+    const row = page.locator('.sub tr', { hasText: name }).first();
+    await row.locator('button[aria-label="Détails de la ligne"]').click();
+    await page.waitForSelector('.modal');
+    await page.locator('.modal label', { hasText: 'En option sur le devis' }).locator('input').check();
+    await page.locator('.modal input[aria-label="Groupe d\'options"]').fill('Son');
+    await page.locator('.modal .form-actions button:text-is("Enregistrer")').click();
+    await page.waitForTimeout(300);
+  }
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Devis")');
+  await page.waitForSelector('.doc');
+  const opt = await page.locator('.doc .doc-options').innerText();
+  expect(opt.includes('Son') && opt.includes('Enceinte L-Acoustics X12') && opt.includes('Projecteur PAR LED'), 'groupe « Son » sur le devis : ' + opt.slice(0, 140));
+  expect((await page.locator('.side-version').innerText()).includes('v39'), 'version v39 dans le menu');
+  await go('parametres');
+  expect((await page.locator('main').innerText()).includes('v39') && (await page.locator('main').innerText()).includes('PR'), 'version dans les paramètres');
 });
 
 await ctx.close();

@@ -14,6 +14,8 @@ npm run test:e2e  # parcours complet dans un navigateur (nécessite Playwright e
 npm run test:parcours  # nouveautés en contexte : import Rentman, catégories, réservations ailleurs, coût et heures des techniciens
 ```
 
+**Version** : le n° de version de FabEvent est le **n° de la pull request GitHub** fusionnée (ex. `v39` = PR #39), affiché dans Paramètres et en bas du menu.
+
 ## Fonctionnalités
 
 **Projets** — fiche organisée en onglets, sur le modèle du « projet standard » de Rentman :
@@ -50,6 +52,9 @@ npm run test:parcours  # nouveautés en contexte : import Rentman, catégories, 
 - Impression / PDF, export HTML, email, **export Peppol BIS 3.0 (UBL)** pour les factures et les avoirs.
 - **Devis acceptables en ligne** : bouton « Lien d'acceptation en ligne » (lien public `public.php?d=…`) — le client voit le montant TTC
   et accepte / refuse ; accepté = document « accepté » et projet confirmé (comme un accepté saisi à la main).
+- **Groupes d'options au choix du client** : une ligne « en option » peut porter un **groupe d'options** (ex. « Son », « Levage ») ; le devis
+  groupe les options, et sur le lien public le client choisit **une option par groupe** (radios) — les options retenues sont enregistrées
+  sur le devis (`acceptedOptions`) et passent en lignes facturées dans le projet.
 
 **Transport chiffré à la distance** : distance dépôt → lieu calculée automatiquement (OpenStreetMap, connexion requise) ou saisie à la main ;
 prix d'un véhicule = forfait journalier × jours + km (distance × 2 × allers-retours) × prix au km (par véhicule ou par défaut).
