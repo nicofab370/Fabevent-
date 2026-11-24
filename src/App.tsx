@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Route, Routes, useLocation } from 'react-router-dom';
+import { useAlerts } from './alerts';
+import { GlobalSearch } from './components/GlobalSearch';
 import { currentWorkspace } from './db';
 import { DEMO_WORKSPACE } from './demo';
 import Accounting from './pages/Accounting';
@@ -59,6 +61,15 @@ export default function App() {
   const [online, setOnline] = useState(navigator.onLine);
   const [menu, setMenu] = useState(false);
   const loc = useLocation();
+  const alerts = useAlerts();
+  /** badge d'alerte par entrée du menu */
+  const badge: Record<string, [number, string]> = {
+    '/penuries': [alerts.penuries, 'manques réels de matériel à venir'],
+    '/comptabilite': [alerts.enRetard, 'factures en retard de paiement'],
+    '/maintenance': [alerts.controles, 'contrôles périodiques à faire dans les 30 jours'],
+    '/equipe': [alerts.postes, 'postes prévus sans technicien'],
+    '/attribution': [alerts.postes, 'postes prévus sans technicien'],
+  };
   useEffect(() => setMenu(false), [loc.pathname]);
   useEffect(() => {
     const on = () => setOnline(true), off = () => setOnline(false);
@@ -77,12 +88,14 @@ export default function App() {
           {NAV.map(([to, label, icon]) => (
             <NavLink key={to} to={to} end={to === '/'}>
               <Icon name={icon} />{label}
+              {badge[to]?.[0] > 0 && <span className="nav-badge" title={badge[to][1]}>{badge[to][0]}</span>}
             </NavLink>
           ))}
         </nav>
         <UndoButton />
         <SyncBadge online={online} />
       </aside>
+      <GlobalSearch />
       <div className="topbar">
         <button className="ghost" onClick={() => setMenu(!menu)} aria-label="Menu"><Icon name="menu" /></button>
         <div className="brand">Fab<span>Event</span></div>

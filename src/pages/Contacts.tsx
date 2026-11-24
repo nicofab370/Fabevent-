@@ -93,7 +93,7 @@ export function ContactForm({ initial, onDone }: { initial?: Draft; onDone: (c?:
 export default function Contacts() {
   const nav = useNavigate();
   const contacts = useLiveQuery(() => db.contacts.orderBy('company').toArray(), []) || [];
-  const [q, setQ] = useState('');
+  const [q, setQ] = useState(() => new URLSearchParams(window.location.hash.split('?')[1] || '').get('q') || '');
   const [type, setType] = useState('');
   const [edit, setEdit] = useState<Draft | null>(null);
   const [tag, setTag] = useState('');

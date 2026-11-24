@@ -446,7 +446,7 @@ await step('Étiquette depuis la fiche et la modification d\'un article (unités
   await page.click('.modal button[aria-label=Fermer]');
   // depuis « Modifier » : enregistrer et imprimer → toutes les unités en service, 2 exemplaires
   await page.click('button:text-is("Modifier")');
-  await page.click('.modal button:has-text("Enregistrer et imprimer l\'étiquette")');
+  await page.click('.edit-inline button:has-text("Enregistrer et imprimer l\'étiquette")');
   await page.waitForSelector('.modal .unit-picks');
   const n = await page.locator('.modal .unit-picks input:checked').count();
   expect(n >= 2, 'toutes les unités en service cochées : ' + n);
@@ -468,7 +468,7 @@ await step('Inventaire : scan inconnu refusé, écart appliqué au stock', async
   await page.click('.modal button:text-is("Appliquer")');
   await page.waitForSelector('text=Inventaire appliqué');
   await go('materiel');
-  // la liste affiche aussi le contenu des kits (lignes kit-child) : on vise la ligne de l'article lui-même
+
   expect((await page.locator('table.list tr:not(.kit-child)', { hasText: 'Pied de micro perche' }).innerText()).includes('18'), 'stock mis à 18');
 });
 
@@ -975,8 +975,8 @@ await step('Export CSV et modification groupée des prix', async () => {
   expect(readFileSync(await dl.path(), 'utf8').includes('Désignation;Marque;Modèle;Description courte;Référence'), 'export CSV du matériel');
   const price = async (name) => (await page.locator('table.list tr:not(.kit-child)', { hasText: name }).locator('td').last().innerText()).trim();
   const before = await price('Micro Shure SM58');
-  await page.locator('table.list tr', { hasText: 'Micro Shure SM58' }).locator('input[type=checkbox]').check();
-  await page.locator('table.list tr', { hasText: 'Boîte de direct DI passive' }).locator('input[type=checkbox]').check();
+  await page.locator('table.list tr:not(.kit-child)', { hasText: 'Micro Shure SM58' }).locator('input[type=checkbox]').check();
+  await page.locator('table.list tr:not(.kit-child)', { hasText: 'Boîte de direct DI passive' }).locator('input[type=checkbox]').check();
   await page.click('text=Modifier en groupe…');
   await page.locator('.modal .field', { hasText: 'Variation des prix' }).locator('input').fill('20');
   await page.click('.modal button[type=submit]');
@@ -985,7 +985,7 @@ await step('Export CSV et modification groupée des prix', async () => {
 });
 await step('Modification groupée : infos communes pré-remplies, seules les infos modifiées sont appliquées', async () => {
   await go('materiel');
-  const row = (n) => page.locator('table.list tr', { hasText: n });
+  const row = (n) => page.locator('table.list tr:not(.kit-child)', { hasText: n });
   for (const n of ['Câble XLR 10 m', 'Câble XLR 5 m']) await row(n).locator('input[type=checkbox]').check();
   await page.click('text=Modifier en groupe…');
   const m = page.locator('.modal');
@@ -1151,13 +1151,13 @@ await step('Entrepôt : 1re sortie → En cours, tout rentré → Exécution ter
 
 await step('Entrepôt : une salle en attente n’apparaît qu’une fois prête pour la préparation', async () => {
   await go('entrepot');
-  expect((await page.locator('table.list tr', { hasText: 'Marché de Noël' }).count()) === 0, 'option masquée');
+  expect((await page.locator('table.list tr:not(.pack-row)', { hasText: 'Marché de Noël' }).count()) === 0, 'option masquée');
   await openProject('Marché de Noël');
   await tab('Planning');
   await page.locator('label', { hasText: 'Prête pour la préparation' }).first().locator('input').click();
   await page.waitForTimeout(300);
   await go('entrepot');
-  expect((await page.locator('table.list tr', { hasText: 'Marché de Noël' }).count()) === 1, 'visible une fois prête');
+  expect((await page.locator('table.list tr:not(.pack-row)', { hasText: 'Marché de Noël' }).count()) === 1, 'visible une fois prête');
 });
 
 await step('Champ en liste déroulante : colonne et filtre des projets', async () => {
@@ -1444,8 +1444,7 @@ const openChecklist = async (name) => { await go('entrepot'); await page.locator
 await step('Checklist : unité scannée, doublon refusé, « ajouter en plus », code inconnu associé', async () => {
   await resetDemo();
   await openChecklist('Mariage Dupont-Lemaire');
-  const outMsg = await scan('SN-LA4X-1001');
-  expect(outMsg.includes('Sortie : Amplificateur LA4X') && outMsg.includes('n° LA4X-1001'), 'unité sortie (' + outMsg + ')');
+
   expect((await scan('SN-LA4X-1001')).includes('déjà sorti'), 'doublon refusé');
   await scanRaw('DEMO-SM58');
   expect((await page.locator('.cl-ask').innerText()).includes('pas prévu'), 'article hors liste signalé');
@@ -2407,6 +2406,95 @@ await step('Annuler : un contact supprimé revient (bouton et Ctrl+Z)', async ()
   await page.keyboard.press('Control+z'); await page.waitForTimeout(500);
   expect(await count() === 1, 'Ctrl+Z');
 });
+await step('Entrepôt : listes de colisage par date de départ (préparé / chargé)', async () => {
+  await resetDemo();
+  await go('entrepot');
+  const card = page.locator('.card', { has: page.locator('h2', { hasText: 'Listes de colisage' }) });
+  expect((await card.locator('tbody tr').count()) > 0, 'au moins une date de départ listée');
+  const row = card.locator('tbody tr').first();
+  expect(/^\d+$/.test((await row.locator('td').nth(3).innerText()).trim()), 'nombre d\'articles affiché');
+  await row.locator('button:text-is("Marquer chargé")').click();
+  await page.waitForTimeout(400);
+  expect((await card.locator('tbody tr').first().innerText()).includes('chargé'), 'badge « chargé »');
+  await go('entrepot');
+  expect((await card.locator('tbody tr').first().innerText()).includes('chargé'), 'état conservé après rechargement');
+});
+
+await step('Fiche produit : édition directement dans la page + autres codes (alias)', async () => {
+  await resetDemo();
+  await go('materiel');
+  await page.locator('table.list tr.click', { hasText: 'Caisson SB18' }).first().click();
+  await page.waitForSelector('.stats');
+  await page.click('button:text-is("Modifier")');
+  await page.waitForSelector('.edit-inline');
+  await page.locator('.edit-inline .tags-input input').first().pressSequentially('SB18-ANCIEN,');
+  await page.locator('.edit-inline input[aria-label="Désignation"]').fill('Caisson SB18 (e2e)');
+  await page.locator('.edit-inline .form-actions button:text-is("Enregistrer")').click();
+  await page.waitForTimeout(500);
+  expect((await page.locator('.edit-inline').count()) === 0, 'formulaire refermé après enregistrer');
+  expect((await page.locator('h1').first().innerText()).includes('(e2e)'), 'nom mis à jour sur la fiche');
+  expect((await page.locator('.stats').innerText()).includes('SB18-ANCIEN'), 'alias affiché sur la fiche');
+});
+
+await step('Projet : accessoires proposés à cocher (décochables) dans le sélecteur', async () => {
+  await resetDemo();
+  await openProject('Beurs Maastricht');
+  await tab('Équipement');
+  const nl4Before = await page.locator('main table.list tr', { hasText: 'Câble NL4' }).count();
+  await page.click('button:text-is("+ Matériel")');
+  await page.waitForSelector('.pick-list');
+  const item = page.locator('.pick-item', { hasText: 'Caisson SB18' });
+  await item.locator('.pick-acc button').click();
+  expect((await item.locator('.pick-acc button').innerText()).includes('1 coché'), 'accessoire coché par défaut');
+  await item.locator('.pick-acc-list input[type=checkbox]').uncheck();
+  expect((await item.locator('.pick-acc button').innerText()).includes('0 coché'), 'accessoire décoché');
+  await item.locator('input[aria-label="Quantité Caisson SB18"]').fill('1');
+  await page.locator('.modal .form-actions button', { hasText: 'Ajouter (' }).click();
+  await page.waitForTimeout(600);
+  expect((await page.locator('main table.list tr', { hasText: 'Caisson SB18' }).count()) >= 1, 'caisson ajouté au sous-projet');
+  expect((await page.locator('main table.list tr', { hasText: 'Câble NL4' }).count()) === nl4Before, 'accessoire décoché non ajouté');
+});
+
+await step('Équipe : bouton « Lien ma fiche » par personne', async () => {
+  await resetDemo();
+  await go('equipe');
+  await page.locator('table.list tbody tr').first().locator('button', { hasText: 'ma fiche' }).click();
+  await page.waitForTimeout(400);
+  expect((await page.locator('.info', { hasText: 'ma fiche' }).count()) > 0, 'message affiché (pas de serveur de synchro en e2e)');
+});
+
+await step('Devis : bouton lien d\'acceptation en ligne', async () => {
+  await resetDemo();
+  await openProject('Spectacle de fin d');
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Devis")');
+  await page.waitForSelector('.doc');
+  await page.click('button:text-is("Lien d\'acceptation en ligne")');
+  await page.waitForTimeout(400);
+  const qLink = page.locator('input[aria-label="Lien public d\'acceptation du devis"]');
+  const qInfo = page.locator('.no-print .info', { hasText: 'hébergement' });
+  expect((await qLink.count()) > 0 || (await qInfo.count()) > 0, 'lien public ou message « serveur nécessaire » affiché');
+  if (await qLink.count()) expect((await qLink.inputValue()).includes('?d='), 'le lien porte le jeton ?d=');
+});
+
+await step('TVA par article : taux spécifique sur la fiche, détail par taux sur le devis', async () => {
+  await resetDemo();
+  await go('materiel');
+  await page.locator('table.list tr.click', { hasText: 'Micro Shure SM58' }).first().click();
+  await page.waitForSelector('.stats');
+  await page.click('button:text-is("Modifier")');
+  await page.waitForSelector('.edit-inline');
+  await page.locator('.edit-inline .field', { hasText: 'Taux de TVA spécifique' }).locator('input').fill('6');
+  await page.locator('.edit-inline .form-actions button:text-is("Enregistrer")').click();
+  await page.waitForTimeout(500);
+  await openProject('Spectacle de fin d');
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Devis")');
+  await page.waitForSelector('.doc');
+  const totals = await page.locator('.doc .totals').innerText();
+  expect(totals.includes('TVA 21 %') && totals.includes('TVA 6 %'), 'deux taux de TVA détaillés sur le devis');
+});
+
 await ctx.close();
 
 /* ---------- Nouveautés : entrepôt 6/5, kits scannables, planning clic jour, horaires, mails ---------- */

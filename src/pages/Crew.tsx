@@ -5,19 +5,29 @@ import { appBaseUrl, db } from '../db';
 import type { Person, ProjectFile, Unavailability } from '../types';
 import { buildIcs, crewWindow, download, fmtRange, money, save, toLocalInput, uid } from '../utils';
 import { CsvButton, exportCsv } from '../components/extra';
-import { newToken, signupLink } from '../mailer';
+import { mySheetLink, newToken, signupLink } from '../mailer';
 import { FileViewer } from '../components/FileViewer';
 import { Icon } from '../components/Icon';
 
 type Draft = Partial<Person> & { name: string; dailyRate: number; external: boolean };
 
+const SHEET_FIELD_LABELS: Record<string, string> = {
+  name: 'Nom', email: 'Email', phone: 'Téléphone', city: 'Ville', role: 'Fonction', skills: 'Fonctions',
+  status: 'Statut', vatNumber: 'N° TVA', costRate: 'Tarif / jour souhaité', notes: 'Notes',
+};
+
 export default function Crew() {
   const settings = useSettings();
   const everyone = useLiveQuery(() => db.people.orderBy('name').toArray(), []) || [];
+  const [q, setQ] = useState(() => new URLSearchParams(window.location.hash.split('?')[1] || '').get('q') || '');
+  const qn = q.trim().toLowerCase();
   // inscrits via le formulaire, pas encore validés : à part
-  const people = everyone.filter((p) => !p.pending);
+  const people = everyone.filter((p) => !p.pending && (!qn || [p.name, p.email, p.role, p.phone].join(' ').toLowerCase().includes(qn)));
   const pending = everyone.filter((p) => p.pending);
+  // fiches modifiées par les techniciens via leur lien « ma fiche », à relire
+  const reviews = everyone.filter((p) => p.sheetReview);
   const [linkMsg, setLinkMsg] = useState('');
+  const [sheetMsg, setSheetMsg] = useState('');
   const crew = useLiveQuery(() => db.crew.toArray(), []) || [];
   const projects = useLiveQuery(() => db.projects.toArray(), []) || [];
   const subs = useLiveQuery(() => db.subprojects.toArray(), []) || [];
@@ -50,10 +60,12 @@ export default function Crew() {
   return (
     <>
       <PageHead title="Équipe & sous-traitants">
+        <input placeholder="Rechercher une personne…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Rechercher une personne" />
         <CsvButton onClick={() => exportCsv('equipe.csv', ['Nom', 'Fonction', 'Statut', 'Société', 'Téléphone', 'Email', 'Coût / jour', 'Coût / heure'],
           people.map((p) => [p.name, p.role, p.external ? 'Sous-traitant' : 'Interne', companies.find((c) => c.id === p.contactId)?.company, p.phone, p.email, p.costRate, p.hourlyCost]))} />
         <button onClick={() => setEdit({ name: '', dailyRate: 0, external: false })}>+ Nouvelle personne</button>
       </PageHead>
+      {sheetMsg && <div className="info">{sheetMsg}</div>}
       {pending.length > 0 && (
         <div className="card signup-pending">
           <h2 style={{ marginTop: 0 }}>Inscriptions à valider ({pending.length})</h2>
@@ -67,6 +79,25 @@ export default function Crew() {
                 <button className="small" onClick={() => save(db.people, { ...p, pending: false, external: true })}>Valider</button>{' '}
                 <button className="secondary small" onClick={() => setEdit({ ...p, pending: false })}>Valider et compléter…</button>{' '}
                 <button className="ghost small" onClick={() => confirm(`Refuser et supprimer l'inscription de ${p.name} ?`) && db.people.delete(p.id)}>Refuser</button>
+              </td>
+            </tr>
+          ))}</tbody></table>
+        </div>
+      )}
+      {reviews.length > 0 && (
+        <div className="card signup-pending">
+          <h2 style={{ marginTop: 0 }}>Fiches mises à jour par les techniciens ({reviews.length})</h2>
+          <p className="muted" style={{ marginTop: 0 }}>Modifications envoyées via le lien « ma fiche » de chaque personne. Garde-les, ou annule pour revenir aux valeurs d'avant.</p>
+          <table className="list"><tbody>{reviews.map((p) => (
+            <tr key={p.id}>
+              <td><strong>{p.name}</strong>
+                <div className="muted">{Object.entries(p.sheetReview!.prev).map(([k, old]) => (
+                  <div key={k} style={{ fontSize: 12 }}>{SHEET_FIELD_LABELS[k] || k} : <s>{String(old ?? '—')}</s> → <b>{String((p as unknown as Record<string, unknown>)[k] ?? '—')}</b></div>
+                ))}</div>
+              </td>
+              <td className="nowrap">
+                <button className="small" onClick={() => save(db.people, { ...p, sheetReview: undefined })}>Garder</button>{' '}
+                <button className="secondary small" onClick={() => save(db.people, { ...p, ...(p.sheetReview!.prev as Partial<Person>), sheetReview: undefined })}>Annuler les changements</button>
               </td>
             </tr>
           ))}</tbody></table>
@@ -114,7 +145,15 @@ export default function Crew() {
                           return mine.length ? <span className={late ? 'avail ko' : ''}> ({mine.length}{late ? ` · ${late} à renouveler` : ''})</span> : null;
                         })()}</button>{' '}
                         <button className="secondary small" onClick={() => setUnavFor(p)}>Indispos{unav.filter((u) => u.personId === p.id && u.end >= nowS).length ? ` (${unav.filter((u) => u.personId === p.id && u.end >= nowS).length})` : ''}</button>{' '}
-                        <button className="secondary small" onClick={() => exportIcs(p)}>Agenda .ics</button>
+                        <button className="secondary small" onClick={() => exportIcs(p)}>Agenda .ics</button>{' '}
+                        <button className="secondary small" title="Lien personnel « ma fiche » : le technicien met à jour lui-même ses coordonnées, fonctions et tarif (elles arrivent ici à relire)" onClick={async () => {
+                          const tok = p.sheetToken || newToken(24);
+                          if (!p.sheetToken) await save(db.people, { ...p, sheetToken: tok });
+                          const link = mySheetLink(tok);
+                          if (!link) { setSheetMsg('Le lien « ma fiche » nécessite FabEvent installé sur un hébergement (serveur de synchronisation, comme le formulaire d\'inscription).'); return; }
+                          await navigator.clipboard?.writeText(link).catch(() => undefined);
+                          setSheetMsg(`Lien « ma fiche » de ${p.name} copié dans le presse-papiers.`);
+                        }}>Lien « ma fiche »</button>
                       </td>
                     </tr>
                   );

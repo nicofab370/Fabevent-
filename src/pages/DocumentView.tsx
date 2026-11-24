@@ -13,6 +13,7 @@ import type { DocStatus } from '../types';
 import { DOC_LABELS, DOC_STATUS_LABELS, INVOICE_TYPES } from '../types';
 import { buildUbl, peppolProblems } from '../ubl';
 import { download, fmtDate, fmtRange, money, parseNumber, save } from '../utils';
+import { newToken, quoteLink } from '../mailer';
 import { Icon } from '../components/Icon';
 
 export default function DocumentView() {
@@ -21,6 +22,8 @@ export default function DocumentView() {
   const ref = useRef<HTMLDivElement>(null);
   const [mailing, setMailing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [quoteUrl, setQuoteUrl] = useState<string | null>(null);
+  const [qMsg, setQMsg] = useState('');
   const doc = useLiveQuery(() => db.docs.get(id!), [id]);
   const siblings = useLiveQuery(
     async () => (doc ? (await db.docs.where({ projectId: doc.projectId }).toArray()).filter((d) => d.type === doc.type).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) : []),
@@ -96,6 +99,7 @@ export default function DocumentView() {
       prenom: doc.contactPerson?.split(' ')[0] || '', client: sn.client?.company, projet: sn.project.name, numero: doc.number, lieu: sn.project.venue,
       dates: sn.project.start ? fmtRange(sn.project.start, sn.project.end) : '', montant: money(sn.totalTTC), echeance: sn.dueDate ? fmtDate(sn.dueDate, false) : '',
       societe: sn.company.name, contact: sn.contacts?.map((c) => `${c.name}${c.phone ? ' ' + c.phone : ''}`).join(', '),
+      lien: doc.type === 'devis' && doc.publicToken ? quoteLink(doc.publicToken) : '',
     };
   };
 
@@ -120,6 +124,14 @@ export default function DocumentView() {
             try { const f = await makePdf(); download(f.name, f.blob, f.type); } catch (e) { alert('PDF impossible : ' + (e as Error).message); } finally { setBusy(false); }
           }}>{busy ? 'PDF…' : 'Télécharger le PDF'}</button>
           <button className="secondary" onClick={() => setMailing(true)}>Envoyer par email</button>
+          {doc.type === 'devis' && <button className="secondary" title="Lien public : le client accepte ou refuse le devis en ligne (arrive ici, statut « accepté » + projet confirmé)" onClick={async () => {
+            let tok = doc.publicToken;
+            if (!tok) { tok = newToken(24); await save(db.docs, { ...doc, publicToken: tok }); }
+            const u = quoteLink(tok);
+            setQuoteUrl(u);
+            if (u) await navigator.clipboard?.writeText(u).then(() => setQMsg('Lien d\'acceptation copié.'), () => setQMsg('Sélectionne le lien et copie-le.'));
+            else setQMsg('Nécessite FabEvent installé sur un hébergement (serveur de synchronisation).');
+          }}>Lien d'acceptation en ligne</button>}
           {isInvoice && <button className="secondary" onClick={exportPeppol}>Peppol (XML)</button>}
           {(doc.type === 'facture' || doc.type === 'acompte') && <button className="secondary" onClick={makeCreditNote}>Créer un avoir</button>}
           {(doc.type === 'facture' || doc.type === 'acompte') && doc.status !== 'paye' && (doc.snapshot.dueDate || '9') < new Date().toISOString() && (
@@ -135,6 +147,14 @@ export default function DocumentView() {
           ))}</>}
         </div>
       </div>
+      {doc.type === 'devis' && quoteUrl !== null && quoteUrl && (
+        <div className="no-print toolbar" style={{ marginBottom: 10 }}>
+          <input readOnly value={quoteUrl} aria-label="Lien public d'acceptation du devis" onFocus={(e) => e.currentTarget.select()} style={{ flex: 1, maxWidth: 'none' }} />
+          <button className="secondary small" onClick={() => navigator.clipboard?.writeText(quoteUrl).then(() => setQMsg('Lien copié.'), () => setQMsg('Sélectionne le lien et copie-le.'))}>Copier</button>
+          {qMsg && <span className="avail ok">{qMsg}</span>}
+        </div>
+      )}
+      {doc.type === 'devis' && quoteUrl === '' && qMsg && <div className="no-print" style={{ marginBottom: 10 }}><div className="info">{qMsg}</div></div>}
       <div className="doc-wrap" ref={ref}><DocRender doc={doc} /></div>
       {mailing && (
         <EmailModal initial={mailDraft()} prepare={attachments} onClose={() => setMailing(false)} kind={doc.type} vars={mailVars()} hints={hints}

@@ -71,6 +71,10 @@ export function newToken(len = 32): string {
 }
 export const requestLink = (token: string) => { const u = serverScript('public.php'); return u ? `${u}?r=${token}` : ''; };
 export const signupLink = (key: string) => { const u = serverScript('public.php'); return u ? `${u}?s=${key}` : ''; };
+/** lien « ma fiche » d'un technicien : il met à jour ses coordonnées (public.php?m=…) */
+export const mySheetLink = (token: string) => { const u = serverScript('public.php'); return u ? `${u}?m=${token}` : ''; };
+/** lien public d'acceptation / refus d'un devis (public.php?d=…) */
+export const quoteLink = (token: string) => { const u = serverScript('public.php'); return u ? `${u}?d=${token}` : ''; };
 
 /* ---------- modèles de mail ---------- */
 

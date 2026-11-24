@@ -51,7 +51,8 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
     let code = e.code?.trim();
     if (!code && codeAuto) code = newArticleCode({ ...e, categoryId }, settings, await db.categories.toArray(), await db.equipment.toArray());
     const contents = (e.contents || []).filter((c) => c.name.trim()).map((c) => ({ name: c.name.trim(), qty: c.qty || 1 }));
-    const rec = await save(db.equipment, { ...e, categoryId, code, contents: contents.length ? contents : undefined } as Equipment);
+    const extraCodes = Array.from(new Set((e.extraCodes || []).map((x) => x.trim()).filter(Boolean)));
+    const rec = await save(db.equipment, { ...e, categoryId, code, contents: contents.length ? contents : undefined, extraCodes: extraCodes.length ? extraCodes : undefined } as Equipment);
     onDone();
     if (print) onPrint?.(rec.id);
   };
@@ -74,6 +75,10 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
           placeholder={codeAuto ? `auto : ${newArticleCode({ ...e, categoryId: newCat.trim() ? '__new' : e.categoryId }, settings, previewCats, all)}` : ''} />
       </Field>
       <Field label="Code-barres / QR"><input value={e.barcode || ''} onChange={(x) => set('barcode', x.target.value)} /></Field>
+      <Field label="Autres codes reconnus au scan (alias)" full>
+        <TagInput value={e.extraCodes || []} onChange={(t) => set('extraCodes', t.length ? t : undefined)} />
+        <small className="muted">Ex. ancien code-barres, référence fournisseur, QR d'un autre système : le scan de l'un d'eux retrouve cet article.</small>
+      </Field>
       <Field label="Catégorie">
         <select value={e.categoryId || ''} onChange={(x) => set('categoryId', x.target.value || undefined)}>
           <option value="">—</option>
@@ -140,6 +145,7 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
         : <Field label="Quantité en stock"><NumInput value={e.quantity} onChange={(n) => set('quantity', n)} step="1" min={0} /></Field>}
       <Field label={e.kind === 'vente' ? 'Prix de vente unitaire HT (€)' : 'Prix location / jour HT (€)'}><NumInput value={e.dailyPrice} onChange={(n) => set('dailyPrice', n)} /></Field>
       {e.kind === 'vente' && <Field label="Prix d'achat unitaire HT (€)"><NumInput value={e.costPrice || 0} onChange={(n) => set('costPrice', n)} /></Field>}
+      <Field label="Taux de TVA spécifique de l'article (%) — vide = taux du client / projet"><NumInput value={e.vatRate ?? NaN} placeholder={String(settings.vatRate)} onChange={(n) => set('vatRate', isNaN(n) ? undefined : n)} /></Field>
       <Field label="Contrôle périodique tous les (mois, 0 = aucun)"><NumInput value={e.inspectionMonths || 0} step="1" min={0} onChange={(n) => set('inspectionMonths', n)} /></Field>
       <Field label="Valeur de remplacement (€)"><NumInput value={e.replacementValue || 0} onChange={(n) => set('replacementValue', n)} /></Field>
       <Field label="Poids unitaire (kg)"><NumInput value={e.weight || 0} onChange={(n) => set('weight', n)} /></Field>
@@ -257,7 +263,7 @@ export default function EquipmentList() {
   const { equipment, res, depots } = useAvailability();
   const [depot, setDepot] = useState('');
   const cats = useLiveQuery(() => db.categories.toArray(), []) || [];
-  const [q, setQ] = useState('');
+  const [q, setQ] = useState(() => new URLSearchParams(window.location.hash.split('?')[1] || '').get('q') || '');
   const [cat, setCat] = useState('');
   const [tag, setTag] = useState('');
   const [creating, setCreating] = useState(false);

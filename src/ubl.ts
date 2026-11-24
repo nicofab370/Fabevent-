@@ -59,7 +59,7 @@ function customer(c: Contact | undefined, supplierCountry: string) {
   });
 }
 
-interface Line { name: string; qty: number; total: number }
+interface Line { name: string; qty: number; total: number; /** taux de TVA de la ligne quand il diffère du taux du document */ rate?: number }
 
 /** Lignes facturables avec montants nets (positifs pour un avoir). */
 function collectLines(doc: Doc, sign: number): Line[] {
@@ -67,7 +67,7 @@ function collectLines(doc: Doc, sign: number): Line[] {
   if (s.simpleLines?.length) return s.simpleLines.map((l) => ({ name: l.label, qty: 1, total: sign * l.ht }));
   const out: Line[] = [];
   for (const sp of s.subprojects) {
-    for (const l of sp.equipment) if (!l.optional) out.push({ name: `${l.name}${l.unit === 'pièce' ? '' : ` (${l.days} j)`} — ${sp.name}`, qty: l.qty, total: l.total });
+    for (const l of sp.equipment) if (!l.optional) out.push({ name: `${l.name}${l.unit === 'pièce' ? '' : ` (${l.days} j)`} — ${sp.name}`, qty: l.qty, total: l.total, rate: l.vatRate });
     for (const c of sp.crew) if (c.billable) out.push({ name: `${c.function} (${c.days} j) — ${sp.name}`, qty: c.days, total: c.total });
     for (const v of sp.vehicles) if (v.billable) out.push({ name: `Transport ${v.name} — ${sp.name}`, qty: 1, total: v.price });
   }
@@ -88,7 +88,8 @@ export function buildUbl(doc: Doc): string {
   const exCode = cat === 'AE' ? 'VATEX-EU-AE' : cat === 'G' ? 'VATEX-EU-G' : '';
   const exemption = ['AE', 'E', 'G'].includes(cat)
     ? `${exCode ? `<cbc:TaxExemptionReasonCode>${exCode}</cbc:TaxExemptionReasonCode>` : ''}<cbc:TaxExemptionReason>${esc(s.vatMention || 'Exonération de TVA')}</cbc:TaxExemptionReason>` : '';
-  const taxCat = `<cac:TaxCategory><cbc:ID>${cat}</cbc:ID><cbc:Percent>${s.vatRate}</cbc:Percent>${exemption}<cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:TaxCategory>`;
+  const taxCatFor = (rate: number) => `<cac:TaxCategory><cbc:ID>${cat}</cbc:ID><cbc:Percent>${rate}</cbc:Percent>${exemption}<cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:TaxCategory>`;
+  const taxCat = taxCatFor(s.vatRate);
   const lines = collectLines(doc, sign);
   const lineSum = round2(lines.reduce((a, l) => a + l.total, 0));
   const allowance = round2(sign * s.discountAmount);
@@ -110,7 +111,7 @@ export function buildUbl(doc: Doc): string {
     <cbc:LineExtensionAmount currencyID="EUR">${amt(l.total)}</cbc:LineExtensionAmount>
     <cac:Item>
       <cbc:Name>${esc((exact ? '' : `${l.qty} × `) + l.name).slice(0, 200)}</cbc:Name>
-      <cac:ClassifiedTaxCategory><cbc:ID>${cat}</cbc:ID><cbc:Percent>${s.vatRate}</cbc:Percent><cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:ClassifiedTaxCategory>
+      <cac:ClassifiedTaxCategory><cbc:ID>${cat}</cbc:ID><cbc:Percent>${l.rate ?? s.vatRate}</cbc:Percent><cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:ClassifiedTaxCategory>
     </cac:Item>
     <cac:Price><cbc:PriceAmount currencyID="EUR">${amt(Math.abs(price))}</cbc:PriceAmount></cac:Price>
   </cac:${lineTag}>`;
@@ -148,11 +149,17 @@ export function buildUbl(doc: Doc): string {
   </cac:AllowanceCharge>` : ''}
   <cac:TaxTotal>
     <cbc:TaxAmount currencyID="EUR">${amt(vat)}</cbc:TaxAmount>
-    <cac:TaxSubtotal>
+    ${(s.vatBreakdown && s.vatBreakdown.length > 1
+      ? s.vatBreakdown.map((b) => `    <cac:TaxSubtotal>
+      <cbc:TaxableAmount currencyID="EUR">${amt(sign * b.ht)}</cbc:TaxableAmount>
+      <cbc:TaxAmount currencyID="EUR">${amt(sign * b.vat)}</cbc:TaxAmount>
+      ${taxCatFor(b.rate)}
+    </cac:TaxSubtotal>`).join('\n')
+      : `    <cac:TaxSubtotal>
       <cbc:TaxableAmount currencyID="EUR">${amt(totalHT)}</cbc:TaxableAmount>
       <cbc:TaxAmount currencyID="EUR">${amt(vat)}</cbc:TaxAmount>
       ${taxCat}
-    </cac:TaxSubtotal>
+    </cac:TaxSubtotal>`)}
   </cac:TaxTotal>
   <cac:LegalMonetaryTotal>
     <cbc:LineExtensionAmount currencyID="EUR">${amt(lineSum)}</cbc:LineExtensionAmount>
