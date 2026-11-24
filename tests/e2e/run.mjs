@@ -2623,6 +2623,16 @@ await step('Devis : groupes d\'options au choix + version (n° de PR) affichée'
   expect((await page.locator('main').innerText()).includes('v39') && (await page.locator('main').innerText()).includes('PR'), 'version dans les paramètres');
 });
 
+await step('Facture : QR code de paiement toujours imprimé (même si le gabarit l’oublie)', async () => {
+  await resetDemo();
+  await openProject('Gala de fin d');
+  await tab('Finances & documents');
+  await page.locator('table.list tr.click', { hasText: /F-\d{4}/ }).first().click();
+  await page.waitForSelector('.doc');
+  expect(await page.locator('.doc .pay svg').count() >= 1, 'QR EPC présent sur la facture');
+  expect((await page.locator('.doc .pay').innerText()).includes('+++'), 'communication structurée +++…+++');
+});
+
 await ctx.close();
 
 await step('Aucune erreur dans la console du navigateur', async () => {
