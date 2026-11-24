@@ -218,9 +218,9 @@ await step('Matériel : fenêtre avec catégories, « reste » après l’ajout'
   expect((await txt(row.locator('.pick-stock'))).includes('reste 1'), `reste 1 après 3 (${await txt(row.locator('.pick-stock'))})`);
   await m.locator('button:has-text("Ajouter (")').click();
   await page.waitForTimeout(400);
-  const line = page.locator('tr', { hasText: 'Micro SM58' }).first();
+  const line = page.locator('tr:not(.kit-child)', { hasText: 'Micro SM58' }).first();
   expect((await txt(line)).includes('1'), 'colonne Reste');
-  expect(await line.locator('.uses-btn').count() === 0, 'pas encore réservé ailleurs');
+  expect(await line.locator('.use-chips').count() === 0, 'pas encore réservé ailleurs');
 });
 
 await step('Saisie rapide : « Filtres… » ouvre la fenêtre avec le texte tapé', async () => {
@@ -243,18 +243,18 @@ await step('Deuxième projet aux mêmes dates : stock restant, réservé ailleur
   await m.locator('.picker-filters input').first().fill('sm58');
   const row = m.locator('.pick-row', { hasText: 'Micro SM58' });
   expect((await txt(row.locator('.pick-stock'))).includes('1 dispo'), `1 dispo (${await txt(row.locator('.pick-stock'))})`);
-  const uses = row.locator('.uses-btn');
-  expect((await txt(uses)).includes('3 réservés ailleurs'), `3 réservés ailleurs (${await txt(uses)})`);
+  const uses = row.locator('.use-chips');
+  expect((await txt(uses)).includes('3 réservé ailleurs'), `3 réservé ailleurs (${await txt(uses)})`);
   await uses.click();
   await waitText(m.locator('.pick-uses'), 'Concert d’hiver', 'projet qui les utilise');
   await row.locator('input').first().fill('2');
   expect((await txt(row.locator('.pick-stock'))).includes('manque 1'), 'manque 1');
   await m.locator('button:has-text("Ajouter (")').click();
   await page.waitForTimeout(400);
-  const line = page.locator('tr', { hasText: 'Micro SM58' }).first();
+  const line = page.locator('tr:not(.kit-child)', { hasText: 'Micro SM58' }).first();
   expect((await txt(line)).includes('manque 1'), `ligne en manque (${await txt(line)})`);
-  await line.locator('.uses-btn').click();
-  const pop = page.locator('.modal', { hasText: 'réservé ailleurs' });
+  await line.locator('.use-chips').click();
+  const pop = page.locator('.modal-bg .modal', { hasText: 'où est le matériel' });
   await waitText(pop, 'Concert d’hiver', 'fenêtre des réservations ailleurs');
   await pop.locator('a', { hasText: 'Concert d’hiver' }).click();
   await page.waitForTimeout(500);

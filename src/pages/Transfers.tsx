@@ -29,9 +29,12 @@ export default function Transfers() {
 
   useEffect(() => {
     const id = params.get('id');
-    if (id) db.transfers.get(id).then((t) => t && setEdit(t));
+    if (id) { db.transfers.get(id).then((t) => t && setEdit(t)); return; }
+    // ?from=…&eq=… (inventaire : article vu dans un autre dépôt) : nouveau transfert pré-rempli
+    const from = params.get('from'), eq = params.get('eq');
+    if (from && eq) setEdit({ fromDepotId: from, toDepotId: av.depots.find((d) => d.id !== from)?.id || av.mainDepot, start: toLocalInput(new Date()), status: 'planifie', lines: [{ equipmentId: eq, qty: 1 }] });
   }, [params]);
-  const close = () => { setEdit(null); if (params.get('id')) setParams({}, { replace: true }); };
+  const close = () => { setEdit(null); if (params.get('id') || params.get('from')) setParams({}, { replace: true }); };
 
   if (av.depots.length < 2) {
     return (

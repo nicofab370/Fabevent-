@@ -171,7 +171,7 @@ export default function Labels() {
                   <tr key={u.id}>
                     <td>{e.name} {u.number ? <strong className="unit-no">#{u.number}</strong> : null} <span className="muted">n° {u.serial}</span></td>
                     <td><code>{u.barcode || u.serial}</code></td>
-                    <td><NumInput className="w-qty" step="1" min={0} value={counts['u:' + u.id] || 0} onChange={(n) => setCounts({ ...counts, ['u:' + u.id]: n })} /></td>
+                    <td><NumInput className="w-qty" step="1" min={0} value={counts['u:' + u.id] || 0} aria-label={`Nombre d'exemplaires de l'unité ${u.barcode || u.serial}`} title="Nombre d'étiquettes à imprimer pour cette unité" onChange={(n) => setCounts({ ...counts, ['u:' + u.id]: n })} /></td>
                   </tr>
                 ))]
                 : [(
@@ -179,8 +179,8 @@ export default function Labels() {
                     <td>{e.name} <span className="muted">({e.quantity} en stock)</span></td>
                     <td><code>{codeFor(e)}</code>{!e.barcode && <span className="muted"> (nouveau)</span>}</td>
                     <td>
-                      <NumInput className="w-qty" step="1" min={0} value={counts[e.id] || 0} onChange={(n) => setCounts({ ...counts, [e.id]: n })} />
-                      <button className="ghost small" onClick={() => setCounts({ ...counts, [e.id]: e.quantity })}>= stock</button>
+                      <NumInput className="w-qty" step="1" min={0} value={counts[e.id] || 0} aria-label={`Nombre d'exemplaires de ${e.name}`} title="Nombre d'étiquettes à imprimer" onChange={(n) => setCounts({ ...counts, [e.id]: n })} />
+                      <button className="ghost small" title={`Remplir avec tout le stock (${e.quantity})`} aria-label={`Tout le stock de ${e.name} (${e.quantity})`} onClick={() => setCounts({ ...counts, [e.id]: e.quantity })}>= stock</button>
                     </td>
                   </tr>
                 )])}

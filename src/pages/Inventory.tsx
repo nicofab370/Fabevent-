@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { unitNo } from '../unitNumbers';
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Empty, Field, Modal, NumInput, PageHead, StatusBadge, useSettings } from '../components/ui';
 import { Scanner } from '../components/Scanner';
 import PrintLabelModal from '../components/PrintLabelModal';
@@ -67,6 +67,7 @@ export function beep(ok: boolean) {
 type Flash = { ok: boolean; msg: string; actions?: { label: string; run: () => void }[] };
 
 export default function Inventory() {
+  const nav = useNavigate();
   const av = useAvailability();
   const cats = useLiveQuery(() => db.categories.orderBy('name').toArray(), []) || [];
   const multi = av.depots.length > 1;
@@ -197,6 +198,22 @@ export default function Inventory() {
       if (!ui.burst) { beep(true); setFlash({ ok: true, msg: `${e.name} : ouvert pour le comptage` }); setOpen({ id: e.id }); return true; }
       say({ ok: false, msg: `${e.name} est suivi par numéro de série : scanne l'étiquette de chaque unité.`, actions: [{ label: 'Ouvrir', run: () => setOpen({ id: e.id }) }] });
       return false;
+    }
+    // article en vrac attendu dans un autre dépôt : proposer un transfert, ou compter ici quand même
+    if (multi && expected(e) === 0) {
+      const other = av.depots.filter((d) => d.id !== depot && stockAt(e, d.id, av.res) > 0).sort((a, b) => stockAt(e, b.id, av.res) - stockAt(e, a.id, av.res))[0];
+      if (other) {
+        beep(false);
+        say({
+          ok: false,
+          msg: `${e.name} : attendu au ${depotName(other.id)}, pas au ${depotName(depot)}.`,
+          actions: [
+            { label: `Transférer depuis ${depotName(other.id)}`, run: () => nav(`/transferts?from=${other.id}&eq=${e.id}`) },
+            { label: 'Compter ici quand même', run: () => { if (ui.burst) { const n = (ses.counted[e.id] || 0) + 1; addCount(e.id, 1); say({ ok: true, msg: `${e.name} : ${n} compté(s) ici (était prévu au ${depotName(other.id)})` }); } else { beep(true); setFlash({ ok: true, msg: `${e.name} : compté ici, bien qu'attendu au ${depotName(other.id)}` }); setOpen({ id: e.id }); } } },
+          ],
+        });
+        return false;
+      }
     }
     if (!ui.burst) { beep(true); setFlash({ ok: true, msg: `${e.name} : ouvert pour le comptage` }); setOpen({ id: e.id }); return true; }
     const n = (ses.counted[e.id] || 0) + 1;

@@ -35,13 +35,16 @@ export function useAddressBook(): BookEntry[] {
 const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 /** Champ de destinataires : étiquettes, suggestions du carnet d'adresses au fil de la frappe, et carnet complet. */
-export function Recipients({ label, value, onChange, book }: { label: string; value: string; onChange: (v: string) => void; book: BookEntry[] }) {
+export function Recipients({ label, value, onChange, book, hints }: { label: string; value: string; onChange: (v: string) => void; book: BookEntry[]; /** adresses liées au contexte (projet…) : proposées en premier, même champ vide */ hints?: string[] }) {
   const list = splitAddrs(value);
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
   const [picker, setPicker] = useState(false);
   const qn = norm(q.trim());
-  const hits = qn.length >= 1 ? book.filter((e) => !list.includes(e.email) && norm(`${e.name} ${e.email} ${e.sub}`).includes(qn)).slice(0, 8) : [];
+  const hintSet = new Set((hints || []).map((e) => e.toLowerCase()));
+  // champ vide : on propose déjà les adresses du contexte ; sinon recherche dans tout le carnet, contexte d'abord
+  const base = qn.length >= 1 ? book.filter((e) => !list.includes(e.email) && norm(`${e.name} ${e.email} ${e.sub}`).includes(qn)) : book.filter((e) => hintSet.has(e.email.toLowerCase()));
+  const hits = [...base.filter((e) => hintSet.has(e.email.toLowerCase())), ...base.filter((e) => !hintSet.has(e.email.toLowerCase()))].slice(0, 8);
   const add = (email: string) => { const e = email.trim().replace(/[,;]+$/, ''); if (e && !list.includes(e)) onChange([...list, e].join(', ')); setQ(''); };
   const nameOf = (email: string) => book.find((e) => e.email.toLowerCase() === email.toLowerCase())?.name;
   return (
@@ -98,7 +101,7 @@ function AddressBook({ book, selected, onClose }: { book: BookEntry[]; selected:
  * - sinon : partage natif, brouillon .eml, ou fichiers + messagerie.
  * Modèles de mail par type (kind), destinataires depuis le carnet d'adresses.
  */
-export function EmailModal({ initial, prepare, onSent, onClose, kind, vars }: {
+export function EmailModal({ initial, prepare, onSent, onClose, kind, vars, hints }: {
   initial: MailDraft;
   /** fabrique les pièces jointes (PDF…) à l'ouverture */
   prepare: () => Promise<Attachment[]>;
@@ -109,6 +112,8 @@ export function EmailModal({ initial, prepare, onSent, onClose, kind, vars }: {
   kind?: MailKind;
   /** valeurs des variables des modèles ({prenom}, {projet}…) */
   vars?: Record<string, string | undefined>;
+  /** adresses liées au contexte (client, lieu, équipe du projet…) : proposées en premier dans les destinataires */
+  hints?: string[];
 }) {
   const settings = useSettings();
   const book = useAddressBook();
@@ -181,8 +186,8 @@ export function EmailModal({ initial, prepare, onSent, onClose, kind, vars }: {
             </div>
           </div>
         )}
-        <Recipients label="À" value={m.to} onChange={(to) => setM({ ...m, to })} book={book} />
-        <Recipients label="Cc" value={cc} onChange={setCc} book={book} />
+        <Recipients label="À" value={m.to} onChange={(to) => setM({ ...m, to })} book={book} hints={hints} />
+        <Recipients label="Cc" value={cc} onChange={setCc} book={book} hints={hints} />
         <Field label="Objet" full><input value={m.subject} onChange={(e) => setM({ ...m, subject: e.target.value })} /></Field>
         <Field label="Message" full><textarea style={{ minHeight: 160 }} value={m.body} onChange={(e) => setM({ ...m, body: e.target.value })} /></Field>
         <div className="field full">

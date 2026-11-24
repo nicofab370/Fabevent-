@@ -116,6 +116,8 @@ function writeLayout(items: Item[]): string {
 }
 
 const SWATCHES = ['#1d4ed8', '#0f766e', '#15803d', '#b45309', '#d97706', '#be123c', '#7c3aed', '#334155', '#111111'];
+/** couleurs secondaires proposées (contraste avec la principale) : on évite la teinte choisie en principale */
+const SWATCHES2 = ['#0f766e', '#d97706', '#be123c', '#7c3aed', '#15803d', '#0e7490', '#b45309', '#334155'];
 
 function DocTemplates() {
   const settings = useSettings();
@@ -263,6 +265,23 @@ function DocTemplates() {
         {TYPES.map((t) => <button key={t} type="button" role="tab" className={t === type ? 'on' : ''} onClick={() => setType(t)}>{DOC_LABELS[t]}</button>)}
       </div>
 
+      <div className="card" style={{ marginBottom: 10 }}>
+        <h2><Icon name="list" />Sections affichées sur {DOC_LABELS[type].toLowerCase()}</h2>
+        <div className="blk-toggles">
+          {Object.entries(BLOCKS).filter(([k]) => k !== 'entete' && k !== 'pied').map(([k, b]) => (
+            <label key={k} className="check-row" title={b.help}>
+              <input type="checkbox" checked={!cur.blocks || cur.blocks.includes(k)} onChange={(e) => {
+                const all = Object.keys(BLOCKS).filter((x) => x !== 'entete' && x !== 'pied');
+                const curList = cur.blocks || all;
+                const next = e.target.checked ? [...new Set([...curList, k])] : curList.filter((x) => x !== k);
+                setCur({ blocks: next.length >= all.length ? undefined : next });
+              }} /> {b.label}
+            </label>
+          ))}
+        </div>
+        <p className="muted" style={{ marginBottom: 0 }}>Une section décochée disparaît de tous les {DOC_LABELS[type].toLowerCase()} générés ensuite. Par défaut : toutes.</p>
+      </div>
+
       <div className="tpl-layout">
         <div className="tpl-edit">
           <div className="card">
@@ -285,6 +304,18 @@ function DocTemplates() {
                 <Icon name="plus" />
               </label>
             </div>
+            <Field label="Couleur secondaire (titres de section, étiquettes des cartes)">
+              <div className="swatches" role="radiogroup" aria-label="Couleur secondaire">
+                {SWATCHES2.map((c) => (
+                  <button key={c} type="button" role="radio" aria-checked={(style.color2 || '').toLowerCase() === c} aria-label={`Couleur secondaire ${c}`}
+                    className={'swatch' + ((style.color2 || '').toLowerCase() === c ? ' on' : '')} style={{ background: c }} onClick={() => setStyle({ color2: c })} />
+                ))}
+                <label className="swatch custom" title="Autre couleur secondaire" aria-label="Autre couleur secondaire">
+                  <input type="color" value={style.color2 || '#0f766e'} onChange={(e) => setStyle({ color2: e.target.value })} />
+                  <Icon name="plus" />
+                </label>
+              </div>
+            </Field>
             <Field label="Police">
               <select value={style.font} onChange={(e) => setStyle({ font: e.target.value as DocStyle['font'] })}>
                 <option value="sans">Moderne</option><option value="serif">Classique</option><option value="arrondie">Arrondie</option>

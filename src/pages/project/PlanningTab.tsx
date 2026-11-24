@@ -124,7 +124,9 @@ export function SubprojectModal({ sp, project, onClose }: { sp: Partial<Subproje
       e = new Date(s.getTime() + 6 * 3600000);
     } else {
       const day = new Date((ref ? ref.start : project.start).slice(0, 10) + 'T12:00');
-      if (ref) day.setDate(day.getDate() + 1);
+      // la première prestation a lieu le même jour que le montage ; les suivantes le lendemain
+      const hasPrest = sorted.some((x) => x.kind === 'prestation');
+      if (ref && (kind !== 'prestation' || hasPrest)) day.setDate(day.getDate() + 1);
       const [h1, h2] = PERIOD_DEFAULTS[kind];
       s = new Date(day); s.setHours(h1, 0, 0, 0);
       e = new Date(day); e.setHours(h2, 0, 0, 0);
@@ -198,7 +200,9 @@ export function SubprojectModal({ sp, project, onClose }: { sp: Partial<Subproje
                 <input value={pe.name} onChange={(e) => upd({ name: e.target.value })} />
                 <input type="datetime-local" value={pe.start} onChange={(e) => upd({ start: e.target.value, end: pe.end < e.target.value ? e.target.value : pe.end })} />
                 <input type="datetime-local" value={pe.end} onChange={(e) => upd({ end: e.target.value })} />
-                <button type="button" className="ghost" onClick={() => setPeriods(periods.filter((x) => x.id !== pe.id))} aria-label="Retirer"><Icon name="x" /></button>
+                <button type="button" className="ghost small" title="Décaler ce créneau d'un jour avant" aria-label={`Décaler ${pe.name} d'un jour avant`} onClick={() => upd({ start: shiftDate(pe.start, { days: -1, minutes: 0 })!, end: shiftDate(pe.end, { days: -1, minutes: 0 })! })}>−1 j</button>
+                <button type="button" className="ghost small" title="Décaler ce créneau d'un jour après" aria-label={`Décaler ${pe.name} d'un jour après`} onClick={() => upd({ start: shiftDate(pe.start, { days: 1, minutes: 0 })!, end: shiftDate(pe.end, { days: 1, minutes: 0 })! })}>+1 j</button>
+                <button type="button" className="ghost" onClick={() => setPeriods(periods.filter((x) => x.id !== pe.id))} aria-label={`Retirer ${pe.name}`} title="Retirer ce créneau"><Icon name="x" /></button>
               </div>
             );
           })}
