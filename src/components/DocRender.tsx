@@ -137,7 +137,9 @@ export function buildDocHtml(doc: Doc, opts: { mark?: boolean } = {}): string {
         <tbody>
           {s.discountAmount > 0 && <tr><td>{tr(doc, 'discount')} ({s.project.discount} %)</td><td className="n">− {money(s.discountAmount)}</td></tr>}
           {!s.reminder && <tr><td>{tr(doc, 'totalExcl')}</td><td className="n">{money(s.totalHT)}</td></tr>}
-          {!s.reminder && <tr><td>{tr(doc, 'vat')} {s.vatRate} %{s.vatRegime && s.vatRegime !== 'normal' ? ` (${VAT_SHORT[docLang(doc)][s.vatRegime]})` : ''}</td><td className="n">{money(s.vat)}</td></tr>}
+          {!s.reminder && (s.vatBreakdown && s.vatBreakdown.length > 1
+            ? s.vatBreakdown.map((b) => <tr key={b.rate}><td>{tr(doc, 'vat')} {b.rate} %</td><td className="n">{money(b.vat)}</td></tr>)
+            : <tr><td>{tr(doc, 'vat')} {s.vatRate} %{s.vatRegime && s.vatRegime !== 'normal' ? ` (${VAT_SHORT[docLang(doc)][s.vatRegime]})` : ''}</td><td className="n">{money(s.vat)}</td></tr>)}
           <tr className="grand"><td>{s.reminder ? tr(doc, 'remaining') : tr(doc, 'totalIncl')}</td><td className="n">{money(s.totalTTC)}</td></tr>
           {(s.deposits || []).map((d) => <tr key={d.number}><td>{tr(doc, 'deposit')} {d.number}</td><td className="n">− {money(d.ttc)}</td></tr>)}
           {depositsTTC > 0 && <tr className="grand"><td>{tr(doc, 'toPay')}</td><td className="n">{money(s.totalTTC - depositsTTC)}</td></tr>}

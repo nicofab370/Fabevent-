@@ -81,6 +81,7 @@ export default function EquipmentDetail() {
         <div className="stat"><b>{money(eq.dailyPrice)}</b><span>{eq.kind === 'vente' ? 'prix de vente / pièce' : 'prix / jour HT'}</span></div>
         <div className="stat"><b>{money(eq.replacementValue || 0)}</b><span>valeur de remplacement</span></div>
         <div className="stat"><b>{eq.code || '—'}</b><span>référence{eq.location ? ` · ${eq.location}` : ''}</span></div>
+        {(eq.extraCodes || []).length > 0 && <div className="stat"><b>{eq.extraCodes!.join(' · ')}</b><span>autres codes reconnus au scan</span></div>}
       </div>
       {eq._stock && av.depots.length > 1 && !eq.isKit && (
         <div className="info">Stock par dépôt : {av.depots.map((dp) => `${dp.name} ${stockAt(eq, dp.id, av.res)}`).join(' · ')}
@@ -236,7 +237,15 @@ export default function EquipmentDetail() {
       {eq.contents?.length ? <div className="card"><h2>Contenu fourni</h2><ul style={{ margin: 0 }}>{eq.contents.map((c, i) => <li key={i}>{c.qty > 1 ? `${c.qty} × ` : ''}{c.name}</li>)}</ul></div> : null}
       {eq.notes && <div className="card"><h2>Notes</h2><p style={{ whiteSpace: 'pre-wrap' }}>{eq.notes}</p></div>}
 
-      {editing && <Modal title="Modifier l'article" onClose={() => setEditing(false)} wide><EquipmentForm initial={raw} onDone={() => setEditing(false)} onPrint={() => setPrinting({})} /></Modal>}
+      {editing && (
+        <div className="card edit-inline">
+          <div className="page-head" style={{ marginBottom: 8 }}>
+            <h2 style={{ margin: 0 }}>Modifier l'article (directement sur cette page)</h2>
+            <button className="secondary small" onClick={() => setEditing(false)}>Fermer</button>
+          </div>
+          <EquipmentForm initial={raw} onDone={() => setEditing(false)} onPrint={() => setPrinting({})} />
+        </div>
+      )}
       {printing && <PrintLabelModal equipmentId={eq.id} unitIds={printing.unitIds} onClose={() => setPrinting(null)} />}
       {repair && <RepairModal equipmentId={eq.id} unitId={repair.unitId} onClose={() => setRepair(null)} />}
       {inspect && <InspectionModal equipmentId={eq.id} unitId={inspect.unitId} onClose={() => setInspect(null)} />}

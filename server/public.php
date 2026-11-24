@@ -5,6 +5,8 @@
  *
  *   ?r=<jeton>   demande de disponibilité : le technicien répond « disponible / pas disponible » (poste par poste)
  *   ?s=<clé>     formulaire d'inscription : un technicien s'ajoute à ta base (fiche « à valider » dans FabEvent)
+ *   ?m=<jeton>   « ma fiche » : un technicien déjà dans ta base met à jour ses coordonnées (modifs « à relire » dans FabEvent)
+ *   ?d=<jeton>   devis : le client accepte / refuse en ligne (statut « accepté » = projet confirmé)
  *
  * Les réponses sont enregistrées dans la base de synchronisation : elles arrivent dans FabEvent toutes seules.
  */
@@ -168,6 +170,126 @@ if (isset($_GET['s'])) {
         . '<label for="notes">Expérience, matériel maîtrisé, permis…</label><textarea id="notes" name="notes" maxlength="1500">' . $v('notes') . '</textarea>'
         . '<label class="chk" style="margin-top:14px"><input type="checkbox" name="consent" value="1" required> J\'accepte que ' . h($company ?: 'l\'organisateur') . ' garde ces informations pour me proposer des missions (je peux demander leur suppression à tout moment).</label>'
         . '<button>Envoyer ma fiche</button></form>');
+}
+
+/* ================= « ma fiche » d'un technicien ================= */
+if (isset($_GET['m'])) {
+    $tok = (string)$_GET['m'];
+    if (!preg_match('/^[A-Za-z0-9]{16,64}$/', $tok)) page('Lien invalide', '<h1>Lien invalide</h1><p class="m">Vérifie que le lien est complet.</p>', 404);
+    $row = find_row($db, 'people', 'sheetToken', $tok);
+    if (!$row) page('Lien invalide', '<h1>Lien invalide</h1><p class="m">Ce lien n\'est pas (ou plus) actif. Demande un nouveau lien à l\'organisateur.</p>', 404);
+    $p = $row['data'];
+    $set = find_row($db, 'settings', 'id', 'main');
+    $sd = $set['data'] ?? [];
+    $company = (string)($sd['company']['name'] ?? '');
+    $functions = array_values(array_filter(array_map(fn($f) => (string)($f['name'] ?? ''), (array)($sd['crewFunctions'] ?? []))));
+    $head = '<h1>Ma fiche</h1><div class="m">' . h((string)($p['name'] ?? '')) . ($company !== '' ? ' · ' . h($company) : '') . '</div>';
+    $err = '';
+    if ($post) {
+        if (!hash_equals((string)$p['sheetToken'], (string)($_POST['t'] ?? ''))) page('Erreur', '<h1>Erreur</h1>', 400);
+        $f = fn($k, $n = 200) => mb_substr(trim(preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F]/u', '', (string)($_POST[$k] ?? ''))), 0, $n);
+        if ($f('website') !== '' || (time() - (int)($_POST['ts'] ?? 0)) < 3) page('Merci', $head . '<div class="c"><div class="msg ok">Fiche enregistrée.</div></div>'); // robot
+        $name = $f('name', 120); $email = $f('email', 160); $phone = $f('phone', 40);
+        if ($name === '') $err = 'Indique ton nom.';
+        elseif ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) $err = 'Adresse email invalide.';
+        elseif ($email === '' && $phone === '') $err = 'Indique au moins un email ou un téléphone.';
+        if (!$err) {
+            $skills = array_values(array_intersect($functions, array_map('strval', (array)($_POST['skills'] ?? []))));
+            $other = $f('other', 200);
+            if ($other !== '') $skills[] = $other;
+            $upd = [
+                'name' => $name, 'email' => $email ?: null, 'phone' => $phone ?: null, 'city' => $f('city', 80) ?: null,
+                'role' => $skills[0] ?? null, 'skills' => $skills, 'status' => $f('status', 30) ?: null, 'vatNumber' => $f('vat', 40) ?: null,
+                'costRate' => max(0, (float)str_replace(',', '.', $f('rate', 12))) ?: null, 'notes' => $f('notes', 1500) ?: null,
+            ];
+            $prev = [];
+            foreach ($upd as $k => $nv) { $old = $p[$k] ?? null; if ($old !== $nv) { $prev[$k] = $old; $p[$k] = $nv; } }
+            // les changements partent « à relire » dans FabEvent (avec les anciennes valeurs pour pouvoir annuler)
+            if ($prev) $p['sheetReview'] = ['at' => now_u(), 'prev' => $prev];
+            put_row($db, $row['space'], 'people', $row['id'], $p);
+            page('Merci', $head . '<div class="c"><div class="msg ok">Merci ' . h(explode(' ', $name)[0]) . ', ta fiche est enregistrée !' . ($prev ? ' ' . h($company) . ' relit les changements.' : '') . '</div></div>');
+        }
+    }
+    $cur = fn($k) => (string)($_POST[$k] ?? ($p[$k] ?? ''));
+    $v = fn($k) => h($cur($k));
+    $skillsNow = (array)($_POST['skills'] ?? ($p['skills'] ?? []));
+    $sk = '';
+    foreach ($functions as $fn) $sk .= '<label class="chk"><input type="checkbox" name="skills[]" value="' . h($fn) . '"' . (in_array($fn, $skillsNow, true) ? ' checked' : '') . '> ' . h($fn) . '</label>';
+    $otherNow = implode(', ', array_values(array_diff((array)($p['skills'] ?? []), $functions)));
+    $stOpts = '<option value="">—</option>';
+    foreach (['Indépendant', 'Société', 'Salarié (intérim, Smart…)', 'Bénévole / étudiant'] as $o)
+        $stOpts .= '<option' . ($cur('status') === $o ? ' selected' : '') . '>' . h($o) . '</option>';
+    page('Ma fiche — ' . h((string)($p['name'] ?? '')), $head . ($err ? '<div class="msg ko" style="margin-top:12px">' . h($err) . '</div>' : '')
+        . '<form method="post" action="' . $self . '" class="c"><input type="hidden" name="t" value="' . h($tok) . '"><input type="hidden" name="ts" value="' . time() . '"><div class="hp"><label>Site web <input name="website" tabindex="-1" autocomplete="off"></label></div>'
+        . '<label for="name">Nom et prénom *</label><input id="name" name="name" required maxlength="120" autocomplete="name" value="' . $v('name') . '">'
+        . '<label for="email">Email</label><input id="email" name="email" type="email" maxlength="160" autocomplete="email" value="' . $v('email') . '">'
+        . '<label for="phone">Téléphone</label><input id="phone" name="phone" type="tel" maxlength="40" autocomplete="tel" value="' . $v('phone') . '">'
+        . '<label for="city">Ville</label><input id="city" name="city" maxlength="80" autocomplete="address-level2" value="' . $v('city') . '">'
+        . ($sk ? '<label>Ce que tu fais</label>' . $sk : '') . '<label for="other">' . ($sk ? 'Autre spécialité' : 'Spécialité (ce que tu fais)') . '</label><input id="other" name="other" maxlength="200" value="' . h($_POST['other'] ?? $otherNow) . '">'
+        . '<label for="status">Statut</label><select id="status" name="status">' . $stOpts . '</select>'
+        . '<label for="rate">Tarif journée souhaité (€ HT)</label><input id="rate" name="rate" inputmode="decimal" maxlength="12" value="' . h($_POST['rate'] ?? ($p['costRate'] ?? '')) . '">'
+        . '<label for="vat">N° TVA / entreprise</label><input id="vat" name="vat" maxlength="40" value="' . $v('vatNumber') . '">'
+        . '<label for="notes">Expérience, matériel maîtrisé, permis…</label><textarea id="notes" name="notes" maxlength="1500">' . $v('notes') . '</textarea>'
+        . '<button>Enregistrer ma fiche</button></form>');
+}
+
+/* ================= acceptation d'un devis en ligne ================= */
+if (isset($_GET['d'])) {
+    $tok = (string)$_GET['d'];
+    if (!preg_match('/^[A-Za-z0-9]{16,64}$/', $tok)) page('Lien invalide', '<h1>Lien invalide</h1><p class="m">Vérifie que le lien est complet.</p>', 404);
+    $row = find_row($db, 'docs', 'publicToken', $tok);
+    if (!$row) page('Lien invalide', '<h1>Devis introuvable</h1><p class="m">Ce lien n\'est pas (ou plus) actif. Demande un nouveau lien à l\'organisateur.</p>', 404);
+    $d = $row['data'];
+    if (($d['type'] ?? '') !== 'devis') page('Lien invalide', '<h1>Ce lien ne concerne pas un devis.</h1>', 404);
+    $sn = is_array($d['snapshot'] ?? null) ? $d['snapshot'] : [];
+    $client = is_array($sn['client'] ?? null) ? (string)($sn['client']['company'] ?? $sn['client']['name'] ?? '') : '';
+    $projName = is_array($sn['project'] ?? null) ? (string)($sn['project']['name'] ?? '') : '';
+    $head = '<h1>Devis ' . h((string)($d['number'] ?? '')) . '</h1><div class="m">' . h($projName) . ($client !== '' ? ' · ' . h($client) : '') . '</div>';
+    if (in_array((string)($d['status'] ?? ''), ['accepte', 'refuse'], true))
+        page('Devis ' . h((string)($d['number'] ?? '')), $head . '<div class="c"><div class="msg ' . ($d['status'] === 'accepte' ? 'ok' : 'ko') . '">Réponse déjà enregistrée : ' . ($d['status'] === 'accepte' ? 'devis accepté' : 'devis refusé') . '.</div></div>');
+    if ($post) {
+        if (!hash_equals((string)$d['publicToken'], (string)($_POST['t'] ?? ''))) page('Erreur', '<h1>Erreur</h1>', 400);
+        $ans = (string)($_POST['answer'] ?? '');
+        if (!in_array($ans, ['accepte', 'refuse'], true)) page('Erreur', '<h1>Erreur</h1>', 400);
+        $d['status'] = $ans;
+        put_row($db, $row['space'], 'docs', $row['id'], $d);
+        if ($ans === 'accepte') {
+            // devis accepté = projet confirmé (et ses salles non annulées), comme dans FabEvent
+            $prow = find_row($db, 'projects', 'id', (string)($d['projectId'] ?? ''));
+            if ($prow) {
+                $pr = $prow['data'];
+                if (in_array((string)($pr['status'] ?? ''), ['demande', 'brouillon', 'option'], true)) {
+                    $pr['status'] = 'confirme';
+                    $pr['confirmedAt'] = now_u();
+                    put_row($db, $prow['space'], 'projects', $prow['id'], $pr);
+                }
+                $q = $db->prepare("SELECT space, id, data FROM changes WHERE tbl = 'subprojects'");
+                $q->execute();
+                foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $sr) {
+                    $sd = json_decode((string)$sr['data'], true);
+                    if (is_array($sd) && (string)($sd['projectId'] ?? '') === (string)$d['projectId']
+                        && in_array((string)($sd['status'] ?? ''), ['demande', 'brouillon', 'option'], true)) {
+                        $sd['status'] = 'confirme';
+                        put_row($db, $sr['space'], 'subprojects', $sr['id'], $sd);
+                    }
+                }
+            }
+        }
+        page('Merci', $head . '<div class="c"><div class="msg ' . ($ans === 'accepte' ? 'ok' : 'ko') . '">'
+            . ($ans === 'accepte' ? 'Merci ! Le devis est accepté : le projet est confirmé et le matériel réservé.' : 'Devis refusé, c\'est noté. N\'hésite pas à nous contacter si tu as des questions.')
+            . '</div></div>');
+    }
+    $ttc = number_format((float)($sn['totalTTC'] ?? 0), 2, ',', ' ') . ' € TTC';
+    $dates = !empty($sn['project']['start']) ? fdate((string)$sn['project']['start']) . ' → ' . fdate((string)($sn['project']['end'] ?? $sn['project']['start'])) : '';
+    $valid = !empty($sn['validUntil']) ? fdate((string)$sn['validUntil']) : '';
+    page('Devis ' . h((string)($d['number'] ?? '')), $head
+        . '<div class="c"><p><b>' . h($projName) . '</b>' . ($dates !== '' ? '<br><span class="m">' . $dates . '</span>' : '') . '</p>'
+        . '<p>Montant : <b>' . $ttc . '</b>' . ($valid !== '' ? '<br><span class="m">valable jusqu\'au ' . $valid . '</span>' : '') . '</p>'
+        . (!empty($sn['note']) ? '<p style="white-space:pre-wrap" class="m">' . h((string)$sn['note']) . '</p>' : '')
+        . '</div>'
+        . '<form method="post" action="' . $self . '" class="c"><input type="hidden" name="t" value="' . h($tok) . '">'
+        . '<button class="ok" name="answer" value="accepte">' . ICO_CHECK . 'J\'accepte ce devis</button>'
+        . '<button class="ko" name="answer" value="refuse">' . ICO_X . 'Je refuse ce devis</button></form>');
 }
 
 page('FabEvent', '<h1>Lien incomplet</h1><p class="m">Utilise le lien reçu par email.</p>', 404);
