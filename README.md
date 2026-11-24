@@ -89,7 +89,7 @@ leur ordre (nom, code, n° de série, catégorie, emplacement, contenu, sociét�
 - **Tarifs d'un technicien selon la fonction** (vidéo, son, road…).
 - **Envoi du planning à tous**, provisoire compris si souhaité. FabEvent retient ce qui a été envoyé, signale les horaires de début et de fin changés depuis (« à renvoyer »), et le mail les marque « MODIFIÉ ».
 
-**Coûts supplémentaires** : fournisseur en texte libre (absent des documents s'il est vide), montants saisis HTVA ou TVAC.
+**Coûts supplémentaires** : fournisseur en texte libre, imprimé sur les devis/factures et le bon de commande quand il est renseigné (absent des documents s'il est vide), montants saisis HTVA ou TVAC.
 **Documents du projet** : le plus récent de chaque type, les anciens avec « Plus anciens ».
 
 **Téléphone** : boutons et champs à la taille du doigt, textes sur plusieurs lignes, grands tableaux en fiches.

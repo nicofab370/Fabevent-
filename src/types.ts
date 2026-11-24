@@ -797,7 +797,7 @@ export interface DocSnapshot {
   contactEmail?: string;
   project: Pick<Project, 'number' | 'name' | 'venue' | 'start' | 'end' | 'notes' | 'discount' | 'externalRef'>;
   /** coûts supplémentaires refacturés */
-  extras?: { label: string; qty: number; unitPrice: number; total: number }[];
+  extras?: { label: string; qty: number; unitPrice: number; total: number; /** fournisseur (texte libre) : affiché tel quel, absent du document s'il est vide */ supplier?: string }[];
   subprojects: SnapshotSub[];
   totalHT: number;
   discountAmount: number;
