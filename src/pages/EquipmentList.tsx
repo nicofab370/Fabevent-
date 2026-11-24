@@ -16,12 +16,16 @@ import { CategoriesModal } from '../components/CategoriesModal';
 import { EquipmentChooser } from '../components/EquipmentChooser';
 import { categoryLabel, inCategory, mainCategories } from '../categories';
 import { composeName, splitName } from '../equipmentName';
+import { useUser } from '../auth';
+import { canEditEquipment, canEditPrices } from '../roles';
 
 type Draft = Omit<Equipment, 'id' | 'createdAt' | 'updatedAt'> & Partial<Equipment>;
 const blank = (): Draft => ({ name: '', quantity: 1, dailyPrice: 0, isKit: false, kitItems: [] });
 
 export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; onDone: () => void; /** « Enregistrer et imprimer l'étiquette » */ onPrint?: (equipmentId: string) => void }) {
   const [e, setE] = useState<Draft>(initial || blank());
+  // l'entrepôt modifie le matériel mais jamais les prix (réservés à l'admin)
+  const lockPrices = !canEditPrices(useUser());
   const [newCat, setNewCat] = useState('');
   const [newLetter, setNewLetter] = useState('');
   const [newParent, setNewParent] = useState('');
@@ -143,8 +147,12 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
           </div>
         )
         : <Field label="Quantité en stock"><NumInput value={e.quantity} onChange={(n) => set('quantity', n)} step="1" min={0} /></Field>}
-      <Field label={e.kind === 'vente' ? 'Prix de vente unitaire HT (€)' : 'Prix location / jour HT (€)'}><NumInput value={e.dailyPrice} onChange={(n) => set('dailyPrice', n)} /></Field>
-      {e.kind === 'vente' && <Field label="Prix d'achat unitaire HT (€)"><NumInput value={e.costPrice || 0} onChange={(n) => set('costPrice', n)} /></Field>}
+      {lockPrices
+        ? <Field label={e.kind === 'vente' ? 'Prix de vente unitaire HT (€)' : 'Prix location / jour HT (€)'}><span className="muted">réservé à l'administrateur — valeur actuelle : {money(e.dailyPrice)} €</span></Field>
+        : <Field label={e.kind === 'vente' ? 'Prix de vente unitaire HT (€)' : 'Prix location / jour HT (€)'}><NumInput value={e.dailyPrice} onChange={(n) => set('dailyPrice', n)} /></Field>}
+      {e.kind === 'vente' && (lockPrices
+        ? <Field label="Prix d'achat unitaire HT (€)"><span className="muted">réservé à l'administrateur</span></Field>
+        : <Field label="Prix d'achat unitaire HT (€)"><NumInput value={e.costPrice || 0} onChange={(n) => set('costPrice', n)} /></Field>)}
       <Field label="Taux de TVA spécifique de l'article (%) — vide = taux du client / projet"><NumInput value={e.vatRate ?? NaN} placeholder={String(settings.vatRate)} onChange={(n) => set('vatRate', isNaN(n) ? undefined : n)} /></Field>
       <Field label="Contrôle périodique tous les (mois, 0 = aucun)"><NumInput value={e.inspectionMonths || 0} step="1" min={0} onChange={(n) => set('inspectionMonths', n)} /></Field>
       <Field label="Valeur de remplacement (€)"><NumInput value={e.replacementValue || 0} onChange={(n) => set('replacementValue', n)} /></Field>
@@ -260,6 +268,7 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
 
 export default function EquipmentList() {
   const nav = useNavigate();
+  const me = useUser();
   const { equipment, res, depots } = useAvailability();
   const [depot, setDepot] = useState('');
   const cats = useLiveQuery(() => db.categories.toArray(), []) || [];
@@ -302,7 +311,7 @@ export default function EquipmentList() {
         <button className="secondary" onClick={() => nav('/etiquettes')}>Étiquettes QR</button>
         <button className="secondary" onClick={() => nav('/inventaire')}>Inventaire</button>
         <button className="secondary" onClick={() => setShowCats(true)}>Catégories</button>
-        <button onClick={() => setCreating(true)}>+ Nouvel article</button>
+        {canEditEquipment(me) && <button onClick={() => setCreating(true)}>+ Nouvel article</button>}
       </PageHead>
       <div className="card">
         <div className="toolbar">
@@ -334,7 +343,7 @@ export default function EquipmentList() {
         {selected.size > 0 && (
           <div className="info bulk-bar">
             <strong>{selected.size} article(s) sélectionné(s)</strong>
-            <button className="small" onClick={() => setBulk(true)}>Modifier en groupe…</button>
+            {canEditPrices(me) && <button className="small" onClick={() => setBulk(true)}>Modifier en groupe…</button>}
             <button className="secondary small" onClick={() => setSelected(new Set())}>Désélectionner</button>
           </div>
         )}

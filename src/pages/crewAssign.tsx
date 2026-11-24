@@ -10,6 +10,7 @@ import { personIssue } from './project/shared';
 import { PostRequests, closeFilledRequests, requestsFor, useCrewDialogs } from './crewRequests';
 import type { CrewRequest } from '../types';
 import { Icon } from '../components/Icon';
+import { useUser } from '../auth';
 
 /** Tout ce qu'il faut pour proposer des techniciens sur un poste. */
 export interface CrewContext {
@@ -89,6 +90,9 @@ export function useCrewContext(): CrewContext {
 export default function CrewAssignmentPage() {
   const settings = useSettings();
   const ctx = useCrewContext();
+  // sous-traitant : uniquement ses propres postes
+  const me = useUser();
+  const myPersonId = me?.role === 'subcontractor' ? me.personId : undefined;
   const projects = useLiveQuery(() => db.projects.toArray(), []) || [];
   const [weeks, setWeeks] = useState(6);
   const [onlyOpen, setOnlyOpen] = useState(true);
@@ -103,7 +107,7 @@ export default function CrewAssignmentPage() {
     .filter((c) => {
       const sp = sMap.get(c.subprojectId);
       const p = pMap.get(c.projectId);
-      return sp && p && !p.isTemplate && RESERVING.includes(sp.status) && c.end >= now && c.start <= until && (!onlyOpen || !c.personId) && (!fn || c.function === fn);
+      return sp && p && !p.isTemplate && RESERVING.includes(sp.status) && c.end >= now && c.start <= until && (!onlyOpen || !c.personId || !!myPersonId) && (!fn || c.function === fn) && (!myPersonId || c.personId === myPersonId);
     })
     .sort((a, b) => a.start.localeCompare(b.start));
   const days = new Map<string, CrewAssignment[]>();
@@ -113,7 +117,7 @@ export default function CrewAssignmentPage() {
 
   return (
     <>
-      <PageHead title="Attribution des techniciens">
+      <PageHead title={myPersonId ? 'Mon planning' : 'Attribution des techniciens'}>
         <select value={weeks} onChange={(e) => setWeeks(Number(e.target.value))} style={{ width: 'auto' }}>
           {[2, 4, 6, 12, 26].map((w) => <option key={w} value={w}>{w} semaines</option>)}
         </select>

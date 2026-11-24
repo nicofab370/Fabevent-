@@ -13,12 +13,15 @@ import { EquipmentForm } from './EquipmentList';
 import { InspectionModal, RepairModal } from './Maintenance';
 import PrintLabelModal from '../components/PrintLabelModal';
 import { Icon } from '../components/Icon';
+import { useUser } from '../auth';
+import { canDeleteEquipment, canEditEquipment } from '../roles';
 
 const UNIT_STATUS: Record<SerialUnit['status'], string> = { ok: 'En service', hs: 'Hors service', perdu: 'Perdu / vendu' };
 
 export default function EquipmentDetail() {
   const { id } = useParams();
   const nav = useNavigate();
+  const me = useUser();
   const raw = useLiveQuery(() => db.equipment.get(id!), [id]);
   const av = useAvailability();
   const projects = useLiveQuery(() => db.projects.toArray(), []) || [];
@@ -65,13 +68,13 @@ export default function EquipmentDetail() {
         <button className="secondary" onClick={() => setRepair({})}>Déclarer une réparation</button>
         {eq.inspectionMonths ? <button className="secondary" onClick={() => setInspect({})}>Enregistrer un contrôle</button> : null}
         {!eq.isKit && !eq.accessoryOnly && <button className="secondary" onClick={() => setPrinting({})}><Icon name="tag" />Imprimer l'étiquette</button>}
-        <button onClick={() => setEditing(true)}>Modifier</button>
-        <button className="danger" onClick={async () => {
+        {canEditEquipment(me) && <button onClick={() => setEditing(true)}>Modifier</button>}
+        {canDeleteEquipment(me) && <button className="danger" onClick={async () => {
           if (confirm('Supprimer cet article ? Les lignes de projet existantes garderont leur désignation.')) {
             await db.units.where({ equipmentId: eq.id }).delete();
             await db.equipment.delete(eq.id); nav('/materiel');
           }
-        }}>Supprimer</button>
+        }}>Supprimer</button>}
       </PageHead>
       {eq.archived && <div className="alert">Article archivé : il n'est plus proposé dans les projets.</div>}
       {eq.photo && <img src={eq.photo} alt="" style={{ maxHeight: 160, borderRadius: 10, marginBottom: 12 }} />}

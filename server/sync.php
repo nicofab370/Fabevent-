@@ -37,7 +37,7 @@ $space = can_use_shared($U) ? 'commun' : 'u-' . preg_replace('/[^a-z0-9_-]/i', '
 
 const TABLES = ['contacts', 'categories', 'equipment', 'projects', 'subprojects', 'lines', 'people', 'crew', 'vehicles',
     'vehicleAssignments', 'docs', 'settings', 'units', 'repairs', 'inspections', 'subrentals', 'costs', 'unavailability',
-    'files', 'transfers', 'appointments', 'checklists', 'crewRequests'];
+    'files', 'transfers', 'appointments', 'checklists', 'crewRequests', 'users'];
 
 function ws_of($v): string {
     $w = (string)$v;

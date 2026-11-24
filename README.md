@@ -16,6 +16,21 @@ npm run test:parcours  # nouveautés en contexte : import Rentman, catégories, 
 
 **Version** : le n° de version de FabEvent est le **n° de la pull request GitHub** fusionnée (ex. `v39` = PR #39), affiché dans Paramètres et en bas du menu.
 
+## Utilisateurs, rôles et multi-sociétés
+
+**Comptes locaux** (Paramètres → Utilisateurs, admin seulement) : la base se verrouille par un écran de connexion (mot de passe haché SHA-256 salé, jamais stocké en clair). Trois rôles :
+- **Administrateur** : tout.
+- **Entrepôt** : entrepôt (préparation des sorties/retours), checklists, inventaire, transferts, pénuries, liste du matériel avec **ajout et modification d'équipements mais sans les prix** (réservés à l'admin).
+- **Sous-traitant** : lié à une personne de l'équipe ; il se connecte et ne voit que **son planning**, le **planning filtré sur ses jobs**, et le **matériel en lecture seule**.
+
+Les comptes sont synchronisés avec la base (`users` dans la synchro) : mêmes identifiants sur tous les appareils de la société.
+
+**Plusieurs sociétés sur le même serveur** : chaque société = **son propre espace de synchronisation**, isolé côté serveur :
+- option recommandée : un compte interne FABRI.live par société → espace `u-<login>` dédié, invisible des autres sociétés ;
+- ou une install PHP séparée par société (répertoire `data` distinct, ex. via la variable d'environnement `FABEVENT_DATA`).
+
+Côté client, une « base » = un espace de travail local (Paramètres → Bases : créer/ouvrir/supprimer) ; chaque base a sa société (Paramètres → Ma société) et éventuellement sa propre synchro. Les sous-traitants d'une société n'ont un compte que dans l'espace de cette société.
+
 ## Fonctionnalités
 
 **Projets** — fiche organisée en onglets, sur le modèle du « projet standard » de Rentman :

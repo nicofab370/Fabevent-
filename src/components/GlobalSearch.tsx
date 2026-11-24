@@ -11,7 +11,7 @@ interface Hit { kind: string; icon: IconName; label: string; sub?: string; to: s
  * Recherche globale (Ctrl+K / Cmd+K) : projets, matériel (nom, code, code-barres, étiquettes),
  * unités sérialisées, contacts, techniciens et documents. Entrée = ouvre le résultat sélectionné.
  */
-export function GlobalSearch() {
+export function GlobalSearch({ role }: { role?: import('../types').Role }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const [sel, setSel] = useState(0);
@@ -40,12 +40,15 @@ export function GlobalSearch() {
     const qn = q.trim().toLowerCase();
     if (qn.length < 2) return [];
     const out: Hit[] = [];
-    for (const p of projects) if ([p.number, p.name, p.venue, p.externalRef].join(' ').toLowerCase().includes(qn)) out.push({ kind: 'Projet', icon: 'folder', label: `${p.number} ${p.name}`, sub: p.venue, to: '/projets/' + p.id });
+    // l'entrepôt et le sous-traitant ne cherchent que dans le matériel
+    if (!role || role === 'admin') for (const p of projects) if ([p.number, p.name, p.venue, p.externalRef].join(' ').toLowerCase().includes(qn)) out.push({ kind: 'Projet', icon: 'folder', label: `${p.number} ${p.name}`, sub: p.venue, to: '/projets/' + p.id });
     for (const e of equipment) if (!e.archived && [e.name, e.code, e.barcode, ...(e.tags || [])].join(' ').toLowerCase().includes(qn)) out.push({ kind: 'Matériel', icon: 'box', label: e.name, sub: e.code || e.barcode || '', to: '/materiel/' + e.id });
     for (const u of units) if ([u.barcode, u.serial].join(' ').toLowerCase().includes(qn)) out.push({ kind: 'Unité', icon: 'box', label: u.barcode || u.serial || '', sub: 'unité → fiche article', to: '/materiel/' + u.equipmentId });
-    for (const c of contacts) if ([c.company, c.email, c.phone, ...(c.persons || []).map((p) => `${p.name} ${p.email}`)].join(' ').toLowerCase().includes(qn)) out.push({ kind: 'Contact', icon: 'users', label: c.company, sub: c.email || '', to: '/contacts?q=' + encodeURIComponent(c.company) });
-    for (const p of people) if ([p.name, p.email, p.role].join(' ').toLowerCase().includes(qn)) out.push({ kind: 'Technicien', icon: 'user', label: p.name, sub: p.email || '', to: '/equipe?q=' + encodeURIComponent(p.name) });
-    for (const d of docs) if ([d.number, DOC_LABELS[d.type]].join(' ').toLowerCase().includes(qn)) out.push({ kind: 'Document', icon: 'file', label: `${DOC_LABELS[d.type]} ${d.number}`, sub: projects.find((p) => p.id === d.projectId)?.name, to: '/documents/' + d.id });
+    if (!role || role === 'admin') {
+      for (const c of contacts) if ([c.company, c.email, c.phone, ...(c.persons || []).map((p) => `${p.name} ${p.email}`)].join(' ').toLowerCase().includes(qn)) out.push({ kind: 'Contact', icon: 'users', label: c.company, sub: c.email || '', to: '/contacts?q=' + encodeURIComponent(c.company) });
+      for (const p of people) if ([p.name, p.email, p.role].join(' ').toLowerCase().includes(qn)) out.push({ kind: 'Technicien', icon: 'user', label: p.name, sub: p.email || '', to: '/equipe?q=' + encodeURIComponent(p.name) });
+      for (const d of docs) if ([d.number, DOC_LABELS[d.type]].join(' ').toLowerCase().includes(qn)) out.push({ kind: 'Document', icon: 'file', label: `${DOC_LABELS[d.type]} ${d.number}`, sub: projects.find((p) => p.id === d.projectId)?.name, to: '/documents/' + d.id });
+    }
     return out.slice(0, 25);
   }, [q, projects, equipment, contacts, people, docs, units]);
 

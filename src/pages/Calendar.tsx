@@ -6,6 +6,7 @@ import { appBaseUrl, db } from '../db';
 import type { Appointment, Person, ProjectStatus } from '../types';
 import { STATUS_LABELS } from '../types';
 import { buildIcs, download, save, toLocalInput } from '../utils';
+import { useUser } from '../auth';
 import { Icon } from '../components/Icon';
 
 const COLORS: Record<ProjectStatus, string> = {
@@ -17,6 +18,10 @@ const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart
 export default function Calendar() {
   const nav = useNavigate();
   const settings = useSettings();
+  // sous-traitant : uniquement les jobs sur lesquels il est posté
+  const me = useUser();
+  const myPersonId = me?.role === 'subcontractor' ? me.personId : undefined;
+  const crewAll = useLiveQuery(() => db.crew.toArray(), []) || [];
   const [cursor, setCursor] = useState(() => { const d = new Date(); d.setDate(1); return d; });
   const [hideCancelled, setHideCancelled] = useState(true);
   const projects = useLiveQuery(() => db.projects.toArray(), []) || [];
@@ -28,9 +33,10 @@ export default function Calendar() {
   const start = new Date(first); start.setDate(1 - offset);
   const days = Array.from({ length: 42 }, (_, i) => { const d = new Date(start); d.setDate(start.getDate() + i); return d; });
   const today = ymd(new Date());
-  const visible = subs.filter((s) => !(hideCancelled && s.status === 'annule') && !pMap.get(s.projectId)?.isTemplate);
+  const visible = subs.filter((s) => !(hideCancelled && s.status === 'annule') && !pMap.get(s.projectId)?.isTemplate && (!myPersonId || crewAll.some((c) => c.subprojectId === s.id && c.personId === myPersonId)));
   // un événement par créneau (montage, J1, J2, démontage…) ou par salle sans horaires
   const appointments = useLiveQuery(() => db.appointments.toArray(), []) || [];
+  const appts = myPersonId ? [] : appointments;
   const people = useLiveQuery(() => db.people.orderBy('name').toArray(), []) || [];
   const [appt, setAppt] = useState<Partial<Appointment> | null>(null);
   /** jour cliqué : petit menu « + rendez-vous / + projet à cette date » */
@@ -48,7 +54,7 @@ export default function Calendar() {
         location: ev.sub.venue || p?.venue, description: p?.number, url: `${base}#/projets/${ev.sub.projectId}`,
       };
     });
-    for (const a of appointments) ics.push({ uid: a.id, title: a.title, start: a.start, end: a.end, location: a.location, description: a.notes, url: `${base}#/planning` });
+    for (const a of appts) ics.push({ uid: a.id, title: a.title, start: a.start, end: a.end, location: a.location, description: a.notes, url: `${base}#/planning` });
     download('fabevent-planning.ics', buildIcs('FabEvent — Planning', ics), 'text/calendar;charset=utf-8');
   };
 
@@ -73,13 +79,13 @@ export default function Calendar() {
               <span className="num" role="button" tabIndex={0} title="Ajouter un rendez-vous ou un projet ce jour" style={{ cursor: 'pointer' }}
                 onClick={() => setDayMenu(dayMenu === key ? '' : key)}
                 onKeyDown={(e) => { if (e.key === 'Enter') setDayMenu(dayMenu === key ? '' : key); }}>{d.getDate()}</span>
-              {dayMenu === key && (
+              {dayMenu === key && !myPersonId && (
                 <div className="day-menu">
                   <button type="button" onClick={() => { setDayMenu(''); const s = new Date(d); s.setHours(9, 0, 0, 0); const e = new Date(s); e.setHours(11, 0, 0, 0); setAppt({ title: '', start: toLocalInput(s), end: toLocalInput(e), personIds: [] }); }}>+ Rendez-vous</button>
                   <button type="button" onClick={() => { setDayMenu(''); nav('/projets?date=' + key); }}>+ Projet</button>
                 </div>
               )}
-              {appointments.filter((a) => a.start.slice(0, 10) <= key && a.end.slice(0, 10) >= key).map((a) => (
+              {appts.filter((a) => a.start.slice(0, 10) <= key && a.end.slice(0, 10) >= key).map((a) => (
                 <a key={a.id} href="#" className="ev appt" title={`${a.title}${a.location ? ' — ' + a.location : ''}`} onClick={(e) => { e.preventDefault(); setAppt(a); }}>
                   {a.start.slice(0, 10) === key ? a.start.slice(11, 16) + ' ' : ''}{a.title}
                 </a>

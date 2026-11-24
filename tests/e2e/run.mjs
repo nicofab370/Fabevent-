@@ -13,6 +13,8 @@ const { chromium } = require('playwright');
 
 const PORT = 4300 + Math.floor(Math.random() * 500);
 const U = `http://localhost:${PORT}/`;
+/** version affichée = n° de PR (package.json) */
+const VER = 'v' + JSON.parse(readFileSync(resolve('package.json'), 'utf8')).version;
 const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], { stdio: 'ignore' });
 for (let i = 0; i < 60; i++) {
   try { if ((await fetch(U)).ok) break; } catch { /* pas encore prêt */ }
@@ -2618,9 +2620,9 @@ await step('Devis : groupes d\'options au choix + version (n° de PR) affichée'
   await page.waitForSelector('.doc');
   const opt = await page.locator('.doc .doc-options').innerText();
   expect(opt.includes('Son') && opt.includes('Enceinte L-Acoustics X12') && opt.includes('Projecteur PAR LED'), 'groupe « Son » sur le devis : ' + opt.slice(0, 140));
-  expect((await page.locator('.side-version').innerText()).includes('v39'), 'version v39 dans le menu');
+  expect((await page.locator('.side-version').innerText()).includes(VER), `version ${VER} dans le menu`);
   await go('parametres');
-  expect((await page.locator('main').innerText()).includes('v39') && (await page.locator('main').innerText()).includes('PR'), 'version dans les paramètres');
+  expect((await page.locator('main').innerText()).includes(VER) && (await page.locator('main').innerText()).includes('PR'), 'version dans les paramètres');
 });
 
 await step('Scan étiquette article sur ligne sérialisée : 1 unité = auto, plusieurs = choix manuel', async () => {
@@ -2655,6 +2657,56 @@ await step('Facture : QR code de paiement toujours imprimé (même si le gabarit
   await page.waitForSelector('.doc');
   expect(await page.locator('.doc .pay svg').count() >= 1, 'QR EPC présent sur la facture');
   expect((await page.locator('.doc .pay').innerText()).includes('+++'), 'communication structurée +++…+++');
+});
+
+await step('Comptes et rôles : verrouillage, admin, entrepôt (sans les prix), sous-traitant (planning perso)', async () => {
+  const loginAs = async (email, pass) => {
+    await page.waitForSelector('.login-card');
+    await page.locator('input[aria-label="Email"]').fill(email);
+    await page.locator('input[aria-label="Mot de passe"]').fill(pass);
+    await page.click('button:text-is("Se connecter")');
+    await page.waitForLoadState('load');
+    await page.waitForSelector('.sidebar nav');
+  };
+  const addUser = async (name, email, pass, role, personLabel) => {
+    await go('parametres');
+    await page.locator('input[aria-label="Nom du nouvel utilisateur"]').fill(name);
+    await page.locator('input[aria-label="Email du nouvel utilisateur"]').fill(email);
+    await page.locator('input[aria-label="Mot de passe du nouvel utilisateur"]').fill(pass);
+    await page.locator('select[aria-label="Rôle du nouvel utilisateur"]').selectOption(role);
+    if (personLabel) await page.locator('select[aria-label="Personne liée (sous-traitant)"]').selectOption({ label: personLabel });
+    await page.click('button:text-is("+ Ajouter")');
+    await page.waitForTimeout(400);
+  };
+  await resetDemo();
+  // premier compte = admin ; la base se verrouille ensuite
+  await addUser('Nicolas', 'nico@fab.be', 'secret1', 'admin');
+  await page.reload();
+  await page.waitForSelector('.login-card');
+  await loginAs('nico@fab.be', 'secret1');
+  expect((await page.locator('.sidebar nav a').count()) > 15, 'admin : menu complet');
+  await addUser('Magasin', 'mag@fab.be', 'secret2', 'warehouse');
+  await addUser('Sam', 'sam@fab.be', 'secret3', 'subcontractor', 'Sam Moreau (démo)');
+  // entrepôt : menu restreint, prix verrouillés
+  await page.click('.side-user');
+  await loginAs('mag@fab.be', 'secret2');
+  const labels = await page.locator('.sidebar nav a').allInnerTexts();
+  expect(labels.some((l) => l.includes('Entrepôt')) && !labels.some((l) => l.includes('Projets')), 'menu entrepôt restreint : ' + labels.join(','));
+  await go('materiel');
+  await page.locator('table.list tr.click', { hasText: 'Caisson SB18' }).first().click();
+  await page.click('button:text-is("Modifier")');
+  await page.waitForSelector('.edit-inline');
+  expect((await page.locator('.edit-inline').innerText()).includes("réservé à l'administrateur"), 'prix verrouillés pour l\'entrepôt');
+  expect(await page.locator('.edit-inline input[aria-label="Désignation"]').count() === 1, 'mais le reste est modifiable');
+  // sous-traitant : 3 pages, projets interdits (redirection), planning perso
+  await page.click('.side-user');
+  await loginAs('sam@fab.be', 'secret3');
+  expect((await page.locator('.sidebar nav a').count()) === 3, 'sous-traitant : 3 entrées de menu');
+  await go('projets');
+  await page.waitForTimeout(600);
+  expect(page.url().includes('/attribution'), 'projets redirigé vers le planning perso');
+  await go('planning');
+  expect(await page.locator('.cal, .calendar, main').count() >= 1, 'planning visible');
 });
 
 await ctx.close();
