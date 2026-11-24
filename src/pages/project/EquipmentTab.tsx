@@ -396,7 +396,10 @@ export async function addEquipmentToSub(sp: Subproject, equipment: Equipment[], 
       lineId = uid();
       await db.lines.put({ id: lineId, createdAt: t, updatedAt: t, projectId: sp.projectId, subprojectId: sp.id, groupId, equipmentId: eqId, name: eq.name, qty: n, unitPrice: eq.dailyPrice, discount, order: order++ });
     }
-
+    // contenu du kit (lignes enfants scannables une à une) + accessoires proposés à cocher ; par défaut tous, sinon seulement ceux cochés
+    const accSel = accPick?.[eqId];
+    const children = [...(eq.kitItems || []).map((k) => ({ equipmentId: k.equipmentId, qty: k.qty, free: true })), ...(eq.accessories || []).filter((x) => !accSel || accSel.includes(x.equipmentId))];
+    for (const a of children) {
       const acc = eqMap.get(a.equipmentId);
       if (!acc) continue;
       const child = existing.find((l) => l.parentLineId === lineId && l.equipmentId === a.equipmentId);
