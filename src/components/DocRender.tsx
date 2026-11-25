@@ -59,8 +59,8 @@ export const DOC_CSS = `
 .doc [data-bloc]{border-radius:6px;transition:outline-color .15s}
 .doc.marking [data-bloc]{cursor:pointer;outline:2px solid transparent;outline-offset:4px}
 .doc.marking [data-bloc]:hover{outline-color:#cbd5e1}
-@media print{.doc{padding:0 0 0;max-width:none}}
-@media (max-width:600px){.doc{padding:0 16px 24px}.doc .d-cards{grid-template-columns:1fr}.doc .head{flex-direction:column}.doc .head .d-title{text-align:left}.doc .totals{width:100%}}
+@media print{.doc{width:794px;max-width:none;padding:0;font-size:12.5px;line-height:1.5}}
+@media screen and (max-width:600px){.doc{padding:0 16px 24px}.doc .d-cards{grid-template-columns:1fr}.doc .head{flex-direction:column}.doc .head .d-title{text-align:left}.doc .totals{width:100%}}
 `;
 
 /** Ancien format conservé pour compatibilité : {client}, {projet}… */

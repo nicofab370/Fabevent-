@@ -2754,6 +2754,21 @@ await step('Scan étiquette article sur ligne sérialisée : 1 unité = auto, pl
   expect(await page.locator('.cl-ask').count() === 0, 'pas de sélecteur quand une seule unité');
 });
 
+await step('Document : mise en page identique en impression depuis téléphone (390 px) et ordinateur (1400 px)', async () => {
+  await resetDemo();
+  await openProject('Gala de fin d');
+  await tab('Finances & documents');
+  await page.locator('table.list tr.click', { hasText: /F-\d{4}/ }).first().click();
+  await page.waitForSelector('.doc');
+  await page.emulateMedia({ media: 'print' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  const wMobile = await page.evaluate(() => Math.round(document.querySelector('.doc').getBoundingClientRect().width));
+  await page.setViewportSize({ width: 1400, height: 950 });
+  const wDesktop = await page.evaluate(() => Math.round(document.querySelector('.doc').getBoundingClientRect().width));
+  await page.emulateMedia({ media: 'screen' });
+  expect(wMobile === 794 && wDesktop === 794, `largeur d’impression identique partout (${wMobile} px mobile, ${wDesktop} px ordinateur)`);
+});
+
 await step('Facture : QR code de paiement toujours imprimé (même si le gabarit l’oublie)', async () => {
   await resetDemo();
   await openProject('Gala de fin d');
