@@ -1,6 +1,6 @@
 import type { Table } from 'dexie';
 import { db } from './db';
-import type { Base, Equipment, EquipmentLine, Inspection, Period, Repair, SerialUnit, Settings, Subproject, Subrental, Transfer } from './types';
+import type { Base, Doc, Equipment, EquipmentLine, Inspection, Period, Repair, SerialUnit, Settings, SnapshotSub, Subproject, Subrental, Transfer } from './types';
 import { FIRM, RESERVING } from './types';
 
 export function uid(): string {
@@ -475,6 +475,21 @@ export function inspectionsDue(equipment: Equipment[], units: SerialUnit[], insp
 
 export function sortPeriods(periods: Period[]): Period[] {
   return [...periods].sort((a, b) => a.start.localeCompare(b.start));
+}
+
+/** Clé d'ordre d'une salle figée : id du sous-projet, ou son nom pour les documents anciens sans id. */
+export const subKey = (sp: SnapshotSub): string => sp.subId ?? sp.name;
+
+/**
+ * Sous-projets d'un document dans l'ordre d'affichage choisi (doc.subOrder) ;
+ * sans subOrder (ou clés inconnues), l'ordre figé du snapshot est conservé, les salles inconnues restent à la fin.
+ */
+export function orderedSubprojects(doc: Pick<Doc, 'subOrder' | 'snapshot'>): SnapshotSub[] {
+  const subs = doc.snapshot.subprojects;
+  const order = doc.subOrder?.filter((k) => subs.some((sp) => subKey(sp) === k));
+  if (!order?.length) return subs;
+  const rank = new Map(order.map((k, i) => [k, i]));
+  return [...subs].sort((a, b) => (rank.get(subKey(a)) ?? Number.MAX_SAFE_INTEGER) - (rank.get(subKey(b)) ?? Number.MAX_SAFE_INTEGER));
 }
 
 /** Déduit les dates du sous-projet de ses horaires (bloqué : tout ; facturé : les prestations). */

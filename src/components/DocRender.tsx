@@ -6,7 +6,7 @@ import { epcPayload, qrSvg } from '../payment';
 import { docLang, REMINDER_TEXTS, tr, VAT_SHORT } from '../i18n';
 import type { Doc, DocStyle } from '../types';
 import { INVOICE_TYPES } from '../types';
-import { fmtDate, money } from '../utils';
+import { fmtDate, money, orderedSubprojects } from '../utils';
 
 export const DOC_CSS = `
 .doc{--accent:#1d4ed8;--accent-soft:#eef2fd;--accent-line:#c7d4f7;--accent-ink:#fff;--accent2:#0f766e;--accent2-soft:#f0fdfa;font-family:Inter,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#1c2330;background:#fff;max-width:820px;margin:0 auto;padding:0 40px 36px;font-size:12.5px;line-height:1.5;border-top:8px solid var(--accent);-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -216,7 +216,7 @@ function Rooms({ doc, st }: { doc: Doc; st: DocStyle }) {
       {(isRoadmap || isPacking) && s.project.notes && <p style={{ whiteSpace: 'pre-wrap' }}>{s.project.notes}</p>}
       {s.partialRooms && <p><strong>{tr(doc, 'partial')} :</strong> {s.partialRooms.join(', ')}</p>}
       {s.partialInvoices?.map((p) => <p key={p.number} className="muted">{tr(doc, 'alreadyInvoiced')} {p.number} : {p.rooms.join(', ')} ({money(p.ht)} HT)</p>)}
-      {s.subprojects.map((sp, i) => {
+      {orderedSubprojects(doc).map((sp, i) => {
         const eqLines = sp.equipment.filter((l) => !(showPrices && st.hideZero && !l.total && !l.unitPrice));
         const eqTotal = sp.equipment.filter((l) => !l.optional).reduce((a, l) => a + l.total, 0);
         return (

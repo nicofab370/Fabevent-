@@ -3,7 +3,7 @@
  * Le fichier XML produit est à déposer chez ton point d'accès Peppol.
  */
 import type { CompanyInfo, Contact, Doc } from './types';
-import { round2 } from './utils';
+import { orderedSubprojects, round2 } from './utils';
 
 const esc = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const amt = (n: number) => round2(n).toFixed(2);
@@ -66,7 +66,7 @@ function collectLines(doc: Doc, sign: number): Line[] {
   const s = doc.snapshot;
   if (s.simpleLines?.length) return s.simpleLines.map((l) => ({ name: l.label, qty: 1, total: sign * l.ht }));
   const out: Line[] = [];
-  for (const sp of s.subprojects) {
+  for (const sp of orderedSubprojects(doc)) {
     for (const l of sp.equipment) if (!l.optional && !l.kid) out.push({ name: `${l.name}${l.unit === 'pièce' ? '' : ` (${l.days} j)`} — ${sp.name}`, qty: l.qty, total: l.total, rate: l.vatRate });
     for (const c of sp.crew) if (c.billable) out.push({ name: `${c.function} (${c.days} j) — ${sp.name}`, qty: c.days, total: c.total });
     for (const v of sp.vehicles) if (v.billable) out.push({ name: `Transport ${v.name} — ${sp.name}`, qty: 1, total: v.price });
