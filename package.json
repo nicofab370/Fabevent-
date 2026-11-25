@@ -1,7 +1,7 @@
 {
   "name": "fabevent",
   "private": true,
-  "version": "47",
+  "version": "48",
   "type": "module",
   "scripts": {
     "dev": "vite",
