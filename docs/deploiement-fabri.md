@@ -25,8 +25,15 @@ grâce à un petit fichier PHP posé sur l'hébergement, protégé par la **mêm
    /fabevent/api/mail.php      (envoi des mails depuis FabEvent)
    /fabevent/api/public.php    (liens des techniciens : réponse de disponibilité, formulaire d'inscription, mot de passe oublié)
    /fabevent/api/oauth.php     (connexion Google / Microsoft / Apple — optionnel, variables d'env, voir README)
+   /fabevent/api/diag.php      (diagnostic : ouvre-le dans un navigateur, il doit répondre en JSON)
    /fabevent/api/mail-config.php   (à créer, voir ci-dessous — jamais dans Git)
    ```
+
+   **Vérifie tout de suite** : ouvre `https://fabri.live/fabevent/api/diag.php` dans un navigateur.
+   Il doit répondre en **JSON** (version PHP, extensions, fichiers vus dans `api/`, bibliothèque d'auth, dossier de données).
+   Si c'est la page HTML de l'application qui s'affiche, le dossier `api/` n'est pas atteint par le serveur :
+   dépose `api-htaccess.example` renommé en `.htaccess` dans `api/` (réécriture SPA), et vérifie qu'aucun
+   `ErrorDocument 404` ne renvoie vers l'application pour ce dossier.
 
 3. Ouvre `https://fabri.live/fabevent/` en étant connecté aux pages internes.
    La synchronisation s'active toute seule (adresse `api/sync.php` à côté de l'application) ;
@@ -55,15 +62,17 @@ Sans `mail.php` (ou hors connexion), FabEvent propose toujours les autres façon
 L'état de la synchro et son message d'erreur exact s'affichent en bas du menu et dans Paramètres → Synchronisation. Pour tester l'API à la main (connecté aux pages internes) :
 
 ```
+https://fabri.live/fabevent/api/diag.php               → JSON : PHP, extensions, fichiers de api/, auth, données
 https://fabri.live/fabevent/api/sync.php?action=ping   → {"ok":true,"user":"…","space":"…"}
 https://fabri.live/fabevent/api/mail.php?action=status  → {"ok":true,"mode":"smtp|mail|outbox","from":"…"}
 ```
 
-- **L'URL de l'API renvoie la page HTML de FabEvent** (et pas du JSON) : c'est la réécriture SPA qui répond — le dossier `api/` n'est pas à côté de l'application (ex. `/fabevent/api/`). FabEvent affiche ce diagnostic (« API non atteinte… ») dans Paramètres → Synchronisation.
+- **L'URL de l'API renvoie la page HTML de FabEvent** (et pas du JSON) : c'est la réécriture SPA (ou un `ErrorDocument 404`) qui répond — le dossier `api/` n'est pas atteint à cette adresse. `diag.php` dit en JSON quels fichiers PHP voient réellement dans `api/` ; s'il répond aussi en HTML, le problème est la réécriture elle-même (voir `api-htaccess.example`). FabEvent affiche ce diagnostic (« API non atteinte… ») dans Paramètres → Synchronisation.
 - **404** : le dossier `fabevent/api/` n'est pas (ou plus) déposé — reprendre le paquet de l'onglet Actions.
 - **503 « auth_lib » / « Service indisponible »** : le chemin `../../interne/_lib/auth.php` en tête des scripts est faux (ou définis la variable d'environnement `FABEVENT_AUTH` vers la bonne bibliothèque).
 - **401** : le navigateur n'est pas connecté aux pages internes FABRI.live — se connecter d'abord, puis rouvrir FabEvent.
 - **{"error":"storage"}** : `pdo_sqlite` absent, ou le dossier de données (`data_dir()`) non écrivable par PHP.
+- **diag.php en JSON mais une extension à `false`** (`pdo_sqlite`, `curl`, `openssl`…) ou `data_writable: false` : activer l'extension / rendre le dossier écrivable chez l'hébergeur.
 - **Mail** : `?action=status` doit répondre ok ; sinon crée `api/mail-config.php` (SMTP recommandé, voir `mail-config.example.php`). Sans SMTP, la fonction `mail()` de l'hébergement est utilisée (livraison moins fiable).
 - **App servie depuis une autre origine que l'API** (ex. GitHub Pages + API sur fabri.live) : il faut des en-têtes CORS côté API, en tête de `fabevent/api/.htaccess` :
   `Access-Control-Allow-Origin: <origine exacte de l'app>`, `Access-Control-Allow-Credentials: true`, `Access-Control-Allow-Headers: Content-Type`, et répondre **204** aux requêtes `OPTIONS`. En hébergement direct (`fabri.live/fabevent/`), même origine : rien à faire.

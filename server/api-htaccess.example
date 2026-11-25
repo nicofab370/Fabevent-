@@ -1,0 +1,8 @@
+# FabEvent — à renommer en « .htaccess » et à déposer dans fabevent/api/
+# si ton hébergement réécrit les URL vers l'application (SPA) sans vérifier
+# l'existence des fichiers : les appels à l'API répondraient la page HTML
+# au lieu du JSON. Sans réécriture chez l'hébergeur, ce fichier est inutile.
+RewriteEngine Off
+
+# défensif : jamais de listing de dossier
+Options -Indexes
