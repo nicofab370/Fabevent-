@@ -2268,6 +2268,41 @@ await step('Documents : le plus récent de chaque type, les anciens sur demande'
   expect(await list.locator('tr.doc-older').count() >= 1, 'les anciens s’affichent');
 });
 
+await step('Document : réordonner les salles (sous-projets) avec Ordre des salles ↑ / ↓', async () => {
+  await openProject('Conférence annuelle');
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Devis")');
+  await page.waitForSelector('.doc');
+  const order = async () => {
+    const t = await page.locator('.doc').innerText();
+    return ['Salle plénière', 'Salle atelier 1', 'Salle atelier 2'].map((n) => t.indexOf(n));
+  };
+  const o0 = await order();
+  expect(o0.every((i) => i >= 0) && o0[0] < o0[1] && o0[1] < o0[2], `ordre initial = ordre du projet (${o0})`);
+  await page.click('button:has-text("Ordre des salles")');
+  await page.waitForSelector('.modal[aria-label="Ordre des salles dans ce document"]');
+  await page.click('button[aria-label="Descendre Salle plénière"]');
+  await page.waitForTimeout(400);
+  const o1 = await order();
+  expect(o1[1] < o1[0] && o1[0] < o1[2], `plénière descendue d'un cran (${o1})`);
+  await page.click('button[aria-label="Monter Salle plénière"]');
+  await page.waitForTimeout(400);
+  const o2 = await order();
+  expect(o2[0] < o2[1] && o2[1] < o2[2], `remontée, ordre initial retrouvé (${o2})`);
+  await page.click('button[aria-label="Descendre Salle plénière"]');
+  await page.waitForTimeout(300);
+  await page.click('button[aria-label="Descendre Salle plénière"]');
+  await page.waitForTimeout(400);
+  const o3 = await order();
+  expect(o3[1] < o3[2] && o3[2] < o3[0], `plénière passée en dernier (${o3})`);
+  await page.click('button:text-is("Ordre du projet (réinitialiser)")');
+  await page.waitForTimeout(400);
+  const o4 = await order();
+  expect(o4[0] < o4[1] && o4[1] < o4[2], `réinitialisation = ordre du projet (${o4})`);
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.modal', { state: 'detached' });
+});
+
 /* ---------- Synchronisation : deux appareils, le vrai serveur PHP ---------- */
 const hasPhp = spawnSync('php', ['-v']).status === 0;
 if (hasPhp) {

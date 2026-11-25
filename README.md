@@ -73,6 +73,7 @@ Côté client, une « base » = un espace de travail local (Paramètres → Base
 **Documents figés et versionnés** (rien n'est jamais écrasé)
 - Devis, facture d'acompte, facture (acomptes déduits automatiquement), avoir, bon de sortie, feuille de route sans prix.
 - Impression / PDF, export HTML, email, **export Peppol BIS 3.0 (UBL)** pour les factures et les avoirs.
+- **Ordre des salles personnalisable par document** : sur la page du document, « Ordre des salles » déplace chaque sous-projet (↑ / ↓, ou réinitialiser à l'ordre du projet) ; l'ordre choisi s'affiche, s'imprime, s'exporte (PDF / HTML / XML Peppol) et s'envoie tel quel, sans changer les montants.
 - **Devis acceptables en ligne** : bouton « Lien d'acceptation en ligne » (lien public `public.php?d=…`) — le client voit le montant TTC
   et accepte / refuse ; accepté = document « accepté » et projet confirmé (comme un accepté saisi à la main).
 - **Groupes d'options au choix du client** : une ligne « en option » peut porter un **groupe d'options** (ex. « Son », « Levage ») ; le devis

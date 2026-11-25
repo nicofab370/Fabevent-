@@ -152,7 +152,7 @@ export async function buildSnapshot(projectId: string, type: DocType, only?: { i
       // salle installée dans un endroit du lieu : nom de l'endroit, et son adresse si elle diffère
       const spot = spotOf(venueC, sp.spotId);
       const address = spot && ownAddress(spot) ? placeAddress(venueC, spot) : undefined;
-      return { name: sp.name, venue: spot ? placeName(venueC, spot) : sp.venue || project.venue, address, start: sp.prepStart || sp.start, end: sp.returnEnd || sp.end, periods, equipment: eq, crew: cr, vehicles: vh, subtotal };
+      return { subId: sp.id, name: sp.name, venue: spot ? placeName(venueC, spot) : sp.venue || project.venue, address, start: sp.prepStart || sp.start, end: sp.returnEnd || sp.end, periods, equipment: eq, crew: cr, vehicles: vh, subtotal };
     });
 
   const costs = await db.costs.where({ projectId }).toArray();

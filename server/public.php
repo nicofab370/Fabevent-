@@ -242,6 +242,19 @@ if (isset($_GET['d'])) {
     $d = $row['data'];
     if (($d['type'] ?? '') !== 'devis') page('Lien invalide', '<h1>Ce lien ne concerne pas un devis.</h1>', 404);
     $sn = is_array($d['snapshot'] ?? null) ? $d['snapshot'] : [];
+    // ordre des salles choisi dans FabEvent (subOrder) : même ordre ici pour les options
+    if (!empty($d['subOrder']) && is_array($d['subOrder']) && is_array($sn['subprojects'] ?? null)) {
+        $order = array_values(array_filter(array_map('strval', $d['subOrder'])));
+        $subs = $sn['subprojects'];
+        usort($subs, function ($a, $b) use ($order) {
+            $ka = (string)($a['subId'] ?? $a['name'] ?? '');
+            $kb = (string)($b['subId'] ?? $b['name'] ?? '');
+            $ia = array_search($ka, $order, true);
+            $ib = array_search($kb, $order, true);
+            return ($ia === false ? PHP_INT_MAX : $ia) <=> ($ib === false ? PHP_INT_MAX : $ib);
+        });
+        $sn['subprojects'] = $subs;
+    }
     $client = is_array($sn['client'] ?? null) ? (string)($sn['client']['company'] ?? $sn['client']['name'] ?? '') : '';
     $projName = is_array($sn['project'] ?? null) ? (string)($sn['project']['name'] ?? '') : '';
     $head = '<h1>Devis ' . h((string)($d['number'] ?? '')) . '</h1><div class="m">' . h($projName) . ($client !== '' ? ' · ' . h($client) : '') . '</div>';

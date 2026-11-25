@@ -784,6 +784,8 @@ export interface SnapshotLine {
 
 export interface SnapshotSub {
   name: string;
+  /** id du sous-projet d'origine (permet de réordonner les salles dans le document) */
+  subId?: ID;
   /** adresse de l'endroit si elle diffère de celle du projet */
   address?: string;
   periods?: { name: string; kind: PeriodKind; start: string; end: string }[];
@@ -917,6 +919,8 @@ export interface Doc extends Base {
   acceptedOptions?: ID[];
   /** acceptedOptions déjà appliquées aux lignes du projet */
   optionsApplied?: boolean;
+  /** ordre d'affichage des sous-projets dans ce document (ids, ou noms pour les anciens documents) ; absent = ordre du projet */
+  subOrder?: ID[];
   snapshot: DocSnapshot;
 }
 

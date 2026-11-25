@@ -5,14 +5,14 @@ import type { Attachment } from '../email';
 import { htmlToPdf, safeFileName } from '../pdf';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { DOC_CSS, DocRender } from '../components/DocRender';
-import { PageHead } from '../components/ui';
+import { Modal, PageHead } from '../components/ui';
 import { setStatusDeep } from '../documents';
 import { db } from '../db';
 import { createDocument } from '../documents';
-import type { DocStatus } from '../types';
+import type { DocStatus, SnapshotSub } from '../types';
 import { DOC_LABELS, DOC_STATUS_LABELS, INVOICE_TYPES } from '../types';
 import { buildUbl, peppolProblems } from '../ubl';
-import { download, fmtDate, fmtRange, money, parseNumber, save } from '../utils';
+import { download, fmtDate, fmtRange, money, orderedSubprojects, parseNumber, save, subKey } from '../utils';
 import { newToken, quoteLink } from '../mailer';
 import { Icon } from '../components/Icon';
 
@@ -24,6 +24,7 @@ export default function DocumentView() {
   const [busy, setBusy] = useState(false);
   const [quoteUrl, setQuoteUrl] = useState<string | null>(null);
   const [qMsg, setQMsg] = useState('');
+  const [ordering, setOrdering] = useState(false);
   const doc = useLiveQuery(() => db.docs.get(id!), [id]);
   const siblings = useLiveQuery(
     async () => (doc ? (await db.docs.where({ projectId: doc.projectId }).toArray()).filter((d) => d.type === doc.type).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) : []),
@@ -57,6 +58,16 @@ export default function DocumentView() {
 
   const isInvoice = INVOICE_TYPES.includes(doc.type);
   const title = `${DOC_LABELS[doc.type]} ${doc.number}${!isInvoice ? ' v' + doc.version : ''}`;
+  /** déplace une salle (sous-projet figé) d'un cran dans le document et fige le nouvel ordre */
+  const moveSub = async (sp: SnapshotSub, dir: -1 | 1) => {
+    const arr = orderedSubprojects(doc);
+    const i = arr.findIndex((x) => subKey(x) === subKey(sp));
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= arr.length) return;
+    const keys = arr.map(subKey);
+    [keys[i], keys[j]] = [keys[j], keys[i]];
+    await save(db.docs, { ...doc, subOrder: keys });
+  };
   const exportPeppol = () => {
     const problems = peppolProblems(doc);
     if (problems.length && !confirm('Informations manquantes pour Peppol :\n- ' + problems.join('\n- ') + '\n\nLe document a été figé sans elles. Corrige-les puis génère une nouvelle facture, ou télécharge quand même ?')) return;
@@ -138,6 +149,9 @@ export default function DocumentView() {
             <button className="secondary" onClick={async () => nav('/documents/' + (await createDocument(doc.projectId, 'rappel', { invoiceId: doc.id })).id)}>Envoyer un rappel</button>
           )}
           {!isInvoice && <button className="secondary" onClick={async () => nav('/documents/' + (await createDocument(doc.projectId, doc.type)).id)}>Régénérer (nouvelle version)</button>}
+          {doc.snapshot.subprojects.length > 1 && (
+            <button className="secondary" title="Changer l'ordre des salles (sous-projets) dans ce document : l'ordre choisi s'affiche, s'imprime, s'exporte et s'envoie tel quel" onClick={() => setOrdering(true)}>Ordre des salles</button>
+          )}
         </PageHead>
         <div className="info">
           Document figé le {fmtDate(doc.createdAt)} : il ne change plus même si le projet évolue.
@@ -167,6 +181,25 @@ export default function DocumentView() {
       {mailing && (
         <EmailModal initial={mailDraft()} prepare={attachments} onClose={() => setMailing(false)} kind={doc.type} vars={mailVars()} hints={hints}
           onSent={() => { if (doc.status === 'brouillon') save(db.docs, { ...doc, status: 'envoye' }); }} />
+      )}
+      {ordering && (
+        <Modal title="Ordre des salles dans ce document" onClose={() => setOrdering(false)}>
+          <p className="muted">Une section par salle (sous-projet), dans cet ordre à l'écran, à l'impression, au PDF et dans l'export XML. Les montants ne changent pas.</p>
+          <table className="list"><tbody>
+            {orderedSubprojects(doc).map((sp, i, arr) => (
+              <tr key={subKey(sp)}>
+                <td><strong>{sp.name}</strong><div className="muted">{fmtDate(sp.start)} → {fmtDate(sp.end)}</div></td>
+                <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
+                  <button type="button" className="secondary small" aria-label={`Monter ${sp.name}`} title={`Monter « ${sp.name} » d'un cran`} disabled={i === 0} onClick={() => moveSub(sp, -1)}><Icon name="arrow-up" /></button>{' '}
+                  <button type="button" className="secondary small" aria-label={`Descendre ${sp.name}`} title={`Descendre « ${sp.name} » d'un cran`} disabled={i === arr.length - 1} onClick={() => moveSub(sp, 1)}><Icon name="arrow-down" /></button>
+                </td>
+              </tr>
+            ))}
+          </tbody></table>
+          <div className="toolbar" style={{ marginTop: 12 }}>
+            <button type="button" className="secondary" onClick={async () => { const nd = { ...doc }; delete nd.subOrder; await save(db.docs, nd); }}>Ordre du projet (réinitialiser)</button>
+          </div>
+        </Modal>
       )}
       <div className="no-print" style={{ marginTop: 12 }}>
         {(!isInvoice || doc.status === 'brouillon') && <button className="danger small" onClick={async () => {
