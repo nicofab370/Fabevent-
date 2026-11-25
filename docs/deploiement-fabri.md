@@ -23,7 +23,8 @@ grâce à un petit fichier PHP posé sur l'hébergement, protégé par la **mêm
    /fabevent/assets/…
    /fabevent/api/sync.php
    /fabevent/api/mail.php      (envoi des mails depuis FabEvent)
-   /fabevent/api/public.php    (liens des techniciens : réponse de disponibilité, formulaire d'inscription)
+   /fabevent/api/public.php    (liens des techniciens : réponse de disponibilité, formulaire d'inscription, mot de passe oublié)
+   /fabevent/api/oauth.php     (connexion Google / Microsoft / Apple — optionnel, variables d'env, voir README)
    /fabevent/api/mail-config.php   (à créer, voir ci-dessous — jamais dans Git)
    ```
 
@@ -49,6 +50,24 @@ pièces jointes comprises (bouton « Envoyer »). Les réponses arrivent à l'ad
 
 Sans `mail.php` (ou hors connexion), FabEvent propose toujours les autres façons : partage, brouillon .eml, messagerie.
 
+## Dépannage : la synchro ou les mails ne répondent pas
+
+L'état de la synchro et son message d'erreur exact s'affichent en bas du menu et dans Paramètres → Synchronisation. Pour tester l'API à la main (connecté aux pages internes) :
+
+```
+https://fabri.live/fabevent/api/sync.php?action=ping   → {"ok":true,"user":"…","space":"…"}
+https://fabri.live/fabevent/api/mail.php?action=status  → {"ok":true,"mode":"smtp|mail|outbox","from":"…"}
+```
+
+- **404** : le dossier `fabevent/api/` n'est pas (ou plus) déposé — reprendre le paquet de l'onglet Actions.
+- **503 « auth_lib » / « Service indisponible »** : le chemin `../../interne/_lib/auth.php` en tête des scripts est faux (ou définis la variable d'environnement `FABEVENT_AUTH` vers la bonne bibliothèque).
+- **401** : le navigateur n'est pas connecté aux pages internes FABRI.live — se connecter d'abord, puis rouvrir FabEvent.
+- **{"error":"storage"}** : `pdo_sqlite` absent, ou le dossier de données (`data_dir()`) non écrivable par PHP.
+- **Mail** : `?action=status` doit répondre ok ; sinon crée `api/mail-config.php` (SMTP recommandé, voir `mail-config.example.php`). Sans SMTP, la fonction `mail()` de l'hébergement est utilisée (livraison moins fiable).
+- **App servie depuis une autre origine que l'API** (ex. GitHub Pages + API sur fabri.live) : il faut des en-têtes CORS côté API, en tête de `fabevent/api/.htaccess` :
+  `Access-Control-Allow-Origin: <origine exacte de l'app>`, `Access-Control-Allow-Credentials: true`, `Access-Control-Allow-Headers: Content-Type`, et répondre **204** aux requêtes `OPTIONS`. En hébergement direct (`fabri.live/fabevent/`), même origine : rien à faire.
+- PHP 8 recommandé, avec `pdo_sqlite`, `curl` et `openssl`.
+
 ## Liens des techniciens
 
 `public.php` sert deux pages **sans connexion**, protégées par une clé secrète dans le lien :
@@ -57,6 +76,11 @@ Sans `mail.php` (ou hors connexion), FabEvent propose toujours les autres façon
   La réponse arrive dans FabEvent (pastilles « disponible / pas disponible / en attente » sur le poste).
 - **Formulaire d'inscription** : Équipe → « Ouvrir le formulaire d'inscription » donne un lien à envoyer ou à mettre sur ton site.
   Les fiches remplies arrivent dans « Inscriptions à valider ». « Fermer le formulaire » désactive le lien.
+- **Mot de passe oublié** : sur l'écran de connexion de FabEvent, « Mot de passe oublié ? » envoie à l'email du compte
+  un lien `public.php?pw=…` (jeton à usage unique, valable 2 h, stocké en SQLite). Le nouveau mot de passe y est haché
+  comme dans l'application (SHA-256 `sel:motdepasse`) et écrit dans la table `users` synchronisée : il arrive sur tous
+  les appareils à la prochaine synchronisation. Sans serveur, un administrateur redéfinit le mot de passe d'un compte
+  dans Paramètres → Utilisateurs (« Mot de passe… »).
 
 ## Comment ça marche
 

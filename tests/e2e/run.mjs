@@ -2952,6 +2952,33 @@ await step('Connexion externe (OAuth) : bouton Google, code à usage unique, rat
   await page.evaluate(() => { try { localStorage.removeItem('fab.sync.url'); } catch {} });
 });
 
+await step('Mot de passe oublié : demande de lien depuis l’écran de connexion (serveur stubbé)', async () => {
+  let resetCalls = 0; let resetBody = '';
+  await ctx.route('**/api/sync.php**', (route) => {
+    const u = route.request().url();
+    route.fulfill({ contentType: 'application/json', body: u.includes('action=pull') ? '{"ok":true,"changes":[],"seq":0,"more":false}' : u.includes('action=ping') ? '{"ok":true,"user":"t","space":"u-t"}' : '{"ok":true,"applied":0,"skipped":0,"n":1}' });
+  });
+  await ctx.route('**/api/public.php**', (route) => {
+    if (route.request().url().includes('action=reset_request')) { resetCalls++; resetBody = route.request().postData() || ''; route.fulfill({ contentType: 'application/json', body: '{"ok":true}' }); }
+    else route.fulfill({ contentType: 'application/json', body: '{"ok":true}' });
+  });
+  await page.evaluate(() => { try { localStorage.setItem('fab.sync.url', 'http://localhost:9999/api/sync.php'); } catch {} });
+  await page.reload();
+  await page.waitForSelector('.sidebar nav, .login-card');
+  if (await page.locator('.sidebar nav').count()) { await page.click('.side-user'); await page.waitForSelector('.login-card'); }
+  const forgotBtn = page.locator('button:has-text("Mot de passe oublié ?")');
+  expect((await forgotBtn.count()) === 1, 'lien « Mot de passe oublié ? » affiché sur l’écran de connexion');
+  await forgotBtn.click();
+  await page.fill('input[aria-label="Email du compte pour la réinitialisation"]', 'nico@fab.be');
+  await page.click('button:text-is("Envoyer le lien de réinitialisation")');
+  await page.waitForSelector('.login-card .avail.ok');
+  expect((await page.locator('.login-card .avail.ok').innerText()).includes('lien de réinitialisation'), 'confirmation affichée');
+  expect(resetCalls === 1 && resetBody.includes('nico@fab.be'), `demande POSTée au serveur (${resetCalls} appel : ${resetBody})`);
+  await ctx.unroute('**/api/public.php**');
+  await ctx.unroute('**/api/sync.php**');
+  await page.evaluate(() => { try { localStorage.removeItem('fab.sync.url'); } catch {} });
+});
+
 await ctx.close();
 
 await step('Aucune erreur dans la console du navigateur', async () => {
