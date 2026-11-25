@@ -192,13 +192,14 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
         <small className="muted">Affiché au scan, sur la checklist, le bon de sortie, la feuille de route et (au choix) l'étiquette. Pour un accessoire suivi en stock ou facturé, utilise plutôt les accessoires ci-dessous.</small>
       </div>
       <div className="field full">
-        <span>Accessoires ajoutés automatiquement (par unité de cet article)</span>
+        <span>Accessoires (par unité de cet article)</span>
         {(e.accessories || []).map((a, i) => {
           const upd = (patch: Partial<typeof a>) => set('accessories', (e.accessories || []).map((y, j) => (j === i ? { ...y, ...patch } : y)));
           return (
             <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6, alignItems: 'center' }}>
               <NumInput className="w-qty" value={a.qty} step="1" min={1} onChange={(n) => upd({ qty: n })} />
               <span className="chosen-name">{nameOf(a.equipmentId)}{all.find((o) => o.id === a.equipmentId)?.accessoryOnly ? <span className="muted"> (hors inventaire)</span> : null}</span>
+              <label className="check-row" style={{ whiteSpace: 'nowrap' }} title="Coché = ajouté d'office avec l'article (ligne enfant automatique). Décoché = accessoire facultatif : proposé dans le sélecteur, ajouté seulement s'il est coché."><input type="checkbox" checked={!a.optional} onChange={(x) => upd({ optional: x.target.checked ? true : undefined })} aria-label={`Ajout automatique : ${nameOf(a.equipmentId)}`} /> auto</label>
               <label className="check-row" style={{ whiteSpace: 'nowrap' }}><input type="checkbox" checked={a.free} onChange={(x) => upd({ free: x.target.checked })} /> gratuit</label>
               <button type="button" className="ghost" onClick={() => set('accessories', (e.accessories || []).filter((_, j) => j !== i))}><Icon name="x" /></button>
             </div>
@@ -214,7 +215,7 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
             set('accessories', [...(e.accessories || []), { equipmentId: acc.id, qty: 1, free: true }]);
           }}>+ Nouvel élément (hors inventaire)</button>
         </div>
-        <small className="muted">Un élément hors inventaire (chargeur, dock, housse…) n'apparaît ni dans le catalogue ni dans l'inventaire : il est ajouté avec son article et se coche à la sortie et au retour.</small>
+        <small className="muted">« auto » = ajouté d'office avec l'article. Décoché = accessoire facultatif, proposé mais jamais ajouté sans être coché. Un élément hors inventaire (chargeur, dock, housse…) n'apparaît ni dans le catalogue ni dans l'inventaire : il se coche à la sortie et au retour.</small>
       </div>
       <div className="field full">
         <span>Articles de remplacement (proposés en cas de manque)</span>

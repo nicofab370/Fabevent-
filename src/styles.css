@@ -871,3 +871,8 @@ table.list tr.limiting td:first-child, table.list tr.kit-child.limiting td:nth-c
 .cl-line.kid { padding-left: 24px; }
 .doc tr.kid td { color: inherit; }
 .doc td.kid { box-shadow: inset 3px 0 0 var(--accent2, var(--accent)); }
+
+/* connexion externe (OAuth) sur l'écran de verrouillage */
+.oauth-btns { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.oauth-btn { width: 100%; }
+.mfa-secret { user-select: all; font-size: 12px; word-break: break-all; }

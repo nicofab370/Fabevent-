@@ -3,6 +3,7 @@
  * Lancement : npm run test:e2e  (construit l'application, la sert, puis déroule les scénarios).
  */
 import { spawn, spawnSync } from 'node:child_process';
+import { createHmac } from 'node:crypto';
 import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -89,6 +90,10 @@ async function resetDemo() {
   await page.waitForSelector('.demo-badge', { timeout: 20000 });
   await page.waitForTimeout(800);
 }
+/** TOTP 6 chiffres (RFC 6238, SHA-1) pour vérifier le MFA en test. */
+const b32dec = (s) => { const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'; let bits = 0, acc = 0; const out = []; for (const ch of s.replace(/=+$/, '').toUpperCase()) { const v = A.indexOf(ch); if (v < 0) continue; acc = ((acc << 5) | v) & 0xfffff; bits += 5; if (bits >= 8) { out.push((acc >> (bits - 8)) & 255); bits -= 8; acc &= (1 << bits) - 1; } } return Buffer.from(out); };
+const totp = (secret, t = Date.now()) => { const msg = Buffer.alloc(8); msg.writeBigUInt64BE(BigInt(Math.floor(t / 30000))); const sig = createHmac('sha1', b32dec(secret)).update(msg).digest(); const o = sig[sig.length - 1] & 15; const bin = ((sig[o] & 127) << 24) | (sig[o + 1] << 16) | (sig[o + 2] << 8) | sig[o + 3]; return String(bin % 1e6).padStart(6, '0'); };
+
 const mod97 = (s) => { const d = s.replace(/\D/g, ''); return d.length === 12 && (Number(d.slice(0, 10)) % 97 || 97) === Number(d.slice(10)); };
 
 console.log('\nFabEvent — tests de bout en bout\n');
@@ -2807,6 +2812,94 @@ await step('Comptes et rôles : verrouillage, admin, entrepôt (sans les prix), 
   expect(page.url().includes('/attribution'), 'projets redirigé vers le planning perso');
   await go('planning');
   expect(await page.locator('.cal, .calendar, main').count() >= 1, 'planning visible');
+});
+
+await step('MFA (TOTP) : activation par QR + code à 6 chiffres obligatoire à chaque connexion', async () => {
+  // repasse en admin
+  await page.click('.side-user');
+  await page.waitForSelector('.login-card');
+  await page.locator('input[aria-label="Email"]').fill('nico@fab.be');
+  await page.locator('input[aria-label="Mot de passe"]').fill('secret1');
+  await page.click('button:text-is("Se connecter")');
+  await page.waitForLoadState('load');
+  await page.waitForSelector('.sidebar nav');
+  await go('parametres');
+  const row = page.locator('.card table.list tbody tr', { hasText: 'nico@fab.be' }).first();
+  await row.locator('button', { hasText: 'Activer MFA' }).click();
+  await page.waitForSelector('.modal');
+  await page.click('button:text-is("Générer un secret")');
+  const secret = (await page.locator('.mfa-secret').innerText()).trim();
+  expect(/^[A-Z2-7]{32}$/.test(secret), 'secret base32 affiché');
+  expect(await page.locator('.modal svg').count() >= 1, 'QR code otpauth affiché');
+  await page.locator('input[aria-label="Code de confirmation MFA"]').fill(totp(secret));
+  await page.click('button:text-is("Activer le MFA")');
+  await page.waitForTimeout(500);
+  expect((await row.locator('button', { hasText: 'MFA…' }).count()) === 1, 'MFA activé sur le compte');
+  // déconnexion → reconnexion : code demandé
+  await page.click('.side-user');
+  await page.waitForSelector('.login-card');
+  await page.locator('input[aria-label="Email"]').fill('nico@fab.be');
+  await page.locator('input[aria-label="Mot de passe"]').fill('secret1');
+  await page.click('button:text-is("Se connecter")');
+  await page.waitForSelector('input[aria-label="Code MFA à 6 chiffres"]');
+  const wrong = String((Number(totp(secret)) + 1) % 1e6).padStart(6, '0');
+  await page.locator('input[aria-label="Code MFA à 6 chiffres"]').fill(wrong);
+  await page.click('button:text-is("Vérifier le code")');
+  await page.waitForTimeout(400);
+  expect((await page.locator('.login-card').innerText()).includes('incorrect'), 'mauvais code refusé');
+  await page.locator('input[aria-label="Code MFA à 6 chiffres"]').fill(totp(secret));
+  await page.click('button:text-is("Vérifier le code")');
+  await page.waitForLoadState('load');
+  await page.waitForSelector('.sidebar nav');
+  expect((await page.locator('.side-user').innerText()).includes('Nicolas'), 'connexion avec MFA réussie');
+});
+
+await step('Connexion externe (OAuth) : bouton Google, code à usage unique, rattachement par email (+ MFA)', async () => {
+  // serveur stubbé : oauth.php (popup + échange du code) et sync.php (pas d'erreur console)
+  // ctx.route (pas page.route) pour intercepter aussi la navigation de la popup
+  await ctx.route('**/api/oauth.php**', (route) => {
+    const url = route.request().url();
+    if (url.includes('action=authorize')) {
+      route.fulfill({ contentType: 'text/html', body: `<script>window.opener && window.opener.postMessage({source:'fabevent-oauth', code:'${'a'.repeat(32)}'}, '*'); setTimeout(function(){window.close()},200);</script><p>redirection…</p>` });
+    } else if (url.includes('action=login')) {
+      route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, profile: { email: 'nico@fab.be', name: 'Nicolas', provider: 'google', sub: 'g-123' } }) });
+    } else {
+      route.fulfill({ contentType: 'application/json', body: '{"ok":true,"providers":["google"]}' });
+    }
+  });
+  await ctx.route('**/api/sync.php**', (route) => {
+    const url = route.request().url();
+    const body = url.includes('action=pull') ? '{"ok":true,"changes":[],"seq":0,"more":false}'
+      : url.includes('action=ping') ? '{"ok":true,"user":"t","space":"u-t"}'
+      : '{"ok":true,"applied":0,"skipped":0,"n":1}';
+    route.fulfill({ contentType: 'application/json', body });
+  });
+  // adresse du serveur de synchro (d'où dérive oauth.php)
+  await page.evaluate(() => { try { localStorage.setItem('fab.sync.url', 'http://localhost:9999/api/sync.php'); } catch {} });
+  await page.reload();
+  await page.waitForSelector('.sidebar nav, .login-card');
+  if (await page.locator('.sidebar nav').count()) { await page.click('.side-user'); await page.waitForSelector('.login-card'); }
+  const gBtn = page.locator('button[aria-label="Se connecter avec Google"]');
+  expect((await gBtn.count()) === 1, 'bouton Google affiché (serveur configuré)');
+  const [popup] = await Promise.all([page.waitForEvent('popup'), gBtn.click()]);
+  await popup.waitForLoadState('domcontentloaded').catch(() => {});
+  // MFA demandée aussi après OAuth (compte nico protégé)
+  await page.waitForSelector('input[aria-label="Code MFA à 6 chiffres"]', { timeout: 15000 });
+  // lecture du secret TOTP directement dans IndexedDB
+  const totpSecret = await page.evaluate(() => new Promise((res) => {
+    const rq = indexedDB.open('fabevent_' + (localStorage.getItem('fabevent.workspace') || 'principal'));
+    rq.onsuccess = () => { const d = rq.result; try { const tx = d.transaction('users', 'readonly'); const q = tx.objectStore('users').getAll(); q.onsuccess = () => res((q.result.find((u) => u.email === 'nico@fab.be') || {}).totpSecret || ''); q.onerror = () => res(''); } catch { res(''); } };
+    rq.onerror = () => res('');
+  }));
+  expect(/^[A-Z2-7]{32}$/.test(totpSecret), 'secret TOTP relu depuis la base');
+  await page.locator('input[aria-label="Code MFA à 6 chiffres"]').fill(totp(totpSecret));
+  await page.click('button:text-is("Vérifier le code")');
+  await page.waitForLoadState('load');
+  await page.waitForSelector('.sidebar nav');
+  expect((await page.locator('.side-user').innerText()).includes('Nicolas'), 'connecté via Google (rattaché à nico@fab.be) + MFA OK');
+  await ctx.unroute('**/api/oauth.php**');
+  await ctx.unroute('**/api/sync.php**');
+  await page.evaluate(() => { try { localStorage.removeItem('fab.sync.url'); } catch {} });
 });
 
 await ctx.close();

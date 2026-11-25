@@ -29,6 +29,14 @@ Les comptes sont synchronisés avec la base (`users` dans la synchro) : mêmes i
 - option recommandée : un compte interne FABRI.live par société → espace `u-<login>` dédié, invisible des autres sociétés ;
 - ou une install PHP séparée par société (répertoire `data` distinct, ex. via la variable d'environnement `FABEVENT_DATA`).
 
+**Connexion externe (Google / Microsoft / Apple)** : si un serveur `oauth.php` est déployé à côté de `sync.php`, l'écran de connexion propose les boutons des fournisseurs configurés. Déroulement : popup → fournisseur (state + PKCE) → retour serveur → code à usage unique → profil vérifié renvoyé à l'application, qui rattache le compte local **par email** (un email inconnu crée un compte désactivé, à valider par un admin). Config serveur (variables d'environnement, HTTPS obligatoire) :
+- Google : `FABEVENT_OAUTH_GOOGLE_CLIENT_ID` / `FABEVENT_OAUTH_GOOGLE_CLIENT_SECRET` (redirect autorisé : `https://<hôte>/fabevent/api/oauth.php?action=callback&provider=google`)
+- Microsoft : `FABEVENT_OAUTH_MICROSOFT_CLIENT_ID` / `_SECRET` (+ `_TENANT`, `common` par défaut)
+- Apple (Sign in with Apple) : `FABEVENT_OAUTH_APPLE_CLIENT_ID` (Service ID), `_TEAM_ID`, `_KEY_ID`, `_PRIVATE_KEY` (contenu du `.p8` ou chemin du fichier)
+- `FABEVENT_APP_ORIGIN` : origine de l'app autorisée pour le retour (ex. `https://nicofab370.github.io`), sinon l'origine passée à `authorize` est utilisée.
+
+**MFA (double authentification)** : Paramètres → Utilisateurs → « Activer MFA » sur un compte : QR code `otpauth://` à scanner (Google Authenticator, Microsoft Authenticator, Authy…) + confirmation par un premier code. Ensuite, chaque connexion demande le code à 6 chiffres (TOTP RFC 6238, fenêtre ±30 s) après le mot de passe. L'admin peut réinitialiser ou désactiver le MFA d'un compte.
+
 Côté client, une « base » = un espace de travail local (Paramètres → Bases : créer/ouvrir/supprimer) ; chaque base a sa société (Paramètres → Ma société) et éventuellement sa propre synchro. Les sous-traitants d'une société n'ont un compte que dans l'espace de cette société.
 
 ## Fonctionnalités

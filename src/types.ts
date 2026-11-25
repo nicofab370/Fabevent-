@@ -158,6 +158,8 @@ export interface KitItem {
 export interface Accessory extends KitItem {
   /** true = ajouté gratuitement, false = facturé à son prix */
   free: boolean;
+  /** true = facultatif : proposé dans le sélecteur mais PAS ajouté automatiquement avec l'article */
+  optional?: boolean;
 }
 
 /** location = facturé par jour et revient ; vente = consommable vendu à l'unité */
@@ -558,6 +560,9 @@ export const ROLE_LABELS: Record<Role, string> = {
   subcontractor: 'Sous-traitant (son planning, le matériel, ses horaires)',
 };
 
+/** Fournisseur de connexion externe (OAuth). */
+export type OAuthProvider = 'google' | 'microsoft' | 'apple';
+
 /** Compte utilisateur local (synchronisé dans l'espace de la société). Le mot de passe n'est jamais stocké en clair. */
 export interface User extends Base {
   name: string;
@@ -568,6 +573,11 @@ export interface User extends Base {
   /** sous-traitant : personne de l'équipe liée (il ne voit que ses postes) */
   personId?: ID;
   active: boolean;
+  /** MFA (TOTP) : secret base32 + activé après confirmation d'un premier code */
+  totpSecret?: string;
+  totpOn?: boolean;
+  /** connexions externes liées à ce compte (sub = identifiant stable chez le fournisseur) */
+  oauth?: { provider: OAuthProvider; sub: string }[];
 }
 
 export interface CrewRequest extends Base {
