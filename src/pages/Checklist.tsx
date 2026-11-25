@@ -302,7 +302,7 @@ export function ChecklistView({ src }: { src: ChecklistSource }) {
         onClick={() => (editing && src.edit ? setLineEdit({ line: l }) : toggle(l))} onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); (e.currentTarget as HTMLElement).click(); } }}>
         <button type="button" className="cl-check" aria-label={st === 'done' ? 'Décocher' : 'Tout cocher'} disabled={serial && !editing} tabIndex={-1}>{st === 'done' ? <Icon name="check" /> : st === 'part' ? <Icon name="minus" /> : null}</button>
         <div className="cl-name">
-          <div className="cl-title"><span className="cl-q">{kit ? l.qty : t}×</span> <strong>{l.name}</strong>
+          <div className="cl-title">{kid && <Icon name="corner" className="muted" />}<span className="cl-q">{kit ? l.qty : t}×</span> <strong>{l.name}</strong>
             {kit && <span className="tag small">KIT · {kidsOf(l).filter(lineDone).length}/{kidsOf(l).length}</span>}
             {l.extra && <span className="tag small">en plus</span>}</div>
           {(l.code || l.location || l.remark) && <div className="cl-meta">{l.code}{l.location && <span className="loc"><Icon name="pin" />{l.location}</span>}{l.remark && <span>{(l.code || l.location) ? ' · ' : ''}{l.remark}</span>}</div>}

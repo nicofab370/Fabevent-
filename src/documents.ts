@@ -94,7 +94,7 @@ export async function buildSnapshot(projectId: string, type: DocType, only?: { i
     .map((sp) => {
       const groupName = new Map((sp.groups || []).map((g) => [g.id, g.name]));
       const eq = lines
-        .filter((l) => l.subprojectId === sp.id && (isQuote || isPacking || !l.optional) && !(l.parentLineId && kitLineIds.has(l.parentLineId)))
+        .filter((l) => l.subprojectId === sp.id && (isQuote || isPacking || !l.optional))
         .sort((a, b) => a.order - b.order)
         .map((l) => {
           const e = l.equipmentId ? eMap.get(l.equipmentId) : undefined;
@@ -113,6 +113,7 @@ export async function buildSnapshot(projectId: string, type: DocType, only?: { i
             vatRate: regime === 'normal' && e?.vatRate !== undefined ? e.vatRate : undefined,
             optionGroup: l.optional ? (l.optionGroup?.trim() || undefined) : undefined,
             optId: l.id,
+            kid: !!(l.parentLineId && kitLineIds.has(l.parentLineId)),
             group: (l.groupId && groupName.get(l.groupId)) || l.group,
             optional: !!l.optional,
             unit: perPiece ? 'pièce' as const : 'jour' as const,

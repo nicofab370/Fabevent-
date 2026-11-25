@@ -230,7 +230,7 @@ function Rooms({ doc, st }: { doc: Doc; st: DocStyle }) {
               </>
             )}
             {summaryOnly && sp.equipment.length > 0 && (
-              <table><tbody><tr><td>{tr(doc, 'rental')} ({sp.equipment.filter((l) => !l.optional).length} {tr(doc, 'lines')})</td><td className="n">{money(eqTotal)}</td></tr></tbody></table>
+              <table><tbody><tr><td>{tr(doc, 'rental')} ({sp.equipment.filter((l) => !l.optional && !l.kid).length} {tr(doc, 'lines')})</td><td className="n">{money(eqTotal)}</td></tr></tbody></table>
             )}
             {(() => {
               // devis : les options dans une section à part, non comptées dans le total
@@ -258,19 +258,19 @@ function Rooms({ doc, st }: { doc: Doc; st: DocStyle }) {
                       {st.showGroups && l.group && l.group !== lines[j - 1]?.group && (
                         <tr className="grp"><td colSpan={(isPacking ? 4 : 2) + (showPrices ? priceCols : 0)}>{l.group}</td></tr>
                       )}
-                      <tr className={l.optional ? 'opt' : ''}>
+                      <tr className={(l.optional ? 'opt' : '') + (l.kid ? ' kid' : '')}>
                         {isPacking && <td><span className="check" /></td>}
                         {isPacking && <td><span className="check" /></td>}
                         <td className="n">{l.qty}</td>
-                        <td>{l.name}{st.showCode && l.code && <span className="muted"> ({l.code})</span>}{l.optional && !splitOpts && ` — ${tr(doc, 'option')}`}
+                        <td className={l.kid ? 'kid' : undefined} style={l.kid ? { paddingLeft: 22 } : undefined}>{l.kid && <span className="muted">⌐ </span>}{l.name}{st.showCode && l.code && <span className="muted"> ({l.code})</span>}{l.optional && !splitOpts && ` — ${tr(doc, 'option')}`}
                           {l.periods && <div className="muted" style={{ fontSize: '0.85em' }}>{l.periods}</div>}
                           {l.contents && <div className="muted" style={{ fontSize: '0.85em' }}>Avec : {l.contents}</div>}
                           {l.remark && <div className="muted" style={{ fontSize: '0.85em' }}>{l.remark}</div>}</td>
                         {showPrices && <>
-                          <td className="n">{money(l.unitPrice)}</td>
-                          {st.showFactor && <td className="n">{l.unit === 'pièce' ? tr(doc, 'sale') : `${l.factor} (${l.days} ${tr(doc, 'days')})`}</td>}
-                          {st.showDiscount && <td className="n">{l.discount ? `${l.discount} %` : ''}</td>}
-                          <td className="n">{money(l.total)}</td>
+                          <td className="n">{l.kid ? <span className="muted">inclus</span> : money(l.unitPrice)}</td>
+                          {st.showFactor && <td className="n">{l.kid ? '' : l.unit === 'pièce' ? tr(doc, 'sale') : `${l.factor} (${l.days} ${tr(doc, 'days')})`}</td>}
+                          {st.showDiscount && <td className="n">{l.kid ? '' : l.discount ? `${l.discount} %` : ''}</td>}
+                          <td className="n">{l.kid ? '' : money(l.total)}</td>
                         </>}
                       </tr>
                     </Fragment>))}

@@ -768,6 +768,8 @@ export interface SnapshotLine {
   periods?: string;
   /** contenu fourni (bon de sortie, feuille de route) */
   contents?: string;
+  /** ligne enfant d'un kit : affichée en retrait, prix inclus dans le kit */
+  kid?: boolean;
 }
 
 export interface SnapshotSub {

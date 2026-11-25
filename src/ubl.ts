@@ -67,7 +67,7 @@ function collectLines(doc: Doc, sign: number): Line[] {
   if (s.simpleLines?.length) return s.simpleLines.map((l) => ({ name: l.label, qty: 1, total: sign * l.ht }));
   const out: Line[] = [];
   for (const sp of s.subprojects) {
-    for (const l of sp.equipment) if (!l.optional) out.push({ name: `${l.name}${l.unit === 'pièce' ? '' : ` (${l.days} j)`} — ${sp.name}`, qty: l.qty, total: l.total, rate: l.vatRate });
+    for (const l of sp.equipment) if (!l.optional && !l.kid) out.push({ name: `${l.name}${l.unit === 'pièce' ? '' : ` (${l.days} j)`} — ${sp.name}`, qty: l.qty, total: l.total, rate: l.vatRate });
     for (const c of sp.crew) if (c.billable) out.push({ name: `${c.function} (${c.days} j) — ${sp.name}`, qty: c.days, total: c.total });
     for (const v of sp.vehicles) if (v.billable) out.push({ name: `Transport ${v.name} — ${sp.name}`, qty: 1, total: v.price });
   }
