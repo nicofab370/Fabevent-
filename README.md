@@ -37,6 +37,8 @@ Les comptes sont synchronisés avec la base (`users` dans la synchro) : mêmes i
 
 **MFA (double authentification)** : Paramètres → Utilisateurs → « Activer MFA » sur un compte : QR code `otpauth://` à scanner (Google Authenticator, Microsoft Authenticator, Authy…) + confirmation par un premier code. Ensuite, chaque connexion demande le code à 6 chiffres (TOTP RFC 6238, fenêtre ±30 s) après le mot de passe. L'admin peut réinitialiser ou désactiver le MFA d'un compte.
 
+**Mot de passe oublié** : sur l'écran de connexion, « Mot de passe oublié ? » envoie à l'email du compte un lien de réinitialisation via `public.php` (`POST ?action=reset_request {email}` → lien `?pw=<jeton>`, jeton à usage unique valable 2 h en SQLite, même config mail que `mail.php`). Le nouveau mot de passe est haché comme dans l'app (SHA-256 `sel:motdepasse`) et écrit dans la table `users` synchronisée : il arrive sur tous les appareils à la prochaine synchro (l'écran de connexion se resynchronise tout seul). Sans serveur configuré, un administrateur redéfinit le mot de passe d'un compte dans Paramètres → Utilisateurs (« Mot de passe… »).
+
 Côté client, une « base » = un espace de travail local (Paramètres → Bases : créer/ouvrir/supprimer) ; chaque base a sa société (Paramètres → Ma société) et éventuellement sa propre synchro. Les sous-traitants d'une société n'ont un compte que dans l'espace de cette société.
 
 ## Fonctionnalités

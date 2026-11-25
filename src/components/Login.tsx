@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createUser, hasUsers, setSession, verifyUser } from '../auth';
 import { Field } from './ui';
 import { oauthAvailable, oauthLogin, OAUTH_PROVIDERS } from '../oauth';
 import { verifyTotp } from '../totp';
+import { serverScript } from '../mailer';
+import { syncEnabled, syncNow } from '../sync';
 import type { User } from '../types';
 
 /**
@@ -21,8 +23,40 @@ export function Login() {
   const [busy, setBusy] = useState(false);
   const [mfaUser, setMfaUser] = useState<User | null>(null);
   const [code, setCode] = useState('');
+  const [forgot, setForgot] = useState(false);
+  const [fEmail, setFEmail] = useState('');
+  const [fMsg, setFMsg] = useState('');
+  const [fErr, setFErr] = useState('');
+  const [fBusy, setFBusy] = useState(false);
+
+  // à l'ouverture de l'écran de connexion : récupère d'abord les derniers comptes (ex. mot de passe
+  // réinitialisé depuis un autre appareil via le lien envoyé par le serveur)
+  useEffect(() => { if (syncEnabled()) syncNow().catch(() => {}); }, []);
 
   const open = (u: User) => { setSession(u.id); location.reload(); };
+
+  /** Demande un lien de réinitialisation par email (serveur public.php à côté de sync.php). */
+  const requestReset = async () => {
+    setFMsg(''); setFErr(''); setFBusy(true);
+    try {
+      const url = serverScript('public.php');
+      if (!url) {
+        setFErr('Pas de serveur FabEvent sur cet appareil : demande à un administrateur de redéfinir ton mot de passe (Paramètres → Utilisateurs → « Mot de passe… »).');
+        return;
+      }
+      let r: Response;
+      try {
+        r = await fetch(url + '?action=reset_request', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: fEmail }) });
+      } catch {
+        setFErr('Serveur injoignable (hors ligne ?). Réessaie plus tard, ou demande à un administrateur de redéfinir ton mot de passe.');
+        return;
+      }
+      const j = await r.json().catch(() => ({} as Record<string, unknown>));
+      if (r.ok && j.ok) setFMsg('Si un compte existe avec cet email, un lien de réinitialisation vient d’être envoyé (valable 2 h, une seule fois). Pense aux spams.');
+      else if (j.error === 'mail_failed') setFErr('Le serveur n’a pas pu envoyer l’email (' + String(j.detail || 'envoi indisponible') + '). Contacte ton administrateur.');
+      else setFErr('Demande impossible pour l’instant (' + String(j.detail || j.error || r.status) + ').');
+    } finally { setFBusy(false); }
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -84,6 +118,23 @@ export function Login() {
             <button type="submit" disabled={busy}>{busy ? '…' : mfaUser ? 'Vérifier le code' : any ? 'Se connecter' : 'Créer le compte administrateur'}</button>
             {mfaUser && <button type="button" className="secondary" onClick={() => { setMfaUser(null); setCode(''); setErr(''); }}>Retour</button>}
           </div>
+          {any && !mfaUser && !forgot && (
+            <p style={{ textAlign: 'center', margin: '12px 0 0' }}>
+              <button type="button" className="secondary small" title="Un lien de réinitialisation (valable 2 h) est envoyé par email si un serveur FabEvent est configuré" onClick={() => { setForgot(true); setFEmail(email); setFMsg(''); setFErr(''); }}>Mot de passe oublié ?</button>
+            </p>
+          )}
+          {any && !mfaUser && forgot && (
+            <div className="info" style={{ marginTop: 12 }}>
+              <p className="muted" style={{ margin: '0 0 8px' }}>Indique l’email de ton compte : un lien de réinitialisation (valable 2 h, une seule fois) est envoyé par le serveur FabEvent, s’il est configuré.</p>
+              <Field label="Email du compte" full><input type="email" required value={fEmail} onChange={(e) => setFEmail(e.target.value)} aria-label="Email du compte pour la réinitialisation" /></Field>
+              {fMsg && <p className="avail ok" style={{ margin: '8px 0' }}>{fMsg}</p>}
+              {fErr && <p className="avail ko" style={{ margin: '8px 0' }}>{fErr}</p>}
+              <div className="form-actions">
+                <button type="button" disabled={fBusy} onClick={requestReset}>{fBusy ? '…' : 'Envoyer le lien de réinitialisation'}</button>
+                <button type="button" className="secondary" onClick={() => setForgot(false)}>Retour</button>
+              </div>
+            </div>
+          )}
           {any && !mfaUser && oauthAvailable() && (
             <>
               <div className="muted" style={{ textAlign: 'center', margin: '10px 0 4px', fontSize: 11 }}>ou</div>

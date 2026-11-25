@@ -7,6 +7,8 @@
  *   ?s=<clé>     formulaire d'inscription : un technicien s'ajoute à ta base (fiche « à valider » dans FabEvent)
  *   ?m=<jeton>   « ma fiche » : un technicien déjà dans ta base met à jour ses coordonnées (modifs « à relire » dans FabEvent)
  *   ?d=<jeton>   devis : le client accepte / refuse en ligne (statut « accepté » = projet confirmé)
+ *   ?pw=<jeton>  mot de passe oublié : formulaire de nouveau mot de passe (jeton à usage unique, 2 h,
+ *                envoyé par email via POST ?action=reset_request {email} — même config mail que mail.php)
  *
  * Les réponses sont enregistrées dans la base de synchronisation : elles arrivent dans FabEvent toutes seules.
  */
@@ -71,8 +73,150 @@ function put_row(PDO $db, string $space, string $tbl, string $id, array $data): 
     $db->prepare('INSERT OR REPLACE INTO changes (space, tbl, id, data, u, who) VALUES (?, ?, ?, ?, ?, ?)')
         ->execute([$space, $tbl, $id, json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $u, 'public']);
 }
+
+/* ---------- mot de passe oublié : jetons + envoi d'email (même config que mail.php) ---------- */
+$db->exec('CREATE TABLE IF NOT EXISTS reset_tokens (token TEXT PRIMARY KEY, space TEXT NOT NULL, user_id TEXT NOT NULL, email TEXT NOT NULL, created TEXT NOT NULL, used INTEGER NOT NULL DEFAULT 0)');
+
+function mail_cfg(): array {
+    $f = getenv('FABEVENT_MAIL_CONFIG') ?: __DIR__ . '/mail-config.php';
+    $c = is_file($f) ? (require $f) : [];
+    return is_array($c) ? $c : [];
+}
+function smtp_send(array $s, string $from, array $rcpt, string $data): void {
+    $host = (string)$s['host']; $port = (int)($s['port'] ?? 587); $secure = (string)($s['secure'] ?? ($port === 465 ? 'ssl' : 'tls'));
+    $ctx = stream_context_create(['ssl' => ['verify_peer' => true, 'verify_peer_name' => true]]);
+    $fp = @stream_socket_client(($secure === 'ssl' ? 'ssl://' : 'tcp://') . "$host:$port", $errno, $err, 20, STREAM_CLIENT_CONNECT, $ctx);
+    if (!$fp) throw new RuntimeException("Connexion SMTP impossible ($err)");
+    stream_set_timeout($fp, 30);
+    $read = function () use ($fp): string { $r = ''; while (($l = fgets($fp, 1024)) !== false) { $r .= $l; if (strlen($l) < 4 || $l[3] === ' ') break; } return $r; };
+    $cmd = function (string $c, array $ok) use ($fp, $read): string {
+        if ($c !== '') fwrite($fp, $c . "\r\n");
+        $r = $read();
+        if (!in_array((int)substr($r, 0, 3), $ok, true)) throw new RuntimeException('SMTP : ' . trim(preg_replace('/\s+/', ' ', $r)));
+        return $r;
+    };
+    $cmd('', [220]);
+    $ehlo = 'EHLO ' . (gethostname() ?: 'localhost');
+    $cmd($ehlo, [250]);
+    if ($secure === 'tls') {
+        $cmd('STARTTLS', [220]);
+        if (!stream_socket_enable_crypto($fp, true, STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT | STREAM_CRYPTO_METHOD_TLSv1_3_CLIENT)) throw new RuntimeException('STARTTLS refusé');
+        $cmd($ehlo, [250]);
+    }
+    if (!empty($s['user'])) {
+        $cmd('AUTH LOGIN', [334]);
+        $cmd(base64_encode((string)$s['user']), [334]);
+        $cmd(base64_encode((string)($s['pass'] ?? '')), [235]);
+    }
+    $cmd("MAIL FROM:<$from>", [250]);
+    foreach ($rcpt as $r) $cmd("RCPT TO:<$r>", [250, 251]);
+    $cmd('DATA', [354]);
+    fwrite($fp, preg_replace('/^\./m', '..', $data) . "\r\n.\r\n");
+    $cmd('', [250]);
+    @fwrite($fp, "QUIT\r\n");
+    fclose($fp);
+}
+/** Envoie un email texte simple ; ['ok'=>true] ou ['ok'=>false,'error'=>…]. */
+function send_mail_simple(string $to, string $subject, string $text): array {
+    $cfg = mail_cfg();
+    $host = preg_replace('/[^a-z0-9.-]/i', '', (string)($_SERVER['HTTP_HOST'] ?? 'localhost'));
+    $from = (string)($cfg['from'] ?? ('noreply@' . preg_replace('/^www\./', '', explode(':', $host)[0])));
+    $fromName = (string)($cfg['fromName'] ?? 'FabEvent');
+    $outbox = getenv('FABEVENT_MAIL_OUTBOX') ?: ($cfg['outbox'] ?? '');
+    $hdr = fn(string $s) => preg_match('/^[\x20-\x7e]*$/', $s) ? $s : '=?UTF-8?B?' . base64_encode($s) . '?=';
+
+    $headers = "From: " . $hdr($fromName) . " <$from>\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\nX-Mailer: FabEvent";
+    $body = chunk_split(base64_encode(str_replace(["\r\n", "\r"], "\n", $text)));
+    try {
+        if ($outbox) {
+            if (!is_dir($outbox)) @mkdir($outbox, 0700, true);
+            $eml = "To: $to\r\nSubject: " . $hdr($subject) . "\r\n" . $headers . "\r\n\r\n" . $body;
+            if (@file_put_contents($outbox . '/' . gmdate('Ymd-His') . '-' . bin2hex(random_bytes(4)) . '.eml', $eml) === false) return ['ok' => false, 'error' => 'outbox'];
+            return ['ok' => true];
+        }
+        if (!empty($cfg['smtp']['host'])) {
+            smtp_send($cfg['smtp'], $from, [$to], "To: $to\r\nSubject: " . $hdr($subject) . "\r\n" . $headers . "\r\n\r\n" . $body);
+            return ['ok' => true];
+        }
+        if (!@mail($to, $hdr($subject), $body, $headers, '-f' . $from)) return ['ok' => false, 'error' => "la fonction mail() de l'hébergement a refusé l'envoi"];
+        return ['ok' => true];
+    } catch (Throwable $e) {
+        return ['ok' => false, 'error' => $e->getMessage()];
+    }
+}
 $post = $_SERVER['REQUEST_METHOD'] === 'POST';
 $self = h(strtok((string)($_SERVER['REQUEST_URI'] ?? ''), '#'));
+
+/* ================= mot de passe oublié ================= */
+// POST ?action=reset_request {email} : si un compte actif a cet email, un lien ?pw=… est envoyé par email.
+// Réponse identique qu'il existe ou non (on ne révèle pas les emails enregistrés).
+if (($_GET['action'] ?? '') === 'reset_request' && $post) {
+    header('Content-Type: application/json; charset=utf-8');
+    $raw = (string)file_get_contents('php://input');
+    $b = json_decode($raw, true);
+    $email = strtolower(trim((string)(is_array($b) ? ($b['email'] ?? '') : ($_POST['email'] ?? ''))));
+    $out = ['ok' => true];
+    if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $q = $db->prepare("SELECT space, id, data FROM changes WHERE tbl = 'users' AND data LIKE ? ORDER BY seq DESC LIMIT 20");
+        $q->execute(['%"email":"' . $email . '"%']);
+        $found = null;
+        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $d = json_decode((string)$r['data'], true);
+            if (is_array($d) && strtolower((string)($d['email'] ?? '')) === $email && !empty($d['active']) && !empty($d['passHash'])) { $found = ['space' => $r['space'], 'id' => $r['id'], 'data' => $d]; break; }
+        }
+        if ($found) {
+            $db->exec("DELETE FROM reset_tokens WHERE used = 1 OR created < '" . gmdate('Y-m-d\TH:i:s', time() - 7200) . "'");
+            $tok = bin2hex(random_bytes(24));
+            $db->prepare('INSERT INTO reset_tokens (token, space, user_id, email, created, used) VALUES (?, ?, ?, ?, ?, 0)')
+                ->execute([$tok, $found['space'], $found['id'], $email, now_u()]);
+            $host = (string)($_SERVER['HTTP_HOST'] ?? 'localhost');
+            $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+            $base = $scheme . '://' . $host . strtok((string)($_SERVER['REQUEST_URI'] ?? ''), '?');
+            $link = $base . '?pw=' . $tok;
+            $name = trim((string)($found['data']['name'] ?? ''));
+            $text = "Bonjour" . ($name !== '' ? " $name" : '') . ",\n\nTu as demandé à réinitialiser le mot de passe de ton compte FabEvent ($email).\nOuvre ce lien dans les 2 heures (il ne sert qu'une seule fois) :\n$link\n\nSi tu n'es pas à l'origine de cette demande, ignore ce message : ton mot de passe ne change pas.\n\nFabEvent";
+            $r = send_mail_simple($email, 'FabEvent — réinitialisation de ton mot de passe', $text);
+            if (!$r['ok']) $out = ['ok' => false, 'error' => 'mail_failed', 'detail' => (string)($r['error'] ?? '')];
+        }
+    }
+    echo json_encode($out, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+// GET ?pw=<jeton> : formulaire de nouveau mot de passe (POST action=reset_do sur la même URL)
+if (isset($_GET['pw'])) {
+    $tok = (string)$_GET['pw'];
+    if (!preg_match('/^[A-Za-z0-9]{20,64}$/', $tok)) page('Lien invalide', '<h1>Lien invalide</h1><p class="m">Vérifie que le lien est complet.</p>', 404);
+    $q = $db->prepare('SELECT * FROM reset_tokens WHERE token = ?');
+    $q->execute([$tok]);
+    $t = $q->fetch(PDO::FETCH_ASSOC);
+    if (!$t || (int)$t['used'] === 1 || strtotime((string)$t['created']) < time() - 7200)
+        page('Lien expiré', '<h1>Lien expiré ou déjà utilisé</h1><p class="m">Demande un nouveau lien de réinitialisation depuis l\'écran de connexion de FabEvent.</p>', 404);
+    if ($post && ($_POST['action'] ?? '') === 'reset_do') {
+        $p1 = (string)($_POST['pass'] ?? '');
+        $p2 = (string)($_POST['pass2'] ?? '');
+        if (strlen($p1) < 6 || strlen($p1) > 72) page('Mot de passe', '<h1>Mot de passe</h1><div class="c"><div class="msg ko">6 à 72 caractères, s\'il te plaît.</div></div>');
+        if ($p1 !== $p2) page('Mot de passe', '<h1>Mot de passe</h1><div class="c"><div class="msg ko">Les deux mots de passe ne correspondent pas.</div></div>');
+        $q = $db->prepare("SELECT data FROM changes WHERE tbl = 'users' AND space = ? AND id = ?");
+        $q->execute([(string)$t['space'], (string)$t['user_id']]);
+        $row = $q->fetch(PDO::FETCH_ASSOC);
+        $u = $row ? json_decode((string)$row['data'], true) : null;
+        if (!is_array($u)) page('Compte introuvable', '<h1>Compte introuvable</h1><p class="m">Ce compte n\'existe plus. Contacte un administrateur.</p>', 404);
+        // même hachage que l'application : SHA-256 de « sel:motdepasse »
+        $salt = bin2hex(random_bytes(16));
+        $u['salt'] = $salt;
+        $u['passHash'] = hash('sha256', $salt . ':' . $p1);
+        put_row($db, (string)$t['space'], 'users', (string)$t['user_id'], $u);
+        $db->prepare('UPDATE reset_tokens SET used = 1 WHERE token = ?')->execute([$tok]);
+        page('Mot de passe changé', '<h1>' . ICO_CHECK . 'Mot de passe changé</h1><div class="c"><div class="msg ok">Ton nouveau mot de passe est enregistré ; il arrive sur tes autres appareils à la prochaine synchronisation.</div>'
+            . '<p class="m">Connecte-toi dans FabEvent avec ce nouveau mot de passe' . (!empty($u['totpOn']) ? ' (le code de ton application d\'authentification sera aussi demandé)' : '') . '.</p></div>');
+    }
+    page('Nouveau mot de passe', '<h1>Nouveau mot de passe</h1><div class="c"><form method="post" action="' . $self . '">'
+        . '<input type="hidden" name="action" value="reset_do">'
+        . '<label for="p1">Nouveau mot de passe (6 caractères min.)</label><input id="p1" name="pass" type="password" minlength="6" maxlength="72" required autocomplete="new-password">'
+        . '<label for="p2">Répéter le mot de passe</label><input id="p2" name="pass2" type="password" minlength="6" maxlength="72" required autocomplete="new-password">'
+        . '<button>Enregistrer le nouveau mot de passe</button></form></div>'
+        . '<p class="m">Ce lien est valable 2 heures et ne sert qu\'une fois. Compte concerné : ' . h((string)$t['email']) . '.</p>');
+}
 
 /* ================= demande de disponibilité ================= */
 if (isset($_GET['r'])) {
