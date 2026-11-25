@@ -28,8 +28,12 @@ export async function mailServer(force = false): Promise<MailServer> {
   let v: MailServer;
   try {
     const r = await fetch(url + '?action=status', { credentials: 'include', cache: 'no-store' });
-    const j = await r.json().catch(() => ({}));
-    v = r.ok && j.ok ? { ok: true, mode: j.mode, from: j.from } : { ok: false, error: r.status === 401 ? 'Connecte-toi aux pages internes pour envoyer.' : j.detail || 'Envoi indisponible sur le serveur.' };
+    if ((r.headers.get('content-type') || '').includes('text/html')) {
+      v = { ok: false, error: 'API mail non atteinte (la page de l’application est renvoyée) : déposer le dossier api/ à côté de l’application (ex. /fabevent/api/mail.php) — voir docs/deploiement-fabri.md' };
+    } else {
+      const j = await r.json().catch(() => ({}));
+      v = r.ok && j.ok ? { ok: true, mode: j.mode, from: j.from } : { ok: false, error: r.status === 401 ? 'Connecte-toi aux pages internes pour envoyer.' : j.detail || 'Envoi indisponible sur le serveur.' };
+    }
   } catch {
     v = { ok: false, error: 'Serveur injoignable (hors ligne ?).' };
   }
