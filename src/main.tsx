@@ -38,15 +38,18 @@ setNumberProvider(serverNumber);
 startSync();
 (window.requestIdleCallback || ((f: () => void) => setTimeout(f, 1500)))(() => warmUpScanner());
 
-// Téléphone : les tableaux « cards-sm » deviennent des fiches ; chaque case reçoit le titre de sa colonne
+// Téléphone : tous les tableaux « list » deviennent des fiches (cards-sm) ; chaque case reçoit le titre de sa colonne
+// (les documents .doc et les aperçus d'étiquettes .lab restent de vrais tableaux, y compris en impression)
 let labelling = 0;
 new MutationObserver(() => {
   if (labelling) return;
   labelling = requestAnimationFrame(() => {
     labelling = 0;
-    for (const t of document.querySelectorAll<HTMLTableElement>('table.cards-sm')) {
+    for (const t of document.querySelectorAll<HTMLTableElement>('table.list')) {
+      if (t.closest('.doc') || t.closest('.lab') || t.closest('.pdf-root')) continue;
+      if (!t.querySelector('thead th')) continue;
+      t.classList.add('cards-sm');
       const heads = Array.from(t.querySelectorAll('thead th')).map((th) => th.textContent?.trim() || '');
-      if (!heads.length) continue;
       for (const tr of t.querySelectorAll('tbody tr')) {
         let i = 0;
         for (const td of Array.from(tr.children) as HTMLElement[]) {

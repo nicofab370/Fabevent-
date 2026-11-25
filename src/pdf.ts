@@ -15,7 +15,7 @@ export async function htmlToPdf(html: string, css: string): Promise<Blob> {
   const host = document.createElement('div');
   host.setAttribute('aria-hidden', 'true');
   host.style.cssText = `position:fixed;left:-10000px;top:0;width:${A4_WIDTH_PX}px;background:#fff;color:#111;z-index:-1`;
-  host.innerHTML = `<style>${css}</style><div class="pdf-root">${html}</div>`;
+  host.innerHTML = `<style>${css}</style><style>.pdf-root .doc{width:${A4_WIDTH_PX}px;max-width:none}</style><div class="pdf-root">${html}</div>`;
   document.body.appendChild(host);
   try {
     const root = host.querySelector('.pdf-root') as HTMLElement;
