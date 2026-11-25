@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from './db';
-import type { Role, User } from './types';
+import type { OAuthProvider, Role, User } from './types';
 import { uid } from './utils';
 
 const SESS = 'fab.session';
@@ -50,3 +50,27 @@ export function hasUsers(): boolean | undefined {
 }
 
 /* ---------- permissions par rôle : voir src/roles.ts ---------- */
+
+export async function findUserByEmail(email: string): Promise<User | undefined> {
+  return db.users.where({ email: email.trim().toLowerCase() }).first();
+}
+
+/**
+ * Connexion externe (Google / Microsoft / Apple) : le serveur a vérifié l'identité du fournisseur
+ * et renvoie un profil (email vérifié). On rattache à un compte existant par email ;
+ * sinon on crée un compte désactivé (un administrateur devra l'activer et lui donner un rôle).
+ */
+export async function linkOAuth(email: string, provider: OAuthProvider, sub: string, name?: string): Promise<User> {
+  const mail = email.trim().toLowerCase();
+  if (!mail) throw new Error('Le fournisseur n\'a pas renvoyé d\'adresse email vérifiée.');
+  const now = new Date().toISOString();
+  let u = await findUserByEmail(mail);
+  if (!u) {
+    u = { id: uid(), createdAt: now, updatedAt: now, name: (name || mail).trim(), email: mail, salt: '', passHash: '', role: 'subcontractor', active: false, oauth: [{ provider, sub }] };
+    await db.users.put(u);
+    return u;
+  }
+  const oauth = [...(u.oauth || []).filter((o) => !(o.provider === provider && o.sub === sub)), { provider, sub }];
+  await db.users.update(u.id, { oauth, updatedAt: now });
+  return { ...u, oauth };
+}

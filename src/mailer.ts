@@ -11,7 +11,7 @@ import { uid } from './utils';
  */
 
 /** Adresse d'un script serveur à côté de sync.php (vide sans serveur). */
-export function serverScript(name: 'mail.php' | 'public.php'): string {
+export function serverScript(name: 'mail.php' | 'public.php' | 'oauth.php'): string {
   const s = syncUrl();
   if (!s) return '';
   try { const u = new URL(s, location.href); u.pathname = u.pathname.replace(/[^/]*$/, name); u.search = ''; return u.href; } catch { return ''; }

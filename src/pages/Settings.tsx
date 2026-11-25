@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Field, NumInput, PageHead, useSettings } from '../components/ui';
+import { Field, Modal, NumInput, PageHead, useSettings } from '../components/ui';
 import { currentWorkspace, db, DEFAULT_PROJECT_TYPES, deleteWorkspace, listWorkspaces, switchWorkspace, TABLES } from '../db';
 import { DEMO_WORKSPACE, seedDemo } from '../demo';
 import type { InvoiceMoment, Settings } from '../types';
@@ -13,7 +13,9 @@ import { canManageUsers } from '../roles';
 import { ROLE_LABELS, type Role } from '../types';
 import { cleanLetter, depotLetter } from '../codegen';
 import { settingsMoments } from '../invoicing';
-import { DEFAULT_VAT_MENTIONS } from '../payment';
+import { DEFAULT_VAT_MENTIONS, qrSvg } from '../payment';
+import { newTotpSecret, otpauthUri, verifyTotp } from '../totp';
+import type { User } from '../types';
 import { download, uid, money } from '../utils';
 import { Icon } from '../components/Icon';
 
@@ -361,6 +363,7 @@ function UsersCard() {
   const [role, setRole] = useState<Role>('warehouse');
   const [personId, setPersonId] = useState('');
   const [msg, setMsg] = useState('');
+  const [mfa, setMfa] = useState<{ user: User; secret: string; code: string; err: string } | null>(null);
   if (!canManageUsers(me)) return null;
   const pMap = new Map(people.map((p) => [p.id, p]));
   const add = async (e: React.FormEvent) => {
@@ -388,6 +391,7 @@ function UsersCard() {
               <td><strong>{u.name}</strong>{u.id === me?.id && <span className="muted"> (toi)</span>}<div className="muted">{u.email}</div></td>
               <td>{ROLE_LABELS[u.role].split(' (')[0]}{u.role === 'subcontractor' && u.personId && <div className="muted">{pMap.get(u.personId)?.name}</div>}{!u.active && <span className="badge st-annule" style={{ marginLeft: 6 }}>désactivé</span>}</td>
               <td style={{ whiteSpace: 'nowrap' }}>
+                <button className="secondary small" onClick={() => setMfa({ user: u, secret: u.totpSecret || '', code: '', err: '' })} title="Double authentification (TOTP)">{u.totpOn ? 'MFA…' : 'Activer MFA'}</button>{' '}
                 {u.id !== me?.id && (
                   <>
                     <button className="secondary small" onClick={() => db.users.update(u.id, { active: !u.active, updatedAt: new Date().toISOString() })}>{u.active ? 'Désactiver' : 'Réactiver'}</button>{' '}
@@ -420,6 +424,56 @@ function UsersCard() {
         </div>
         {msg && <p className="avail ok field full" style={{ margin: 0 }}>{msg}</p>}
       </form>
+      {mfa && (
+        <Modal title={`MFA (double authentification) — ${mfa.user.name}`} onClose={() => setMfa(null)}>
+          {mfa.user.totpOn && !mfa.secret ? (
+            <div className="form">
+              <p className="muted">MFA active : à chaque connexion, un code à 6 chiffres est demandé après le mot de passe.</p>
+              <div className="form-actions">
+                <button type="button" className="secondary" onClick={async () => {
+                  if (!confirm(`Réinitialiser le MFA de ${mfa.user.name} ? L'ancien code ne fonctionnera plus.`)) return;
+                  const secret = newTotpSecret();
+                  await db.users.update(mfa.user.id, { totpSecret: secret, updatedAt: new Date().toISOString() });
+                  setMfa({ ...mfa, secret });
+                }}>Réinitialiser</button>
+                <button type="button" className="danger" onClick={async () => {
+                  if (!confirm(`Désactiver le MFA de ${mfa.user.name} ?`)) return;
+                  await db.users.update(mfa.user.id, { totpSecret: undefined, totpOn: undefined, updatedAt: new Date().toISOString() });
+                  setMfa(null);
+                }}>Désactiver</button>
+                <button type="button" className="secondary" onClick={() => setMfa(null)}>Fermer</button>
+              </div>
+            </div>
+          ) : (
+            <form className="form" onSubmit={async (e) => {
+              e.preventDefault();
+              const err = await (async () => {
+                if (!mfa.secret) return 'Génère d’abord un secret.';
+                if (!(await verifyTotp(mfa.secret, mfa.code))) return 'Code incorrect.';
+                await db.users.update(mfa.user.id, { totpSecret: mfa.secret, totpOn: true, updatedAt: new Date().toISOString() });
+                return '';
+              })();
+              if (err) setMfa({ ...mfa, err });
+              else setMfa(null);
+            }}>
+              <p className="muted">Scanne ce QR code avec ton application d’authentification (Google Authenticator, Microsoft Authenticator, Authy…), puis entre le code affiché pour activer.</p>
+              {!mfa.secret && <button type="button" className="secondary" onClick={() => setMfa({ ...mfa, secret: newTotpSecret() })}>Générer un secret</button>}
+              {mfa.secret && (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0' }} dangerouslySetInnerHTML={{ __html: qrSvg(otpauthUri('FabEvent', mfa.user.email, mfa.secret), 150) }} />
+                  <p className="muted" style={{ textAlign: 'center' }}>Secret manuel : <code className="mfa-secret">{mfa.secret}</code></p>
+                  <Field label="Code à 6 chiffres" full><input inputMode="numeric" pattern="[0-9]{6}" maxLength={6} required value={mfa.code} onChange={(e) => setMfa({ ...mfa, code: e.target.value, err: '' })} aria-label="Code de confirmation MFA" /></Field>
+                </>
+              )}
+              {mfa.err && <p className="avail ko field full" style={{ margin: 0 }}>{mfa.err}</p>}
+              <div className="form-actions">
+                <button type="button" className="secondary" onClick={() => setMfa(null)}>Annuler</button>
+                {mfa.secret && <button type="submit">Activer le MFA</button>}
+              </div>
+            </form>
+          )}
+        </Modal>
+      )}
     </div>
   );
 }
