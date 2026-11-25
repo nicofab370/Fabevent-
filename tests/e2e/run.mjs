@@ -2979,6 +2979,36 @@ await step('Mot de passe oublié : demande de lien depuis l’écran de connexio
   await page.evaluate(() => { try { localStorage.removeItem('fab.sync.url'); } catch {} });
 });
 
+await step('Diagnostic : API qui renvoie la page HTML de l’app → message explicite', async () => {
+  // reconnexion admin (MFA actif sur nico@fab.be), puis base non-démo (la démo ne se synchronise jamais)
+  await page.waitForSelector('.login-card');
+  await page.locator('input[aria-label="Email"]').fill('nico@fab.be');
+  await page.locator('input[aria-label="Mot de passe"]').fill('secret1');
+  await page.click('button:text-is("Se connecter")');
+  await page.waitForSelector('input[aria-label="Code MFA à 6 chiffres"]');
+  const secret = await page.evaluate(() => new Promise((res) => {
+    const rq = indexedDB.open('fabevent_' + (localStorage.getItem('fabevent.workspace') || 'principal'));
+    rq.onsuccess = () => { const d = rq.result; try { const tx = d.transaction('users', 'readonly'); const q = tx.objectStore('users').getAll(); q.onsuccess = () => res((q.result.find((u) => u.email === 'nico@fab.be') || {}).totpSecret || ''); q.onerror = () => res(''); } catch { res(''); } };
+    rq.onerror = () => res('');
+  }));
+  await page.locator('input[aria-label="Code MFA à 6 chiffres"]').fill(totp(secret));
+  await page.click('button:text-is("Vérifier le code")');
+  await page.waitForSelector('.sidebar nav');
+  const ws0 = await page.evaluate(() => localStorage.getItem('fabevent.workspace') || 'demo');
+  await page.evaluate(() => { try { localStorage.setItem('fabevent.workspace', 'principal'); localStorage.setItem('fab.sync.url', 'http://localhost:9999/api/sync.php'); } catch {} });
+  await page.goto(U);
+  await page.waitForSelector('.sidebar nav');
+  // API stubbée en HTML (cas réécriture SPA : api/ absent) → diagnostic attendu
+  await ctx.route('**/api/sync.php**', (route) => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>FabEvent</title><p>app</p>' }));
+  await go('parametres');
+  await page.click('button:text-is("Synchroniser maintenant")');
+  await page.waitForSelector('.avail.ko:has-text("API non atteinte")', { timeout: 15000 });
+  const msg = await page.locator('.avail.ko').first().innerText();
+  expect(msg.includes('api/'), `diagnostic affiché (${msg.slice(0, 140)})`);
+  await ctx.unroute('**/api/sync.php**');
+  await page.evaluate((w) => { try { localStorage.setItem('fabevent.workspace', w); localStorage.removeItem('fab.sync.url'); } catch {} }, ws0);
+});
+
 await ctx.close();
 
 await step('Aucune erreur dans la console du navigateur', async () => {

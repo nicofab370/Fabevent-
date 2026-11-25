@@ -59,6 +59,7 @@ https://fabri.live/fabevent/api/sync.php?action=ping   → {"ok":true,"user":"�
 https://fabri.live/fabevent/api/mail.php?action=status  → {"ok":true,"mode":"smtp|mail|outbox","from":"…"}
 ```
 
+- **L'URL de l'API renvoie la page HTML de FabEvent** (et pas du JSON) : c'est la réécriture SPA qui répond — le dossier `api/` n'est pas à côté de l'application (ex. `/fabevent/api/`). FabEvent affiche ce diagnostic (« API non atteinte… ») dans Paramètres → Synchronisation.
 - **404** : le dossier `fabevent/api/` n'est pas (ou plus) déposé — reprendre le paquet de l'onglet Actions.
 - **503 « auth_lib » / « Service indisponible »** : le chemin `../../interne/_lib/auth.php` en tête des scripts est faux (ou définis la variable d'environnement `FABEVENT_AUTH` vers la bonne bibliothèque).
 - **401** : le navigateur n'est pas connecté aux pages internes FABRI.live — se connecter d'abord, puis rouvrir FabEvent.

@@ -83,6 +83,9 @@ async function call(action: string, body?: unknown, params: Record<string, strin
     headers: body ? { 'Content-Type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined,
   });
   if (r.status === 401) throw Object.assign(new Error('Connexion requise'), { auth: true });
+  // le serveur renvoie la page de l'app (réécriture SPA) : l'API n'est pas au bon endroit
+  if ((r.headers.get('content-type') || '').includes('text/html'))
+    throw Object.assign(new Error('API non atteinte (la page de l’application est renvoyée) : déposer le dossier api/ à côté de l’application (ex. /fabevent/api/) — voir docs/deploiement-fabri.md'), { api: true });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || `Erreur ${r.status}`);
   return j;
