@@ -865,3 +865,9 @@ table.list tr.limiting td:first-child, table.list tr.kit-child.limiting td:nth-c
   .swatch { width: 40px; height: 40px; min-height: 40px; }
   .tag button, .badge button, .rcpt button { min-height: 40px; min-width: 40px; }
 }
+
+/* lignes enfants d'un kit / d'un article : indentation avec liseré */
+.eq-table tr.kid td.eq-name { box-shadow: inset 3px 0 0 var(--accent); }
+.cl-line.kid { padding-left: 24px; }
+.doc tr.kid td { color: inherit; }
+.doc td.kid { box-shadow: inset 3px 0 0 var(--accent2, var(--accent)); }

@@ -2514,6 +2514,25 @@ await step('Projet : contenu du kit affiché sous la ligne (lignes enfants)', as
   expect((await next.innerText()).includes('PAR LED'), 'ligne enfant du kit affichée juste sous le kit');
 });
 
+await step('Enfants de kit indentés (classe kid) : onglet Équipement, devis, checklist sortie', async () => {
+  await openProject('Conférence annuelle');
+  await tab('Équipement');
+  expect((await page.locator('.eq-table tr.kid', { hasText: 'PAR LED' }).count()) >= 1, 'ligne enfant indentée dans l’onglet Équipement');
+  // devis : enfant du kit en retrait, prix « inclus », pas en double dans le total
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Devis")');
+  await page.waitForSelector('.doc');
+  const kidRow = page.locator('.doc tr.kid', { hasText: 'PAR LED' }).first();
+  await kidRow.waitFor();
+  expect((await kidRow.innerText()).includes('inclus'), 'prix du contenu du kit affiché « inclus » dans le devis');
+  // checklist de sortie du sous-projet : enfants du kit indentés
+  await openProject('Conférence annuelle');
+  await tab('Équipement');
+  await page.locator('button:has-text("Préparer / scanner")').first().click();
+  await page.waitForSelector('.checklist-scan');
+  expect((await page.locator('.cl-line.kid', { hasText: 'PAR LED' }).count()) >= 1, 'ligne enfant indentée dans la checklist de sortie');
+});
+
 await step('Projet : fiche de ligne — accessoires facultatifs à cocher/décocher, contenu du kit', async () => {
   await openProject('Festival des Lumières');
   await tab('Équipement');

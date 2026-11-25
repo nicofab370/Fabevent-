@@ -200,11 +200,11 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
                         const avail = eq && !eq.accessoryOnly ? availableQty(eq, av.equipment, av.res, b0, b1, l.id, d.depot) : null;
                         const perPiece = isPerPiece(l, eqMap);
                         return (
-                          <tr key={l.id} style={l.optional ? { opacity: 0.6 } : undefined} draggable={!l.parentLineId}
+                          <tr key={l.id} className={l.parentLineId ? 'kid' : ''} style={l.optional ? { opacity: 0.6 } : undefined} draggable={!l.parentLineId}
                             onDragStart={(e) => { e.dataTransfer.setData(LINE_MIME, l.id); e.dataTransfer.effectAllowed = 'move'; }}>
                             <td className="drag-handle" title={l.parentLineId ? 'Accessoire : suit son article' : 'Glisser vers un autre groupe ou sous-projet'}>{l.parentLineId ? '' : '⠿'}</td>
                             <td><NumInput className="w-qty" step="1" min={0} value={l.qty} onChange={(n) => updLine(l, { qty: n })} /></td>
-                            <td style={l.parentLineId ? { paddingLeft: 24 } : undefined}>
+                            <td className="eq-name" style={l.parentLineId ? { paddingLeft: 28 } : undefined}>
                               {l.parentLineId && <Icon name="corner" className="muted" />}
                               {eq ? <Link to={'/materiel/' + eq.id}>{l.name}</Link> : <input value={l.name} onChange={(e) => updLine(l, { name: e.target.value })} />}
                               {eq?.code && <span className="muted eq-code"> {eq.code}</span>}
