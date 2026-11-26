@@ -43,6 +43,7 @@ async function call(action: string, body?: Record<string, unknown>): Promise<Rec
   if (e === 'too_many') throw fail('too_many', 'Trop d’essais : réessaie dans 15 minutes.');
   if (e === 'setup_code') throw fail('setup_code', 'Code d’installation incorrect.');
   if (e === 'exists') throw fail('exists', 'Cette base a déjà un compte sur le serveur : connecte-toi avec lui.');
+  if (e === 'no_account' || e === 'bad_password') throw fail('server', String(j.detail));
   throw fail('server', String(j.detail || e || `Erreur du serveur (${r.status})`));
 }
 
@@ -68,6 +69,12 @@ export async function serverLogin(email: string, password: string, code?: string
 export async function serverSetup(user: User, code?: string): Promise<User> {
   const j = await call('setup', { user, code: code || undefined });
   return keep(j.user as User);
+}
+
+/** Mot de passe oublié sans email : nouveau mot de passe avec le code d'installation (fabevent-config.php, lu par FTP). */
+export async function serverRecover(email: string, code: string, password: string): Promise<number> {
+  const j = await call('recover', { email, code, password });
+  return Number(j.accounts || 0);
 }
 
 export async function serverLogout() {

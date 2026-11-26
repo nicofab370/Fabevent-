@@ -6,6 +6,7 @@
  *   POST ?action=login  {ws, email, password, code?} → session ouverte (cookie) + compte {user}
  *                                                    401 {error:'bad'} · 401 {error:'mfa'} (code MFA demandé) · 429 trop d'essais
  *   POST ?action=setup  {ws, user, code?}           → premier compte administrateur d'une base qui n'en a pas sur le serveur
+ *   POST ?action=recover {email, code, password}   → nouveau mot de passe sans email, avec le code d'installation
  *   POST ?action=logout {ws}
  *
  * Aucune dépendance aux pages internes du site : voir _fabevent.php.
@@ -87,6 +88,17 @@ if ($action === 'setup' && $post) {
     if ($mode === 'code') @unlink(data_dir() . '/code-installation.txt'); // usage unique (un code de fabevent-config.php est à retirer ensuite)
     fe_open_session($ws, $u);
     fe_json(200, ['ok' => true, 'user' => $u]);
+}
+
+// mot de passe oublié SANS email : avec le code d'installation (que seul le propriétaire lit par FTP)
+if ($action === 'recover' && $post) {
+    if (fe_too_many_fails()) fe_json(429, ['error' => 'too_many', 'detail' => 'Trop d\'essais : réessaie dans 15 minutes.']);
+    if (!hash_equals(fe_setup_code(), strtoupper(trim((string)($b['code'] ?? ''))))) { fe_fail(); fe_json(401, ['error' => 'setup_code']); }
+    $pass = (string)($b['password'] ?? '');
+    if (strlen($pass) < 6 || strlen($pass) > 72) fe_json(400, ['error' => 'bad_password', 'detail' => 'Mot de passe : 6 à 72 caractères.']);
+    $n = fe_set_password((string)($b['email'] ?? ''), $pass);
+    if (!$n) { fe_fail(); fe_json(404, ['error' => 'no_account', 'detail' => 'Aucun compte actif avec cet email sur le serveur.']); }
+    fe_json(200, ['ok' => true, 'accounts' => $n]);
 }
 
 if ($action === 'logout' && $post) {

@@ -2313,9 +2313,10 @@ if (hasPhp) {
   mkdirSync(join(root, 'api'));
   for (const f of ['_fabevent.php', 'auth.php', 'sync.php', 'mail.php', 'public.php']) cpSync(join('server', f), join(root, 'api', f));
   const OUTBOX = mkdtempSync(join(tmpdir(), 'fabmail-'));
+  const DATA = mkdtempSync(join(tmpdir(), 'fabdata-'));
   const SPORT = PORT + 700;
   const php = spawn('php', ['-S', `127.0.0.1:${SPORT}`, '-t', root], {
-    env: { ...process.env, FABEVENT_DATA: mkdtempSync(join(tmpdir(), 'fabdata-')), FABEVENT_MAIL_OUTBOX: OUTBOX }, stdio: 'ignore',
+    env: { ...process.env, FABEVENT_DATA: DATA, FABEVENT_MAIL_OUTBOX: OUTBOX }, stdio: 'ignore',
   });
   await new Promise((r) => setTimeout(r, 1200));
   const SU = `http://127.0.0.1:${SPORT}/`;
@@ -2488,6 +2489,56 @@ if (hasPhp) {
     const ics = await (await fetch(feed)).text();
     expect(ics.startsWith('BEGIN:VCALENDAR') && ics.includes('Sam Lien'), 'flux iCal servi');
     await T.close();
+  });
+  // à la fin : changer le mot de passe ferme les sessions des autres appareils
+  const loginWith = async (p, pass) => {
+    await p.fill('.login-card input[aria-label="Email"]', 'nico@exemple.org');
+    await p.fill('.login-card input[aria-label="Mot de passe"]', pass);
+    await p.click('.login-card button[type=submit]');
+    await p.waitForSelector('.layout', { timeout: 15000 });
+  };
+  const openLogin = async (C) => {
+    await C.p.goto(SU + '#/'); await C.p.waitForTimeout(1500);
+    await C.p.click('.auth-banner button:text-is("Se reconnecter")');
+    await C.p.waitForSelector('.login-card button[type=submit]:not([disabled])');
+  };
+  await step('Mot de passe oublié : lien reçu par email, nouveau mot de passe, connexion', async () => {
+    const C = await device();
+    await openLogin(C);
+    await C.p.click('button:has-text("Mot de passe oublié ?")');
+    await C.p.fill('input[aria-label="Email du compte pour la réinitialisation"]', 'nico@exemple.org');
+    await C.p.click('button:has-text("Envoyer le lien de réinitialisation")');
+    await C.p.waitForSelector('.login-card .avail.ok');
+    const body = textOf(mails().slice(-1)[0]);
+    const link = (body.match(/https?:\/\/\S+public\.php\?pw=\w+/) || [])[0];
+    expect(!!link, `lien de réinitialisation dans le mail (${body.slice(0, 120)})`);
+    const T = await browser.newContext(); const tp = await T.newPage();
+    await tp.goto(link);
+    await tp.fill('#p1', 'nouveaupass'); await tp.fill('#p2', 'nouveaupass');
+    await tp.click('button:has-text("Enregistrer le nouveau mot de passe")');
+    expect((await tp.locator('.msg').innerText()).includes('nouveau mot de passe est enregistré'), 'mot de passe changé');
+    await T.close();
+    await C.p.click('button:text-is("Retour")');
+    await loginWith(C.p, 'nouveaupass');
+    expect((await C.p.locator('.side-user').innerText()).includes('Nico'), 'connecté avec le nouveau mot de passe');
+    await C.c.close();
+  });
+  await step('Mot de passe oublié sans email : code d’installation (fabevent-config / fichier) puis connexion directe', async () => {
+    const C = await device();
+    await openLogin(C);
+    await C.p.click('button:has-text("Mot de passe oublié ?")');
+    await C.p.fill('input[aria-label="Email du compte pour la réinitialisation"]', 'nico@exemple.org');
+    await C.p.click('button:has-text("Utiliser le code d’installation")');
+    // le code est créé par le serveur à la première demande ; ici on le lit dans le dossier de données
+    await fetch(SU + 'api/auth.php?action=recover', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ws: 'principal', email: 'x@x.x', code: 'AAAAAAAAAA', password: 'xxxxxx' }) });
+    const code = readFileSync(join(DATA, 'code-installation.txt'), 'utf8').trim();
+    await C.p.fill('input[aria-label="Code d’installation pour la réinitialisation"]', code);
+    await C.p.fill('input[aria-label="Nouveau mot de passe"]', 'parlecode1');
+    await C.p.fill('input[aria-label="Répéter le nouveau mot de passe"]', 'parlecode1');
+    await C.p.click('button:has-text("Changer le mot de passe")');
+    await C.p.waitForSelector('.layout', { timeout: 15000 });
+    expect((await C.p.locator('.side-user').innerText()).includes('Nico'), 'connecté directement avec le nouveau mot de passe');
+    await C.c.close();
   });
   await A.c.close(); await B.c.close();
   php.kill();

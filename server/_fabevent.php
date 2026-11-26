@@ -255,3 +255,29 @@ function fe_setup_code(): string {
 function fe_has_data(): bool {
     return (bool)fe_db()->query('SELECT 1 FROM changes LIMIT 1')->fetchColumn();
 }
+
+/**
+ * Nouveau mot de passe pour tous les comptes actifs de cet email, dans toutes les bases (une même personne
+ * peut avoir un compte dans « principal » et dans une base de société). Même hachage que l'application.
+ * Renvoie le nombre de comptes modifiés. Les sessions ouvertes avec l'ancien mot de passe sont fermées.
+ */
+function fe_set_password(string $email, string $pass): int {
+    $email = strtolower(trim($email));
+    if ($email === '') return 0;
+    $db = fe_db();
+    $q = $db->prepare("SELECT space, id, data FROM changes WHERE tbl = 'users' AND data LIKE ?");
+    $q->execute(['%' . $email . '%']); // filtre large ; l'email exact est vérifié ci-dessous
+    $put = $db->prepare('INSERT OR REPLACE INTO changes (space, tbl, id, data, u, who) VALUES (?, ?, ?, ?, ?, ?)');
+    $n = 0;
+    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $u = json_decode((string)$r['data'], true);
+        if (!is_array($u) || strtolower((string)($u['email'] ?? '')) !== $email || empty($u['active'])) continue;
+        $u['salt'] = bin2hex(random_bytes(16));
+        $u['passHash'] = hash('sha256', $u['salt'] . ':' . $pass);
+        $t = microtime(true);
+        $u['updatedAt'] = gmdate('Y-m-d\TH:i:s', (int)$t) . sprintf('.%03dZ', (int)(($t - floor($t)) * 1000));
+        $put->execute([$r['space'], 'users', $r['id'], json_encode($u, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $u['updatedAt'], 'mot-de-passe']);
+        $n++;
+    }
+    return $n;
+}
