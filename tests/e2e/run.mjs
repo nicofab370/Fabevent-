@@ -104,27 +104,27 @@ await step('Création complète : contact, article, projet, horaires, matériel,
   await go('contacts');
   await page.click('text=+ Nouveau contact');
   await page.fill('.modal input >> nth=0', 'Client Test');
-  await page.click('.modal button[type=submit]');
+  await page.click('.edit-inline button[type=submit]');
   await go('materiel');
   await page.click('text=+ Nouvel article');
   await page.fill('.modal input >> nth=0', 'Enceinte Test');
   await field('Quantité en stock').locator('input').fill('4');
   await field('Prix location').locator('input').fill('45');
-  await page.click('.modal button[type=submit]');
+  await page.click('.edit-inline button[type=submit]');
   await go('projets');
   await page.click('text=+ Nouveau projet');
   await page.fill('.modal input >> nth=0', 'Projet Test');
   await page.locator('.modal input[aria-label="Rechercher un client"]').fill('client te');
   await page.locator('.modal .quick-add-list li', { hasText: 'Client Test' }).click();
   await page.locator('.modal .field', { hasText: 'Statut' }).locator('select').selectOption('confirme');
-  await page.click('.modal button[type=submit]');
+  await page.click('.edit-inline button[type=submit]');
   await page.waitForSelector('.project-tabs');
   await tab('Planning');
   await page.click('text=Modifier les horaires');
   for (const b of ['+ Montage', '+ Jour de prestation', '+ Jour de prestation', '+ Démontage']) await page.click(`text=${b}`);
   expect((await page.locator('.period-row').count()) === 4, '4 créneaux attendus');
   expect((await page.locator('.modal p.muted').last().innerText()).includes('2 jour(s)'), '2 jours facturés attendus');
-  await page.click('.modal button[type=submit]');
+  await page.click('.edit-inline button[type=submit]');
   await tab('Équipement');
   await page.locator('button:has-text("+ Matériel")').first().click();
   await page.locator('.modal .pick-row', { hasText: 'Enceinte Test' }).locator('input').fill('4');
@@ -155,7 +155,7 @@ await step('Dépôts : transfert proposé depuis Namur pour le festival', async 
   await tab('Sous-locations & commandes');
   await page.locator('table.list tr', { hasText: 'Grande scène' }).locator('button:has-text("Transférer depuis Dépôt Namur")').click();
   await page.waitForSelector('.modal');
-  await page.click('.modal button[type=submit]');
+  await page.click('.edit-inline button[type=submit]');
   await page.waitForTimeout(400);
   await openProject('Festival des Lumières');
   const after = (await page.locator('.alert:not(.venue-alert)').innerText()).match(/X12 \(−(\d+)\)/);
@@ -260,7 +260,7 @@ await step('Décaler un projet de 7 jours (créneaux et postes suivent)', async 
   await page.click('text=Décaler le projet…');
   await page.locator('.modal input[type=radio]').nth(1).check();
   await field('Jours').locator('input').fill('7');
-  await page.click('.modal button[type=submit]');
+  await page.click('.edit-inline button[type=submit]');
   await page.waitForTimeout(500);
   const firstAfter = await page.locator('.card table.list tbody tr td').nth(2).innerText();
   const toDate = (s) => { const [d, m, y] = s.slice(0, 10).split('/'); return new Date(`${y}-${m}-${d}`); };
@@ -271,7 +271,7 @@ await step('Créer un projet à partir d’un modèle', async () => {
   await go('projets');
   await page.click('text=+ À partir d\'un modèle');
   await page.fill('.modal .field:has-text("Nom du projet") input', 'Conférence depuis modèle');
-  await page.click('.modal button[type=submit]');
+  await page.click('.edit-inline button[type=submit]');
   await page.waitForSelector('.project-tabs');
   await tab('Planning');
   expect((await page.locator('.card h2').count()) >= 3, '3 salles recopiées');
@@ -283,7 +283,7 @@ await step('Projet récurrent : 2 répétitions hebdomadaires', async () => {
   await openProject('Salon de l\'emploi');
   await page.click('text=Répéter…');
   await field('Nombre de répétitions').locator('input').fill('2');
-  await page.click('.modal button[type=submit]');
+  await page.click('.edit-inline button[type=submit]');
   await page.waitForTimeout(1500);
   await go('projets');
   expect((await page.locator('table.list tbody tr').count()) === before + 2, '2 projets créés');
@@ -596,14 +596,14 @@ await step('Maintenance : réparation (dispo −1) et contrôle non conforme', a
   const before = await page.locator('.tl-num').first().innerText();
   await page.click('text=Déclarer une réparation');
   await page.fill('.modal textarea', 'Grille abîmée');
-  await page.click('.modal button[type=submit]');
+  await page.click('.edit-inline button[type=submit]');
   await page.waitForTimeout(400);
   expect(Number(await page.locator('.tl-num').first().innerText()) === Number(before) - 1, 'une unité de moins disponible');
   await go('maintenance');
   expect(await page.locator('text=Grille abîmée').count(), 'réparation listée');
   await page.locator('button:text-is("Contrôlé")').first().click();
   await page.locator('.modal select').selectOption('ko');
-  await page.click('.modal button[type=submit]');
+  await page.click('.edit-inline button[type=submit]');
   await page.waitForTimeout(400);
   expect(await page.locator('text=Contrôle non conforme').count(), 'contrôle non conforme → réparation');
 });
@@ -714,7 +714,7 @@ await step('Transfert manuel définitif : le stock change de dépôt', async () 
   await chooser.locator('input[aria-label="Quantité Machine à brouillard"]').fill('2');
   await chooser.locator('button:has-text("Ajouter (1)")').click();
   expect((await page.locator('.modal table input').inputValue()) === '2', '2 machines dans le transfert');
-  await page.click('.modal button[type=submit]');
+  await page.click('.edit-inline button[type=submit]');
   await page.waitForTimeout(400);
   await go('materiel');
   await page.locator('.toolbar select').nth(1).selectOption({ label: 'Dépôt Namur' });
@@ -836,7 +836,7 @@ await step('Facture d’un sous-projet, puis facture finale qui l’exclut', asy
   await tab('Finances & documents');
   await page.click('text=+ Facture d\'un sous-projet');
   await page.locator('.modal label', { hasText: 'Salle atelier 1' }).locator('input').check();
-  await page.click('.modal button[type=submit]');
+  await page.click('.edit-inline button[type=submit]');
   await page.waitForSelector('.doc');
   const partial = await page.locator('.doc').innerText();
   expect(partial.includes('Facture partielle') && partial.includes('Salle atelier 1') && !partial.includes('Salle plénière'), 'facture partielle limitée à la salle');
@@ -983,7 +983,7 @@ await step('Rendez-vous : affiché au planning et rend le participant indisponib
   await page.locator('.modal input[type=datetime-local]').first().fill(`${yy}-${mm}-${dd}T06:00`);
   await page.locator('.modal input[type=datetime-local]').last().fill(`${yy}-${mm}-${dd}T23:00`);
   await page.locator('.modal label', { hasText: 'Hugo Laurent' }).locator('input').check();
-  await page.click('.modal button[type=submit]');
+  await page.click('.edit-inline button[type=submit]');
   await page.waitForTimeout(300);
   await openProject('Conférence annuelle');
   await tab('Équipe & transport');
@@ -1001,7 +1001,7 @@ await step('Export CSV et modification groupée des prix', async () => {
   await page.locator('table.list tr:not(.kit-child)', { hasText: 'Boîte de direct DI passive' }).locator('input[type=checkbox]').check();
   await page.click('text=Modifier en groupe…');
   await page.locator('.modal .field', { hasText: 'Variation des prix' }).locator('input').fill('20');
-  await page.click('.modal button[type=submit]');
+  await page.click('.edit-inline button[type=submit]');
   await page.waitForTimeout(1200);
   expect(before.startsWith('5,00') && (await price('Micro Shure SM58')).startsWith('6,00'), `prix 5 € → 6 € (+20 %) (${before} → ${await price('Micro Shure SM58')})`);
 });
@@ -1108,7 +1108,7 @@ await step('Ligne : horaire propre, remarques client et entrepôt, notes et assu
   const row = page.locator('.sub', { hasText: 'Salle plénière' }).locator('tr', { hasText: 'Vidéoprojecteur' });
   await row.locator('button[aria-label="Détails de la ligne"]').click();
   await page.locator('.modal .field', { hasText: "Remarque pour l'entrepôt" }).locator('input').fill('Prendre la lentille grand angle');
-  await page.click('.modal button[type=submit]');
+  await page.click('.edit-inline button[type=submit]');
   await page.waitForTimeout(300);
   await tab('Finances & documents');
   await page.click('button:text-is("+ Devis")');
@@ -1246,7 +1246,7 @@ await step('Client : recherche d’une personne, services et interlocuteurs', as
   expect((await editor.locator('.dept-box').count()) === 2, 'deux services');
   await editor.locator('.dept-box', { has: page.locator('input[value="Culture"]') }).locator('button:has-text("+ Personne")').click();
   await editor.locator('.dept-box', { has: page.locator('input[value="Culture"]') }).locator('.person-row').last().locator('input').first().fill('Sarah Lenoir');
-  await page.click('.modal button[type=submit]');
+  await page.click('.edit-inline button[type=submit]');
   await page.waitForTimeout(300);
   await openProject('Marché de Noël');
   const picker = page.locator('select[aria-label="Interlocuteur"]');
@@ -1273,7 +1273,7 @@ await step('Projet : ajout rapide d’un interlocuteur dans un nouveau service',
   await page.locator('.modal .field', { hasText: 'Service' }).first().locator('select').selectOption('__new');
   await page.locator('.modal .field', { hasText: 'Nom du nouveau service' }).locator('input').fill('Sports');
   await page.locator('.modal .field', { hasText: 'Nom de la personne' }).locator('input').fill('Paul Noël');
-  await page.click('.modal button[type=submit]');
+  await page.click('.edit-inline button[type=submit]');
   await page.waitForTimeout(500);
   const picker = page.locator('select[aria-label="Interlocuteur"]');
   expect((await picker.locator('option:checked').innerText()).includes('Paul Noël'), 'nouvel interlocuteur choisi');
@@ -1307,7 +1307,7 @@ await step('Sous-projet : changer d’endroit dans sa fenêtre', async () => {
   const room = page.locator('.card', { has: page.locator('h2', { hasText: 'Scène acoustique' }) });
   await room.locator('button:has-text("Modifier les horaires")').click();
   await page.locator('select[aria-label="Endroit du sous-projet"]').selectOption({ label: 'Loges artistes' });
-  await page.click('.modal button[type=submit]');
+  await page.click('.edit-inline button[type=submit]');
   await page.waitForTimeout(300);
   expect((await room.innerText()).includes('Loges artistes'), 'endroit de la salle mis à jour');
 });
@@ -1497,7 +1497,7 @@ await step('Checklist : retour, unité abîmée, bilan, déclarer perdu puis ret
   await tickAll('L-Acoustics X12');
   await page.locator('.cl-line', { hasText: 'Micro HF' }).locator('button:text-is("Cassé")').click();
   await page.fill('.modal .field input', 'Antenne tordue');
-  await page.click('.modal button[type=submit]');
+  await page.click('.edit-inline button[type=submit]');
   await page.waitForTimeout(300);
   await page.click('button:text-is("Bilan du retour")');
   const bilan = await page.locator('.modal').innerText();
@@ -1812,7 +1812,7 @@ await step('Codes : nouvel article F-S-…, unités F-S-…-01, nouveau dépôt 
   const placeholder = await page.locator('.modal .field', { hasText: 'Code (automatique' }).locator('input').getAttribute('placeholder');
   expect(/auto : F-S-\d{4}/.test(placeholder || ''), `code proposé (${placeholder})`);
   await page.locator('.modal label', { hasText: 'Suivi par numéro de série' }).locator('input').check();
-  await page.click('.modal button[type=submit]');
+  await page.click('.edit-inline button[type=submit]');
   await page.waitForTimeout(400);
   const row = await page.locator('table.list tr', { hasText: 'Console Yamaha DM7' }).innerText();
   const code = (row.match(/F-S-\d{4}/) || [])[0];
@@ -1822,7 +1822,7 @@ await step('Codes : nouvel article F-S-…, unités F-S-…-01, nouveau dépôt 
   for (let i = 1; i <= 2; i++) {
     await page.click('button:text-is("+ Unité")');
     expect(await page.locator('.modal input[aria-label="Code de l\'unité"]').inputValue() === `${code}-0${i}`, `unité ${i} : ${code}-0${i}`);
-    await page.click('.modal button[type=submit]');
+    await page.click('.edit-inline button[type=submit]');
     await page.waitForTimeout(300);
   }
   expect((await page.locator('body').innerText()).includes(`${code}-02`), 'unités codées');
@@ -1832,7 +1832,7 @@ await step('Codes : nouvel article F-S-…, unités F-S-…-01, nouveau dépôt 
   await page.locator('.modal .field', { hasText: 'Désignation' }).locator('input').fill('Switch réseau 24 ports');
   await page.locator('.modal .field', { hasText: 'nouvelle catégorie' }).locator('input').fill('Informatique');
   expect(await page.locator('.modal input[aria-label="Lettre de la catégorie"]').getAttribute('placeholder') === 'IT', 'lettre IT proposée');
-  await page.click('.modal button[type=submit]');
+  await page.click('.edit-inline button[type=submit]');
   await page.waitForTimeout(400);
   expect(/F-IT-\d{4}/.test(await page.locator('table.list tr', { hasText: 'Switch réseau' }).innerText()), 'code F-IT-…');
   // nouveau dépôt : nom puis lettre demandés
@@ -1972,7 +1972,7 @@ await step('Élément hors inventaire : créé depuis un article, ajouté avec l
   page.removeAllListeners('dialog');
   page.on('dialog', (d) => (d.type() === 'prompt' ? d.accept(d.defaultValue()) : d.accept()));
   await page.locator('.modal label', { hasText: 'Dépôt Liège' }).locator('input').fill('3');
-  await page.click('.modal button[type=submit]');
+  await page.click('.edit-inline button[type=submit]');
   await page.waitForTimeout(400);
   expect(await page.locator('table.list tr', { hasText: 'Chargeur 65 W' }).count() === 0, 'absent de la liste du matériel');
   await page.locator('label', { hasText: 'Éléments hors inventaire' }).locator('input').check();
@@ -2056,7 +2056,7 @@ await step('Projet : client et lieu modifiables depuis leur champ ; départ de l
   await openProject('Mariage Dupont-Lemaire');
   await page.click('button[aria-label="Modifier le client"]');
   await page.locator('.modal .field', { hasText: 'Téléphone' }).locator('input').fill('+32 470 11 22 33');
-  await page.click('.modal button[type=submit]');
+  await page.click('.edit-inline button[type=submit]');
   await page.waitForTimeout(300);
   expect((await page.locator('.card', { has: page.locator('h2:text-is("Client")') }).innerText()).includes('+32 470 11 22 33'), 'client modifié sans quitter le projet');
   expect((await page.locator('.distance').innerText()).includes('Départ : Dépôt'), 'distance calculée depuis le dépôt');
@@ -2066,7 +2066,7 @@ await step('Sous-projet : suppression visible, avec confirmation', async () => {
   await tab('Planning');
   await page.click('button:text-is("+ Ajouter un sous-projet")');
   await page.locator('.modal .field', { hasText: 'Nom' }).first().locator('input').fill('Afterparty');
-  await page.click('.modal button[type=submit]');
+  await page.click('.edit-inline button[type=submit]');
   await page.waitForTimeout(400);
   expect(await page.locator('h2', { hasText: 'Afterparty' }).count() === 1, 'sous-projet ajouté');
   await page.click('button[aria-label="Supprimer le sous-projet Afterparty"]');
@@ -2200,7 +2200,7 @@ await step('Techniciens : tarif propre à une fonction', async () => {
   await page.click('.modal button:has-text("Tarif pour une fonction")');
   await page.fill('.modal input[aria-label="Fonction du tarif"]', 'Rigger');
   await page.locator('.modal input[aria-label="Coût par jour Rigger"]').fill('333');
-  await page.click('.modal button[type=submit]');
+  await page.click('.edit-inline button[type=submit]');
   await page.waitForTimeout(300);
   await openProject('Marché de Noël');
   await tab('Équipe & transport');
@@ -2825,7 +2825,7 @@ await step('Facturation : récap par projet — facturé, reste, drapeau « év�
   await page.locator('.modal .field', { hasText: 'Début' }).locator('input').fill(dd + 'T08:00');
   await page.locator('.modal .field', { hasText: 'Fin' }).locator('input').fill(dd + 'T23:00');
   await page.locator('.modal .field', { hasText: 'Statut' }).locator('select').selectOption('confirme');
-  await page.click('.modal button[type=submit]');
+  await page.click('.edit-inline button[type=submit]');
   await page.waitForSelector('.project-tabs');
   await tab('Équipement');
   await page.locator('button:has-text("+ Matériel")').first().click();
@@ -2853,7 +2853,7 @@ await step('Projet offert (gratuit) : case à cocher, devis généré à 0 € a
   await page.click('text=+ Nouveau projet');
   await page.fill('.modal input >> nth=0', 'Projet offert test');
   await page.check('input[aria-label="Projet offert (gratuit)"]');
-  await page.click('.modal button[type=submit]');
+  await page.click('.edit-inline button[type=submit]');
   await page.waitForSelector('.project-tabs');
   // badge « offert » dans la liste
   await go('projets');
@@ -3113,6 +3113,57 @@ await step('Bases : créer une base « autre société » isolée (données, com
 
 console.log('\n  — vérification de la liste (v51) —');
 
+await step('Matériel : dupliquer un article (nouveau code, fiche ouverte en modification, sans les unités)', async () => {
+  await resetDemo();
+  await go('materiel');
+  await page.locator('table.list tbody tr', { hasText: 'Amplificateur LA4X' }).first().click();
+  await page.waitForTimeout(400);
+  const code0 = (await page.locator('main').innerText()).match(/F-[A-Z]-\d{4}/)?.[0];
+  await page.click('main button:has-text("Dupliquer")');
+  await page.waitForSelector('.edit-inline');
+  const name = page.locator('.edit-inline input[aria-label="Désignation"]');
+  expect((await name.inputValue()) === 'Amplificateur LA4X (copie)', 'copie nommée « (copie) »');
+  await name.fill('Amplificateur LA4X bis');
+  await page.click('.edit-inline button[type=submit]');
+  await page.waitForTimeout(400);
+  const txt = await page.locator('main').innerText();
+  const code1 = txt.match(/F-[A-Z]-\d{4}/)?.[0];
+  expect(code1 && code1 !== code0, `nouveau code (${code0} → ${code1})`);
+  await go('materiel');
+  expect(await page.locator('table.list tbody tr', { hasText: 'Amplificateur LA4X bis' }).count() === 1, 'copie dans le catalogue');
+  expect(await page.locator('table.list tbody tr', { hasText: /^.*Amplificateur LA4X(?! bis)/ }).count() >= 1, 'original conservé');
+});
+
+await step('Projet : dupliquer pour l\'édition suivante (dates +1 an, éditions reliées, sans les documents)', async () => {
+  await resetDemo();
+  await openProject('Festival des Lumières');
+  await tab('Équipement');
+  const nLines = await page.locator('table.list.eq-table tbody tr').count();
+  const y = new Date().getFullYear();
+  await page.click('main button:has-text("Dupliquer…")');
+  await page.waitForSelector('.modal');
+  const date = await page.locator('.modal input[type=date]').inputValue();
+  expect((await page.locator('.modal input[required]').inputValue()) === `Festival des Lumières ${+date.slice(0, 4)}`, 'nom proposé avec l’année de la nouvelle édition');
+  const url0 = page.url();
+  await page.click('.modal button[type=submit]');
+  await page.waitForFunction((u) => location.href !== u, url0);
+  await page.waitForSelector('.editions');
+  await page.waitForTimeout(300);
+  const head = await page.locator('main h1').first().innerText();
+  expect(head.includes(`Festival des Lumières ${+date.slice(0, 4)}`), 'copie ouverte : ' + head);
+  expect((await page.locator('.editions .badge').count()) === 2, 'deux éditions reliées');
+  expect((await page.locator('.project-tabs').innerText()).length > 0, 'onglets présents');
+  await tab('Équipement');
+  expect((await page.locator('table.list.eq-table tbody tr').count()) === nLines, `matériel copié (${nLines} lignes)`);
+  await tab('Planning');
+  expect((await page.locator('main').innerText()).includes(String(+date.slice(0, 4))), 'horaires décalés à la nouvelle année');
+  await tab('Finances & documents');
+  expect(!(await page.locator('table.list tr.click', { hasText: /D-\d{4}|F-\d{4}/ }).count()), 'aucun document copié');
+  await page.locator('.editions a.badge').first().click();
+  await page.waitForTimeout(500);
+  expect((await page.locator('main h1').first().innerText()).includes('Festival des Lumières') && y > 0, 'retour à l’édition d’origine depuis l’en-tête');
+});
+
 await step('Kit : un élément manquant ne met pas tout le kit en manque (« incomplet » + élément en cause)', async () => {
   await resetDemo();
   await openProject("Salon de l'emploi");
@@ -3158,7 +3209,7 @@ await step('Facture : service et contact de facturation du client, RPM de la soc
   await page.locator('table.list tbody tr', { hasText: 'Ville de Namur' }).first().click();
   await page.selectOption('select[aria-label="Service de facturation"]', { label: 'Culture' });
   await page.selectOption('select[aria-label="Contact de facturation"]', { label: 'Anne Collin (Programmatrice)' });
-  await page.click('.modal button[type=submit]');
+  await page.click('.edit-inline button[type=submit]');
   await page.waitForTimeout(300);
   await openProject('Marché de Noël');
   await tab('Finances & documents');
@@ -3239,7 +3290,7 @@ await step('Rendez-vous : relié à un projet, avec un coût interne compté dan
   await page.fill('.modal input[required]', 'Réunion de production');
   await page.locator('.modal .field', { hasText: 'Coût pour moi' }).locator('input').fill('150');
   expect((await page.locator('.modal .field', { hasText: 'Projet relié' }).locator('option:checked').innerText()).includes('Festival des Lumières'), 'projet pré-sélectionné');
-  await page.click('.modal button[type=submit]');
+  await page.click('.edit-inline button[type=submit]');
   await page.waitForTimeout(400);
   expect(await page.locator('.project-appts tr', { hasText: 'Réunion de production' }).count(), 'rendez-vous listé dans le projet');
   await tab('Finances & documents');

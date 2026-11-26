@@ -77,6 +77,8 @@ export interface CopyOptions {
   shift?: Shift;
   /** garder les personnes affectées aux postes (récurrences) */
   keepPeople?: boolean;
+  /** nouvelle édition du même évènement : relie les deux projets */
+  edition?: boolean;
 }
 
 /** Copie complète d'un projet : salles, horaires, groupes, matériel, postes, véhicules, coûts. */
@@ -92,6 +94,10 @@ export async function copyProject(projectId: string, o: CopyOptions = {}): Promi
     ...src, id: undefined, createdAt: undefined, number: await nextNumber('P'), name: o.name ?? src.name + ' (copie)',
     status: o.status ?? 'brouillon', isTemplate: o.isTemplate || undefined, start: shiftDate(src.start, sh)!, end: shiftDate(src.end, sh)!,
     tasks: src.tasks?.map((t) => ({ ...t, id: uid(), done: false, due: shiftDate(t.due, sh) })),
+    // ce qui appartient à l'édition copiée ne suit pas : référence de commande, facturation, coûts réels, caution réglée
+    externalRef: undefined, externalInvoiced: undefined, confirmedAt: undefined, actualCosts: undefined,
+    deposit: src.deposit ? { amount: src.deposit.amount, status: src.deposit.status === 'aucune' ? 'aucune' : 'demandee' } : undefined,
+    editionOf: o.edition ? src.editionOf || src.id : undefined,
   });
   for (const sp of subs) {
     const idMap = new Map<string, string>();

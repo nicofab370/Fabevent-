@@ -1,11 +1,12 @@
+import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { PageHead } from '../components/ui';
-import { appBaseUrl } from '../db';
+import { appBaseUrl, db } from '../db';
 import type { ProjectStatus, Subproject } from '../types';
 import { STATUS_LABELS } from '../types';
 import { buildIcs, deleteProject, download, fmtDate, fmtRange, money } from '../utils';
-import { copyProject, recurrenceStarts, shiftBetween } from '../projectOps';
+import { copyProject, recurrenceStarts, shiftBetween, shiftDate } from '../projectOps';
 import { Field, Modal, NumInput } from '../components/ui';
 import type { Project } from '../types';
 import CostsTab from './project/CostsTab';
@@ -46,6 +47,7 @@ function ProjectPage({ d }: { d: ProjectData }) {
   const goTab = (t: string) => setParams(t === 'general' ? {} : { onglet: t }, { replace: true });
   const [editSub, setEditSub] = useState<Partial<Subproject> | null>(null);
   const [repeat, setRepeat] = useState(false);
+  const [dup, setDup] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const { project, client, settings, subs, finance, conflicts, projectCrew } = d;
   const venueAlerts = (d.contacts.find((c) => c.id === project.venueId)?.comments || []).filter((c) => c.important);
@@ -60,7 +62,10 @@ function ProjectPage({ d }: { d: ProjectData }) {
     download(`${project.number}.ics`, buildIcs(project.name, events), 'text/calendar;charset=utf-8');
   };
 
-  const duplicate = async () => nav('/projets/' + (await copyProject(project.id)).id);
+  // éditions du même évènement (projet dupliqué d'année en année)
+  const root = project.editionOf || project.id;
+  const editions = (useLiveQuery(() => db.projects.filter((p) => !p.isTemplate && (p.id === root || p.editionOf === root)).toArray(), [root]) || [])
+    .sort((a, b) => (a.start || '').localeCompare(b.start || ''));
   const saveAsTemplate = async () => {
     const name = prompt('Nom du modèle :', project.name);
     if (!name) return;
@@ -88,7 +93,7 @@ function ProjectPage({ d }: { d: ProjectData }) {
         <select value={project.status} onChange={(e) => setProjectStatus(d, e.target.value as ProjectStatus)} style={{ width: 'auto' }}>
           {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
-        <button className="secondary" onClick={duplicate}>Dupliquer</button>
+        <button className="secondary" onClick={() => setDup(true)} title="Créer une copie du projet (nouvelle édition, autres dates) : sous-projets, horaires, matériel, postes, véhicules et coûts suivent">Dupliquer…</button>
         {!project.isTemplate && <button className="secondary" onClick={() => setRepeat(true)}>Répéter…</button>}
         {!project.isTemplate && <button className="secondary" onClick={saveAsTemplate}>Enregistrer comme modèle</button>}
         <button className="secondary" onClick={exportIcs}>Agenda .ics</button>
@@ -96,6 +101,14 @@ function ProjectPage({ d }: { d: ProjectData }) {
           if (confirm('Supprimer le projet, ses sous-projets, ses documents et ses fichiers ?')) { await deleteProject(project.id); nav('/projets'); }
         }}>Supprimer</button>
       </PageHead>
+      {editions.length > 1 && (
+        <div className="editions muted" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', margin: '-4px 0 10px', fontSize: 13 }}>
+          <span title="Projets dupliqués d'une édition à l'autre du même évènement">Éditions :</span>
+          {editions.map((e) => e.id === project.id
+            ? <strong key={e.id} className="badge">{e.start ? new Date(e.start).getFullYear() : e.number} · {e.number}</strong>
+            : <a key={e.id} href={'#/projets/' + e.id} className="badge" title={`${e.name} — ${fmtRange(e.start, e.end)}`}>{e.start ? new Date(e.start).getFullYear() : e.number} · {e.number}</a>)}
+        </div>
+      )}
 
       <div className="stats" style={project.color ? { borderLeft: `4px solid ${project.color}`, paddingLeft: 10 } : undefined}>
         <div className="stat"><b style={{ fontSize: 15 }}>{client?.company || '—'}</b><span>client{project.contactPerson && ` · ${project.contactPerson}`}</span></div>
@@ -139,6 +152,7 @@ function ProjectPage({ d }: { d: ProjectData }) {
       {tab === 'registre' && <LogTab projectId={project.id} />}
 
       {repeat && <RepeatModal project={project} onClose={() => setRepeat(false)} />}
+      {dup && <DuplicateModal project={project} onClose={() => setDup(false)} />}
       {editSub && <SubprojectModal sp={editSub} project={project} onClose={() => setEditSub(null)} />}
     </div>
   );
@@ -176,6 +190,64 @@ function RepeatModal({ project, onClose }: { project: Project; onClose: () => vo
         <div className="form-actions">
           <button type="button" className="secondary" onClick={onClose}>Annuler</button>
           <button type="submit" disabled={busy}>{busy ? 'Création…' : `Créer ${starts.length} projet(s)`}</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+/** nom de la nouvelle édition : l'année du nom avance d'autant que les dates (« Festival 2026 » → « Festival 2027 ») */
+function nextEditionName(name: string, years: number, newYear?: number): string {
+  if (years > 0 && /\b(19|20)\d{2}\b/.test(name)) return name.replace(/\b((?:19|20)\d{2})\b/g, (y) => String(+y + years));
+  // pas d'année dans le nom : on ajoute celle de la nouvelle édition pour distinguer les deux projets
+  return years > 0 && newYear ? `${name} ${newYear}` : `${name} (copie)`;
+}
+
+/** Dupliquer : copie du projet à d'autres dates (édition suivante), reliée à l'original. */
+function DuplicateModal({ project, onClose }: { project: Project; onClose: () => void }) {
+  const nav = useNavigate();
+  const d0 = (project.start || '').slice(0, 10);
+  const plusYear = d0 ? `${+d0.slice(0, 4) + 1}${d0.slice(4)}` : '';
+  const [date, setDate] = useState(plusYear);
+  const years = d0 && date ? +date.slice(0, 4) - +d0.slice(0, 4) : 0;
+  const [name, setName] = useState(nextEditionName(project.name, 1, plusYear ? +plusYear.slice(0, 4) : undefined));
+  const [touched, setTouched] = useState(false);
+  const [edition, setEdition] = useState(true);
+  const [keepPeople, setKeepPeople] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const newStart = date ? date + (project.start || '').slice(10) : project.start;
+  const end = project.end && project.start ? shiftDate(project.end, shiftBetween(project.start, newStart)) : undefined;
+  return (
+    <Modal title="Dupliquer le projet" onClose={onClose}>
+      <form className="form" onSubmit={async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        try {
+          const p = await copyProject(project.id, { name: name.trim() || project.name, status: 'brouillon', shift: shiftBetween(project.start, newStart), keepPeople, edition });
+          onClose();
+          nav('/projets/' + p.id);
+        } finally { setBusy(false); }
+      }}>
+        <Field label="Nom de la copie" full><input required autoFocus value={name} onChange={(e) => { setName(e.target.value); setTouched(true); }} /></Field>
+        <Field label="Nouvelle date de début">
+          <input type="date" value={date} onChange={(e) => { setDate(e.target.value); if (!touched && e.target.value) setName(nextEditionName(project.name, +e.target.value.slice(0, 4) - +d0.slice(0, 4), +e.target.value.slice(0, 4))); }} />
+        </Field>
+        <Field label="Fin (calculée)"><input readOnly value={end ? fmtDate(end) : ''} tabIndex={-1} /></Field>
+        <div className="field full" style={{ gap: 6 }}>
+          <label className="check-row" title="Les éditions d'un même évènement sont reliées : on passe de l'une à l'autre depuis l'en-tête du projet">
+            <input type="checkbox" checked={edition} onChange={(e) => setEdition(e.target.checked)} /> Nouvelle édition du même évènement (relier les projets)
+          </label>
+          <label className="check-row" title="Sinon les postes sont recopiés sans personne, à pourvoir">
+            <input type="checkbox" checked={keepPeople} onChange={(e) => setKeepPeople(e.target.checked)} /> Garder les mêmes techniciens sur les postes
+          </label>
+        </div>
+        <p className="muted" style={{ margin: 0, gridColumn: "1 / -1", fontSize: 13 }}>
+          Copiés : client, lieu, sous-projets et horaires (décalés{years ? ` de ${years} an${years > 1 ? 's' : ''}` : ''}), matériel, postes, véhicules, coûts supplémentaires, notes et tâches.
+          Pas copiés : documents (devis, factures), référence de commande du client, coûts réels, fichiers. La copie démarre en « Brouillon ».
+        </p>
+        <div className="form-actions">
+          <button type="button" className="secondary" onClick={onClose}>Annuler</button>
+          <button type="submit" disabled={busy}>{busy ? 'Copie…' : 'Dupliquer'}</button>
         </div>
       </form>
     </Modal>
