@@ -4,7 +4,7 @@ import { EmailModal } from '../components/EmailModal';
 import { Field, Modal, useSettings } from '../components/ui';
 import { appBaseUrl, db } from '../db';
 import { mailtoUrl } from '../email';
-import { fillVars, mailServer, newToken, requestLink, sendMail, templatesFor, type MailServer } from '../mailer';
+import { fillVars, internalLoginUrl, mailServer, newToken, requestLink, sendMail, templatesFor, type MailServer } from '../mailer';
 import { placeAddress, placeName, projectPerson, spotOf } from '../places';
 import type { Contact, CrewAssignment, CrewRequest, Person, Project, Settings, Subproject } from '../types';
 import { RESERVING } from '../types';
@@ -203,7 +203,8 @@ export function AskModal({ projectId, crewIds, onClose }: { projectId: string; c
       <Field label="Texte (les {variables} sont remplacées pour chaque personne)" full><textarea style={{ minHeight: 150 }} value={body} onChange={(e) => setBody(e.target.value)} aria-label="Texte de la demande" /></Field>
       <p className="muted" style={{ margin: '4px 0' }}>{server === null ? 'Vérification de l\'envoi…' : server.ok
         ? 'Chacun reçoit son propre lien {lien} : il répond « disponible / pas disponible » en un clic, poste par poste. Sa réponse arrive ici toute seule.'
-        : `Envoi direct indisponible (${server.error}) : les mails s'ouvriront dans ta messagerie, sans lien de réponse ; tu noteras les réponses à la main.`}</p>
+        : <>Envoi direct indisponible ({server.error}) : les mails s'ouvriront dans ta messagerie, sans lien de réponse ; tu noteras les réponses à la main.
+          {server.login && <> <a href={internalLoginUrl()}>Se connecter aux pages internes</a> pour envoyer les liens de réponse.</>}</>}</p>
       <div className="form-actions">
         <button type="button" className="secondary" onClick={onClose}>Annuler</button>
         <button type="button" disabled={busy || !chosen.length || !picked.size} onClick={send}>{busy ? 'Envoi…' : `Demander à ${picked.size} personne(s) pour ${chosen.length} poste(s)`}</button>
