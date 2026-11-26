@@ -526,6 +526,8 @@ export interface Person extends Base {
   signedUpAt?: string;
   /** jeton du lien public « ma fiche » (public.php?m=…) : le technicien met à jour ses coordonnées */
   sheetToken?: string;
+  /** jeton de son agenda en ligne (public.php?cal=… : abonnement iCal à ses postes) */
+  calToken?: string;
   /** modifications envoyées via « ma fiche », à relire (valeurs d'avant) */
   sheetReview?: { at: string; prev: Record<string, unknown> };
 }
@@ -944,6 +946,8 @@ export interface CompanyInfo {
   name: string;
   address?: string;
   email?: string;
+  /** adresse « Répondre à » des mails envoyés par FabEvent (expéditeur : noreply) ; vide = email de la société */
+  replyTo?: string;
   phone?: string;
   siret?: string;
   vatNumber?: string;

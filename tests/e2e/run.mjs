@@ -2474,6 +2474,21 @@ if (hasPhp) {
     await A.p.waitForTimeout(300);
     expect(await A.p.locator('table.list tr', { hasText: 'Alex Candidat' }).count() === 1, 'technicien ajouté à l’équipe');
   });
+  await step('Équipe : lien d’agenda en ligne (abonnement Google / iPhone / Outlook)', async () => {
+    await A.p.goto(SU + '#/equipe'); await A.p.waitForTimeout(400);
+    await A.p.locator('table.list tr', { hasText: 'Sam Lien' }).locator('button:text-is("Lien agenda")').click();
+    await A.p.waitForSelector('.info:has-text("Lien d\'agenda de Sam Lien copié")', { timeout: 15000 });
+    const link = ((await A.p.locator('.info').innerText()).match(/https?:\/\/\S+agenda=\w+/) || [])[0];
+    expect(!!link, 'lien d’agenda affiché');
+    const T = await browser.newContext(); const tp = await T.newPage();
+    await tp.goto(link);
+    const txt = await tp.locator('body').innerText();
+    expect(txt.includes('Mon agenda') && txt.includes('Google Agenda') && txt.includes('Outlook'), 'page d’abonnement');
+    const feed = await tp.locator('input[aria-label="Adresse de l\'agenda"]').inputValue();
+    const ics = await (await fetch(feed)).text();
+    expect(ics.startsWith('BEGIN:VCALENDAR') && ics.includes('Sam Lien'), 'flux iCal servi');
+    await T.close();
+  });
   await A.c.close(); await B.c.close();
   php.kill();
 }

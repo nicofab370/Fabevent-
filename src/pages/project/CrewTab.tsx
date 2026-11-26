@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Empty, Modal, NumInput, StatusBadge, useSettings } from '../../components/ui';
-import { mailServer, sendMail, type MailServer } from '../../mailer';
+import { mailServer, replyAddress, sendMail, type MailServer } from '../../mailer';
 import { mailtoUrl } from '../../email';
 import { CostCell, PersonSelect, type CrewContext } from '../crewAssign';
 import { EmailModal } from '../../components/EmailModal';
@@ -484,7 +484,7 @@ function SendPlanningAll({ people, withProv, items, mail, ics, onSent, onClose }
             try {
               const drafts = sel.map((p) => mail(p));
               const files = sel.map((p) => { const f = ics(p); return { name: f.name, type: 'text/calendar', blob: new Blob([f.text], { type: 'text/calendar;charset=utf-8' }) }; });
-              await sendMail({ to: drafts.map((b) => b.to).filter(Boolean).join(', '), subject: drafts[0].subject, body: drafts.map((b, i) => `— ${sel[i].name} —\n${b.body}`).join('\n\n'), replyTo: settings.company.email }, files);
+              await sendMail({ to: drafts.map((b) => b.to).filter(Boolean).join(', '), subject: drafts[0].subject, body: drafts.map((b, i) => `— ${sel[i].name} —\n${b.body}`).join('\n\n'), replyTo: replyAddress(settings) }, files);
               for (const p of sel) { await onSent(p); setRes((r) => ({ ...r, [p.id]: 'Envoyé (mail commun)' })); }
             } catch (e) { for (const p of sel) setRes((r) => ({ ...r, [p.id]: (e as Error).message })); }
             setBusy(false);
@@ -493,7 +493,7 @@ function SendPlanningAll({ people, withProv, items, mail, ics, onSent, onClose }
           for (const p of sel) {
             try {
               const f = ics(p);
-              await sendMail({ ...mail(p), replyTo: settings.company.email }, [{ name: f.name, type: 'text/calendar', blob: new Blob([f.text], { type: 'text/calendar;charset=utf-8' }) }]);
+              await sendMail({ ...mail(p), replyTo: replyAddress(settings) }, [{ name: f.name, type: 'text/calendar', blob: new Blob([f.text], { type: 'text/calendar;charset=utf-8' }) }]);
               await onSent(p);
               setRes((r) => ({ ...r, [p.id]: 'Envoyé' }));
             } catch (e) { setRes((r) => ({ ...r, [p.id]: (e as Error).message })); }

@@ -52,6 +52,9 @@ async function b64(b: Blob): Promise<string> {
   return btoa(bin);
 }
 
+/** Adresse « Répondre à » des mails envoyés par FabEvent (l'expéditeur est l'adresse noreply du serveur). */
+export const replyAddress = (s: Pick<Settings, 'company'>) => (s.company.replyTo || s.company.email || '').trim();
+
 export const splitAddrs = (s: string) => s.split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean);
 
 /**
@@ -97,6 +100,8 @@ export function newToken(len = 32): string {
 export const requestLink = (token: string) => { const u = serverScript('public.php'); return u ? `${u}?r=${token}` : ''; };
 export const signupLink = (key: string) => { const u = serverScript('public.php'); return u ? `${u}?s=${key}` : ''; };
 /** lien « ma fiche » d'un technicien : il met à jour ses coordonnées (public.php?m=…) */
+/** page d'abonnement à l'agenda d'un technicien (public.php?agenda=… ; le flux iCal est ?cal=…) */
+export const agendaLink = (token: string) => { const u = serverScript('public.php'); return u ? `${u}?agenda=${token}` : ''; };
 export const mySheetLink = (token: string) => { const u = serverScript('public.php'); return u ? `${u}?m=${token}` : ''; };
 /** lien public d'acceptation / refus d'un devis (public.php?d=…) */
 export const quoteLink = (token: string) => { const u = serverScript('public.php'); return u ? `${u}?d=${token}` : ''; };

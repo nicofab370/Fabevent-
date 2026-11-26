@@ -128,6 +128,39 @@ describe.skipIf(!hasPhp)('serveur FabEvent autonome (auth.php + sync.php)', () =
     expect((await x.auth('setup', { ws: 'autrebase', user: u, code })).status).toBe(200);
     expect((await x.sync('ping', undefined, '&ws=autrebase')).status).toBe(200);
   });
+  it('agenda d’un technicien : abonnement iCal, « [Option] » puis confirmé, annulé et provisoire exclus', async () => {
+    const u = '2030-02-01T10:00:00Z';
+    const put = (t: string, d: Record<string, unknown>) => ({ t, id: String(d.id), d: { ...d, updatedAt: u }, u });
+    await collegue.sync('push', { ws: 'principal', changes: [
+      put('settings', { id: 'main', company: { name: 'FABRI' } }),
+      put('people', { id: 'tech1', name: 'Sam Agenda', calToken: 'AGENDAtoken12345678' }),
+      put('contacts', { id: 'lieu1', company: 'Parc de la Boverie', address: 'Parc de la Boverie 3', postalCode: '4020', city: 'Liège' }),
+      put('projects', { id: 'pr1', name: 'Festival', status: 'option', venueId: 'lieu1', travelMinutes: 30 }),
+      put('subprojects', { id: 'sp1', projectId: 'pr1', name: 'Grande scène', status: 'option' }),
+      put('subprojects', { id: 'sp2', projectId: 'pr1', name: 'Annulée', status: 'annule' }),
+      put('crew', { id: 'cr1', projectId: 'pr1', subprojectId: 'sp1', personId: 'tech1', function: 'Régisseur son', start: '2030-07-10T08:00', end: '2030-07-10T23:00', travel: true }),
+      put('crew', { id: 'cr2', projectId: 'pr1', subprojectId: 'sp2', personId: 'tech1', function: 'Annulé', start: '2030-07-11T08:00', end: '2030-07-11T18:00' }),
+      put('crew', { id: 'cr3', projectId: 'pr1', subprojectId: 'sp1', personId: 'tech1', function: 'Provisoire', final: false, start: '2030-07-12T08:00', end: '2030-07-12T18:00' }),
+      put('crew', { id: 'cr4', projectId: 'pr1', subprojectId: 'sp1', personId: 'autre', function: 'Pas à lui', start: '2030-07-10T08:00', end: '2030-07-10T18:00' }),
+    ] });
+    const get = async () => { const r = await fetch(`${root}/public.php?cal=AGENDAtoken12345678`); return { type: r.headers.get('content-type') || '', text: (await r.text()).replace(/\r\n /g, '') }; };
+    let c = await get();
+    expect(c.type).toContain('text/calendar');
+    expect(c.text).toContain('X-WR-CALNAME:FABRI — Sam Agenda');
+    expect(c.text).toContain('SUMMARY:[Option] Régisseur son — Festival');
+    expect(c.text).toContain('STATUS:TENTATIVE');
+    expect(c.text).toContain('DTSTART;TZID=Europe/Brussels:20300710T073000'); // trajet de 30 min compris
+    expect(c.text).toContain('LOCATION:Parc de la Boverie\\, Parc de la Boverie 3\\, 4020\\, Liège');
+    expect(c.text.match(/BEGIN:VEVENT/g)).toHaveLength(1); // annulé, provisoire et poste d'un autre exclus
+    await collegue.sync('push', { ws: 'principal', changes: [put('subprojects', { id: 'sp1', projectId: 'pr1', name: 'Grande scène', status: 'confirme' })].map((x) => ({ ...x, u: '2030-02-02T10:00:00Z', d: { ...x.d, updatedAt: '2030-02-02T10:00:00Z' } })) });
+    c = await get();
+    expect(c.text).toContain('SUMMARY:Régisseur son — Festival');
+    expect(c.text).toContain('STATUS:CONFIRMED');
+    const page = await (await fetch(`${root}/public.php?agenda=AGENDAtoken12345678`)).text();
+    expect(page).toContain('calendar.google.com/calendar/r?cid=webcal');
+    expect(page).toContain('webcal://');
+    expect((await fetch(`${root}/public.php?cal=INCONNUtoken12345678`)).status).toBe(404);
+  });
   it('déconnexion', async () => {
     await collegue.auth('logout', { ws: 'principal' });
     expect((await collegue.sync('ping', undefined, '&ws=principal')).status).toBe(401);

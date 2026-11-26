@@ -89,6 +89,7 @@ export default function SettingsPage() {
         <div className="form">
           <Field label="Nom"><input value={s.company.name} onChange={(e) => setCo('name', e.target.value)} /></Field>
           <Field label="Email"><input value={s.company.email || ''} onChange={(e) => setCo('email', e.target.value)} /></Field>
+          <Field label="Réponses aux mails envoyés par FabEvent (« Répondre à »)"><input type="email" value={s.company.replyTo || ''} onChange={(e) => setCo('replyTo', e.target.value)} placeholder={s.company.email || 'ex. nicolas@fabri.live'} aria-label="Adresse Répondre à" title="Les mails partent de l'adresse noreply du serveur ; quand le destinataire répond, sa réponse arrive à cette adresse (vide = email de la société)" /></Field>
           <Field label="Adresse (affichée sur les documents)" full><textarea value={s.company.address || ''} onChange={(e) => setCo('address', e.target.value)} /></Field>
           <Field label="Rue et numéro (Peppol)"><input value={s.company.street || ''} onChange={(e) => setCo('street', e.target.value)} /></Field>
           <Field label="Code postal"><input value={s.company.postalCode || ''} onChange={(e) => setCo('postalCode', e.target.value)} /></Field>

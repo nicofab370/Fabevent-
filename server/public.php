@@ -7,6 +7,8 @@
  *   ?s=<clé>     formulaire d'inscription : un technicien s'ajoute à ta base (fiche « à valider » dans FabEvent)
  *   ?m=<jeton>   « ma fiche » : un technicien déjà dans ta base met à jour ses coordonnées (modifs « à relire » dans FabEvent)
  *   ?d=<jeton>   devis : le client accepte / refuse en ligne (statut « accepté » = projet confirmé)
+ *   ?cal=<jeton> agenda d'un technicien (abonnement iCal : ses postes, « [Option] » tant que non confirmé)
+ *   ?agenda=<jeton> page d'abonnement à cet agenda (Google, iPhone/Mac, Outlook)
  *   ?pw=<jeton>  mot de passe oublié : formulaire de nouveau mot de passe (jeton à usage unique, 2 h,
  *                envoyé par email via POST ?action=reset_request {email} — même config mail que mail.php)
  *
@@ -128,7 +130,8 @@ function send_mail_simple(string $to, string $subject, string $text): array {
     $outbox = getenv('FABEVENT_MAIL_OUTBOX') ?: ($cfg['outbox'] ?? '');
     $hdr = fn(string $s) => preg_match('/^[\x20-\x7e]*$/', $s) ? $s : '=?UTF-8?B?' . base64_encode($s) . '?=';
 
-    $headers = "From: " . $hdr($fromName) . " <$from>\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\nX-Mailer: FabEvent";
+    $reply = (string)($cfg['replyTo'] ?? '');
+    $headers = "From: " . $hdr($fromName) . " <$from>\r\n" . (filter_var($reply, FILTER_VALIDATE_EMAIL) ? "Reply-To: $reply\r\n" : '') . "MIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\nX-Mailer: FabEvent";
     $body = chunk_split(base64_encode(str_replace(["\r\n", "\r"], "\n", $text)));
     try {
         if ($outbox) {
@@ -219,6 +222,123 @@ if (isset($_GET['pw'])) {
         . '<label for="p2">Répéter le mot de passe</label><input id="p2" name="pass2" type="password" minlength="6" maxlength="72" required autocomplete="new-password">'
         . '<button>Enregistrer le nouveau mot de passe</button></form></div>'
         . '<p class="m">Ce lien est valable 2 heures et ne sert qu\'une fois. Compte concerné : ' . h((string)$t['email']) . '.</p>');
+}
+
+/* ================= agenda d'un technicien (abonnement iCal) ================= */
+// ?cal=<jeton>     flux iCal : ses postes visibles (planning envoyé), mis à jour tout seul dans son agenda
+// ?agenda=<jeton>  page d'abonnement : boutons Google Agenda / iPhone-Mac / Outlook
+function cal_esc(string $s): string { return str_replace(["\\", "\r\n", "\n", ',', ';'], ["\\\\", '\n', '\n', '\,', '\;'], $s); }
+function cal_fold(string $line): string {
+    $out = ''; $cur = '';
+    foreach (preg_split('//u', $line, -1, PREG_SPLIT_NO_EMPTY) as $ch) {
+        if (strlen($cur) + strlen($ch) > 73) { $out .= $cur . "\r\n "; $cur = ''; }
+        $cur .= $ch;
+    }
+    return $out . $cur . "\r\n";
+}
+/** « 2026-12-01T08:00 » (heure locale) → 20261201T080000, décalé de $min minutes */
+function cal_time(string $s, int $min = 0): string {
+    $t = strtotime($s);
+    if (!$t) return '';
+    return date('Ymd\THis', $t + $min * 60);
+}
+function cal_row(PDO $db, string $space, string $tbl, string $id): ?array {
+    static $cache = [];
+    $k = "$space|$tbl|$id";
+    if (!array_key_exists($k, $cache)) {
+        $q = $db->prepare('SELECT data FROM changes WHERE space = ? AND tbl = ? AND id = ?');
+        $q->execute([$space, $tbl, $id]);
+        $d = json_decode((string)($q->fetchColumn() ?: ''), true);
+        $cache[$k] = is_array($d) ? $d : null;
+    }
+    return $cache[$k];
+}
+if (isset($_GET['cal']) || isset($_GET['agenda'])) {
+    $tok = (string)($_GET['cal'] ?? $_GET['agenda']);
+    if (!preg_match('/^[A-Za-z0-9]{16,64}$/', $tok)) page('Lien invalide', '<h1>Lien invalide</h1><p class="m">Vérifie que le lien est complet.</p>', 404);
+    $row = find_row($db, 'people', 'calToken', $tok);
+    if (!$row) page('Lien invalide', '<h1>Agenda introuvable</h1><p class="m">Ce lien d\'agenda n\'est pas (ou plus) actif. Demande un nouveau lien à l\'organisateur.</p>', 404);
+    $person = $row['data'];
+    $space = (string)$row['space'];
+    $set = cal_row($db, $space, 'settings', 'main') ?? [];
+    $company = (string)($set['company']['name'] ?? '');
+    $calName = trim(($company !== '' ? $company : 'FabEvent') . ' — ' . (string)($person['name'] ?? ''));
+
+    if (isset($_GET['agenda'])) {
+        // page d'abonnement (le flux lui-même est ?cal=…)
+        $host = (string)($_SERVER['HTTP_HOST'] ?? 'localhost');
+        $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https';
+        $path = strtok((string)($_SERVER['REQUEST_URI'] ?? ''), '?');
+        $feed = ($https ? 'https' : 'http') . '://' . $host . $path . '?cal=' . $tok;
+        $webcal = preg_replace('~^https?://~', 'webcal://', $feed);
+        $btn = fn(string $href, string $label, string $cls = '') => '<a href="' . h($href) . '" style="display:block;text-align:center;text-decoration:none;font-weight:700;border-radius:12px;padding:14px 16px;margin-top:10px;' . ($cls === 'o' ? 'background:#fff;color:#111827;border:1px solid #e5e7eb' : 'background:#d97706;color:#fff') . '">' . h($label) . '</a>';
+        page('Mon agenda — ' . $calName, '<h1>Mon agenda</h1><div class="m">' . h($calName) . '</div>'
+            . '<div class="c"><p style="margin-top:0">Abonne-toi une fois : tes jobs s\'ajoutent ensuite <b>tout seuls</b> dans ton agenda, et se mettent à jour quand les horaires changent.</p>'
+            . '<p class="m">« [Option] » = pas encore confirmé. Les postes annulés disparaissent.</p>'
+            . $btn('https://calendar.google.com/calendar/r?cid=' . rawurlencode($webcal), 'Google Agenda (Android, ordinateur)')
+            . $btn($webcal, 'iPhone, iPad ou Mac (Calendrier)')
+            . $btn('https://outlook.live.com/calendar/0/addfromweb?url=' . rawurlencode($feed) . '&name=' . rawurlencode($calName), 'Outlook', 'o')
+            . '</div><div class="c"><p style="margin-top:0"><b>Autre agenda</b> : ajoute un agenda « par URL » (abonnement) avec cette adresse :</p>'
+            . '<input readonly value="' . h($feed) . '" aria-label="Adresse de l\'agenda">'
+            . '<p class="m">Google met à jour les agendas abonnés toutes les quelques heures ; l\'iPhone et le Mac, selon le réglage « Actualiser » de l\'abonnement (toutes les heures conseillé). Ne partage pas ce lien : il montre ton planning.</p></div>');
+    }
+
+    // ---------- flux iCal ----------
+    $pid = (string)($person['id'] ?? $row['id']);
+    $q = $db->prepare("SELECT id, data FROM changes WHERE space = ? AND tbl = 'crew' AND data LIKE ?");
+    $q->execute([$space, '%"personId":"' . $pid . '"%']);
+    $since = date('Y-m-d', time() - 90 * 86400);
+    $stamp = gmdate('Ymd\THis\Z');
+    $tz = 'Europe/Brussels';
+    $ev = '';
+    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $c = json_decode((string)$r['data'], true);
+        if (!is_array($c) || (string)($c['personId'] ?? '') !== $pid) continue;
+        if (($c['final'] ?? null) === false) continue;                       // planning provisoire non communiqué : pas visible du technicien
+        if ((string)($c['end'] ?? '') < $since) continue;
+        $sp = cal_row($db, $space, 'subprojects', (string)($c['subprojectId'] ?? ''));
+        $pr = cal_row($db, $space, 'projects', (string)($c['projectId'] ?? ''));
+        $st = (string)($sp['status'] ?? ($pr['status'] ?? ''));
+        if ($st === 'annule' || !$pr) continue;
+        $option = in_array($st, ['demande', 'brouillon', 'option'], true);
+        $travel = !empty($c['travel']) ? (int)($pr['travelMinutes'] ?? 0) : 0;
+        $a = cal_time((string)$c['start'], -$travel); $b = cal_time((string)$c['end'], $travel);
+        if ($a === '' || $b === '') continue;
+        // lieu : salle du sous-projet, sinon le lieu du projet (nom, endroit, adresse)
+        $venue = !empty($pr['venueId']) ? cal_row($db, $space, 'contacts', (string)$pr['venueId']) : null;
+        $spotId = (string)($sp['spotId'] ?? ($pr['spotId'] ?? ''));
+        $spot = null;
+        foreach ((array)($venue['spots'] ?? []) as $x) if ((string)($x['id'] ?? '') === $spotId && $spotId !== '') $spot = $x;
+        $join = fn(...$xs) => implode(', ', array_filter(array_map(fn($x) => trim((string)$x), $xs), fn($x) => $x !== ''));
+        $addr = $spot && (!empty($spot['address']) || !empty($spot['city'])) ? $join($spot['address'] ?? '', $spot['postalCode'] ?? '', $spot['city'] ?? '')
+            : ($venue ? $join($venue['address'] ?? '', $venue['postalCode'] ?? '', $venue['city'] ?? '') : '');
+        $place = (string)($sp['venue'] ?? '') ?: implode(' — ', array_filter([(string)($venue['company'] ?? ''), (string)($spot['name'] ?? '')])) ?: (string)($pr['venue'] ?? '');
+        $title = ($option ? '[Option] ' : '') . (string)($c['function'] ?? 'Poste') . ' — ' . (string)($pr['name'] ?? '');
+        $desc = implode("\n", array_filter([
+            $option ? 'En option : pas encore confirmé.' : 'Confirmé.',
+            'Projet : ' . (string)($pr['name'] ?? '') . (!empty($sp['name']) ? ' (' . $sp['name'] . ')' : ''),
+            'Poste : ' . (string)($c['function'] ?? ''),
+            $travel ? "Trajet compris ($travel min avant et après)." : '',
+            $company !== '' ? 'Organisé par ' . $company : '',
+        ]));
+        $ev .= "BEGIN:VEVENT\r\n" . cal_fold('UID:' . $r['id'] . '@fabevent') . "DTSTAMP:$stamp\r\n"
+            . "DTSTART;TZID=$tz:$a\r\nDTEND;TZID=$tz:$b\r\n"
+            . cal_fold('SUMMARY:' . cal_esc($title))
+            . ($place !== '' || $addr !== '' ? cal_fold('LOCATION:' . cal_esc($join($place, $addr))) : '')
+            . cal_fold('DESCRIPTION:' . cal_esc($desc))
+            . 'STATUS:' . ($option ? 'TENTATIVE' : 'CONFIRMED') . "\r\nTRANSP:OPAQUE\r\n"
+            . (!empty($c['updatedAt']) && ($lm = strtotime((string)$c['updatedAt'])) ? 'LAST-MODIFIED:' . gmdate('Ymd\THis\Z', $lm) . "\r\n" : '')
+            . "END:VEVENT\r\n";
+    }
+    header_remove('Content-Security-Policy');
+    header('Content-Type: text/calendar; charset=utf-8');
+    header('Content-Disposition: inline; filename="agenda.ics"');
+    echo "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//FabEvent//Agenda technicien//FR\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\n"
+        . cal_fold('X-WR-CALNAME:' . cal_esc($calName)) . "X-WR-TIMEZONE:$tz\r\nREFRESH-INTERVAL;VALUE=DURATION:PT1H\r\nX-PUBLISHED-TTL:PT1H\r\n"
+        . "BEGIN:VTIMEZONE\r\nTZID:$tz\r\nBEGIN:DAYLIGHT\r\nTZOFFSETFROM:+0100\r\nTZOFFSETTO:+0200\r\nTZNAME:CEST\r\nDTSTART:19700329T020000\r\nRRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU\r\nEND:DAYLIGHT\r\n"
+        . "BEGIN:STANDARD\r\nTZOFFSETFROM:+0200\r\nTZOFFSETTO:+0100\r\nTZNAME:CET\r\nDTSTART:19701025T030000\r\nRRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU\r\nEND:STANDARD\r\nEND:VTIMEZONE\r\n"
+        . $ev . "END:VCALENDAR\r\n";
+    exit;
 }
 
 /* ================= demande de disponibilité ================= */

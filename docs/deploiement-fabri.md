@@ -78,7 +78,11 @@ l'ancien emplacement ensuite. `diag.php` indique si cette reprise a eu lieu (`re
 Avec `mail.php`, les devis, factures, bons, plannings et demandes de disponibilité partent **directement** de FabEvent,
 pièces jointes comprises (bouton « Envoyer »). Les réponses arrivent à l'adresse de ta société (Paramètres → Ma société).
 
-1. Crée une boîte d'expédition sur ton domaine (ex. `fabevent@fabri.live`) chez ton hébergeur.
+Les mails partent de **noreply@fabri.live** (par défaut : `noreply@` + domaine du site) et les réponses des
+destinataires arrivent à l'adresse « Répondre à » réglée dans Paramètres → Ma société → « Réponses aux mails »
+(ex. `nicolas@fabri.live` ; vide = email de la société).
+
+1. Crée la boîte `noreply@fabri.live` chez ton hébergeur (le serveur SMTP doit accepter cette adresse comme expéditeur).
 2. Copie `mail-config.example.php` (dans le paquet) en `fabevent/api/mail-config.php` et remplis-le :
    adresse d'expédition, serveur SMTP, port, identifiant et mot de passe de la boîte.
    Sans bloc SMTP, la fonction `mail()` de l'hébergement est utilisée (les mails arrivent moins bien : préfère le SMTP).
@@ -117,6 +121,12 @@ https://fabri.live/fabevent/api/mail.php?action=status  → {"ok":true,"mode":"s
   La réponse arrive dans FabEvent (pastilles « disponible / pas disponible / en attente » sur le poste).
 - **Formulaire d'inscription** : Équipe → « Ouvrir le formulaire d'inscription » donne un lien à envoyer ou à mettre sur ton site.
   Les fiches remplies arrivent dans « Inscriptions à valider ». « Fermer le formulaire » désactive le lien.
+- **Agenda en ligne** : Équipe → « Lien agenda » sur une personne copie son lien. Elle s'abonne en un clic
+  (Google Agenda, iPhone/Mac, Outlook, ou toute appli qui accepte un agenda « par URL ») : ses postes y arrivent
+  tout seuls et se mettent à jour (horaires, lieu, trajet compris). Projet en demande / brouillon / option :
+  « [Option] … » (provisoire) ; confirmé : événement confirmé ; annulé ou planning provisoire non communiqué : absent.
+  Google actualise les agendas abonnés toutes les quelques heures ; iPhone/Mac selon le réglage de l'abonnement.
+  « Désactiver le lien d'agenda » (fiche de la personne) coupe l'ancien lien.
 - **Mot de passe oublié** : sur l'écran de connexion de FabEvent, « Mot de passe oublié ? » envoie à l'email du compte
   un lien `public.php?pw=…` (jeton à usage unique, valable 2 h, stocké en SQLite). Le nouveau mot de passe y est haché
   comme dans l'application (SHA-256 `sel:motdepasse`) et écrit dans la table `users` synchronisée : il arrive sur tous
