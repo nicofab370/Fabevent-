@@ -1,0 +1,65 @@
+name: Mettre en ligne (FTP)
+
+# Envoi sur l'hébergement UNIQUEMENT quand tu le demandes :
+# onglet Actions → « Mettre en ligne (FTP) » → Run workflow (choisis la branche, main en général) → Run workflow.
+# Secrets (Settings → Secrets and variables → Actions) : FTP_SERVER, FTP_USERNAME, FTP_PASSWORD.
+# Variables facultatives : FTP_DIR (défaut « www/fabevent/ »), FTP_PROTOCOL (défaut « ftps »).
+# Seuls les fichiers modifiés depuis le dernier envoi partent ; mail-config.php, fabevent-config.php
+# et les données ne sont jamais envoyés ni supprimés.
+on:
+  workflow_dispatch:
+    inputs:
+      tests:
+        description: "Lancer les tests avant l'envoi"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-ftp
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Vérifier les identifiants FTP
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+        run: |
+          if [ -z "$FTP_SERVER" ]; then
+            echo "::error::Secret FTP_SERVER manquant : Settings → Secrets and variables → Actions (voir docs/deploiement-fabri.md)."
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - if: ${{ inputs.tests }}
+        run: npm test
+      - run: npm run build
+      - name: Préparer le dossier fabevent/
+        run: |
+          mkdir -p paquet/fabevent/api
+          cp -r dist/. paquet/fabevent/
+          cp server/_fabevent.php server/auth.php server/sync.php server/mail.php server/public.php server/oauth.php server/diag.php server/mail-config.example.php server/fabevent-config.example.php server/api-htaccess.example paquet/fabevent/api/
+      - name: Envoi sur l'hébergement
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ${{ vars.FTP_PROTOCOL || 'ftps' }}
+          local-dir: paquet/fabevent/
+          server-dir: ${{ vars.FTP_DIR || 'www/fabevent/' }}
+          # réglages et données propres à l'hébergement : jamais envoyés ni supprimés
+          exclude: |
+            **/.git*
+            **/.git*/**
+            api/mail-config.php
+            api/fabevent-config.php
+            api/_donnees/**
