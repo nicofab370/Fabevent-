@@ -65,16 +65,28 @@ export function ContactField({ contacts, value, onChange, label, placeholder }: 
   );
 }
 
+/** clé de regroupement d'une ville : sans accents, majuscules, tirets ni espaces en trop */
+const cityKey = (s: string) => norm(s).replace(/[\s'-]+/g, ' ').trim();
+
 /** fenêtre : recherche, filtre par ville et par étiquette, liste avec adresse */
 function ContactChooser({ contacts, label, initialQ = '', onPick, onClose }: { contacts: Contact[]; label: string; initialQ?: string; onPick: (c: Contact) => void; onClose: () => void }) {
   const [q, setQ] = useState(initialQ);
   const [city, setCity] = useState('');
   const [tag, setTag] = useState('');
   const base = contacts.filter((c) => matches(c, q));
-  const cities = Array.from(base.reduce((m, c) => (c.city ? m.set(c.city.trim(), (m.get(c.city.trim()) || 0) + 1) : m), new Map<string, number>()))
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'fr')).slice(0, 12);
+  // une même ville écrite de plusieurs façons (« Louvain la neuve », « Louvain-la-Neuve ») = un seul filtre,
+  // affiché sous l'orthographe la plus fréquente
+  const groups = new Map<string, Map<string, number>>();
+  for (const c of base) {
+    const name = c.city?.trim();
+    if (!name) continue;
+    const spellings = groups.get(cityKey(name)) || new Map<string, number>();
+    groups.set(cityKey(name), spellings.set(name, (spellings.get(name) || 0) + 1));
+  }
+  const cities = Array.from(groups, ([k, sp]) => ({ k, label: [...sp].sort((a, b) => b[1] - a[1])[0][0], n: [...sp.values()].reduce((a, b) => a + b, 0) }))
+    .sort((a, b) => b.n - a.n || a.label.localeCompare(b.label, 'fr')).slice(0, 12);
   const tags = Array.from(new Set(contacts.flatMap((c) => c.tags || []))).sort();
-  const list = base.filter((c) => (!city || c.city?.trim() === city) && (!tag || c.tags?.includes(tag))).sort((a, b) => a.company.localeCompare(b.company, 'fr'));
+  const list = base.filter((c) => (!city || cityKey(c.city || '') === city) && (!tag || c.tags?.includes(tag))).sort((a, b) => a.company.localeCompare(b.company, 'fr'));
   return (
     <Modal title={`Choisir un ${label}`} onClose={onClose} wide>
       <div className="picker" onKeyDown={(e) => { if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') { e.preventDefault(); if (list.length === 1) onPick(list[0]); } }}>
@@ -83,7 +95,7 @@ function ContactChooser({ contacts, label, initialQ = '', onPick, onClose }: { c
           {cities.length > 1 && (
             <div className="chips" aria-label="Villes">
               <button type="button" className={'chip' + (!city ? ' on' : '')} onClick={() => setCity('')}>Toutes ({base.length})</button>
-              {cities.map(([c, n]) => <button type="button" key={c} className={'chip' + (city === c ? ' on' : '')} onClick={() => setCity(city === c ? '' : c)}>{c} ({n})</button>)}
+              {cities.map((c) => <button type="button" key={c.k} className={'chip' + (city === c.k ? ' on' : '')} onClick={() => setCity(city === c.k ? '' : c.k)}>{c.label} ({c.n})</button>)}
             </div>
           )}
           {tags.length > 0 && (

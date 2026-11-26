@@ -387,6 +387,8 @@ button, a, input, select, textarea, label { touch-action: manipulation; }
 .pick-row:hover { background: var(--soft); }
 .pick-row.on { background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .pick-row .thumb { width: 32px; height: 32px; margin: 0; border-radius: 6px; }
+/* client / lieu : pas de photo, le nom prend toute la largeur */
+.pick-row.contact-row { grid-template-columns: minmax(0, 1fr) auto; padding: 8px 10px; }
 .pick-name { min-width: 0; } .pick-name > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pick-price { font-size: 12px; white-space: nowrap; }
 .stepper { display: flex; align-items: center; gap: 2px; }
