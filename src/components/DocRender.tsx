@@ -215,6 +215,7 @@ function Rooms({ doc, st }: { doc: Doc; st: DocStyle }) {
     <>
       {(isRoadmap || isPacking) && s.project.notes && <p style={{ whiteSpace: 'pre-wrap' }}>{s.project.notes}</p>}
       {s.partialRooms && <p><strong>{tr(doc, 'partial')} :</strong> {s.partialRooms.join(', ')}</p>}
+      {s.free && <p className="muted"><strong>Projet offert (gratuit)</strong> — aucun montant n'est facturé sur ce document.</p>}
       {s.partialInvoices?.map((p) => <p key={p.number} className="muted">{tr(doc, 'alreadyInvoiced')} {p.number} : {p.rooms.join(', ')} ({money(p.ht)} HT)</p>)}
       {orderedSubprojects(doc).map((sp, i) => {
         const eqLines = sp.equipment.filter((l) => !(showPrices && st.hideZero && !l.total && !l.unitPrice));

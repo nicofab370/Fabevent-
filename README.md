@@ -76,6 +76,8 @@ Côté client, une « base » = un espace de travail local (Paramètres → Base
 - Devis, facture d'acompte, facture (acomptes déduits automatiquement), avoir, bon de sortie, feuille de route sans prix.
 - Impression / PDF, export HTML, email, **export Peppol BIS 3.0 (UBL)** pour les factures et les avoirs.
 - **Ordre des salles personnalisable par document** : sur la page du document, « Ordre des salles » déplace chaque sous-projet (↑ / ↓, ou réinitialiser à l'ordre du projet) ; l'ordre choisi s'affiche, s'imprime, s'exporte (PDF / HTML / XML Peppol) et s'envoie tel quel, sans changer les montants.
+- **Récap de facturation par projet** (Export comptable, carte « Ce qui est facturé par projet ») : total HT, déjà facturé (factures + acomptes, avoirs déduits), reste à facturer ; en rouge quand **l'évènement est passé** et qu'il reste à facturer, avec bouton « Facturer le reste » ; les projets offerts sont listés à 0 €.
+- **Projets offerts (gratuits)** : case « Projet offert (gratuit) » à la création ou dans l'onglet Général du projet (badge « offert » dans la liste) — les devis/factures générés sont à **0 €** avec la mention « Projet offert » sur le document.
 - **Devis acceptables en ligne** : bouton « Lien d'acceptation en ligne » (lien public `public.php?d=…`) — le client voit le montant TTC
   et accepte / refuse ; accepté = document « accepté » et projet confirmé (comme un accepté saisi à la main).
 - **Groupes d'options au choix du client** : une ligne « en option » peut porter un **groupe d'options** (ex. « Son », « Levage ») ; le devis

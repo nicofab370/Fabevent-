@@ -82,6 +82,40 @@ export function invoicedTotal(docs: Pick<Doc, 'type' | 'number' | 'snapshot'>[])
     .reduce((a, d) => a + d.snapshot.totalHT, 0));
 }
 
+export interface BillingRow {
+  project: Project;
+  client?: Contact;
+  total: number;
+  invoiced: number;
+  reste: number;
+  /** évènement terminé (date de fin passée) et pas annulé */
+  past: boolean;
+  free: boolean;
+}
+
+/**
+ * Réca­p de facturation par projet : total HT, déjà facturé HT, reste à facturer,
+ * et drapeau « évènement passé » (fin < aujourd'hui) quand il reste quelque chose à facturer.
+ */
+export function billingRecap(projects: Project[], docs: Doc[], totals: Map<string, number>, contacts: Contact[] = [], today = new Date().toISOString().slice(0, 10)): BillingRow[] {
+  const cMap = new Map(contacts.map((c) => [c.id, c]));
+  return projects
+    .filter((p) => !p.isTemplate)
+    .map((p) => {
+      const pDocs = docs.filter((d) => d.projectId === p.id);
+      const total = totals.get(p.id) || 0;
+      const invoiced = invoicedTotal(pDocs);
+      const reste = round2(total - invoiced);
+      const past = !!p.end && p.end.slice(0, 10) < today && p.status !== 'annule';
+      return { project: p, client: p.clientId ? cMap.get(p.clientId) : undefined, total, invoiced, reste, past, free: !!p.free };
+    })
+    .filter((r) => r.free || r.total > 0.005 || r.invoiced > 0.005 || r.reste > 0.005)
+    .sort((a, b) => {
+      const rank = (r: BillingRow) => (r.past && r.reste > 0.005 && !r.free ? 0 : r.reste > 0.005 && !r.free ? 1 : 2);
+      return rank(a) - rank(b) || (a.project.end || '').localeCompare(b.project.end || '');
+    });
+}
+
 /** Projets confirmés avec un moment de facturation en attente (pour « À facturer »). */
 export async function loadInvoicingQueue(totals: Map<string, number>) {
   const s = await getSettings();

@@ -312,6 +312,8 @@ export interface Project extends Base {
   start: string;
   end: string;
   discount: number;
+  /** projet offert (gratuit) : les documents générés sont à 0 € */
+  free?: boolean;
   /** interlocuteur chez le client (nom affiché sur les documents) */
   contactPerson?: string;
   contactPersonId?: ID;
@@ -900,6 +902,8 @@ export interface DocSnapshot {
   terms?: string;
   /** modèle figé au moment de la génération */
   template?: DocTypeTemplate & { style: DocStyle; html?: DocHtml };
+  /** projet offert : tous les montants du document sont à 0 */
+  free?: boolean;
 }
 
 /** Document figé : une génération = un nouvel enregistrement, jamais d'écrasement. */
