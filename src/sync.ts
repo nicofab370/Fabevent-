@@ -17,7 +17,9 @@ export const SYNCED = TABLES.filter((t) => t !== 'log');
 
 const ws = () => currentWorkspace();
 const K = {
-  url: () => `fab.sync.url`,
+  /** URL de synchro PROPRE à la base ouverte (une autre société peut viser un autre serveur/login). */
+  url: () => `fab.sync.url.${ws()}`,
+  urlGlobal: () => `fab.sync.url`,
   pending: () => `fab.sync.pending.${ws()}`,
   seq: () => `fab.sync.seq.${ws()}`,
   last: () => `fab.sync.last.${ws()}`,
@@ -26,12 +28,15 @@ const get = (k: string) => { try { return localStorage.getItem(k); } catch { ret
 const set = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* sans stockage */ } };
 
 export function syncUrl(): string {
-  const v = get(K.url());
+  // propre à la base d'abord, puis l'ancienne clé globale (migration), puis déduction automatique
+  const v = get(K.url()) ?? get(K.urlGlobal());
   if (v !== null) return v;
   // FabEvent servi depuis l'hébergement : le serveur de synchro est à côté
   return location.protocol.startsWith('http') && !/github\.io$|localhost$|127\.0\.0\.1$/.test(location.hostname) ? new URL('api/sync.php', location.href).href : '';
 }
 export function setSyncUrl(url: string) { set(K.url(), url.trim()); schedule(0); }
+/** Fixe l'URL de synchro d'une base précise (sans l'ouvrir). */
+export function setSyncUrlFor(workspace: string, url: string) { set(`fab.sync.url.${workspace}`, url.trim()); }
 export const syncEnabled = () => !!syncUrl() && ws() !== 'demo';
 
 /* ---------- file d'attente des modifications locales ---------- */

@@ -3009,6 +3009,50 @@ await step('Diagnostic : API qui renvoie la page HTML de l’app → message exp
   await page.evaluate((w) => { try { localStorage.setItem('fabevent.workspace', w); localStorage.removeItem('fab.sync.url'); } catch {} }, ws0);
 });
 
+await step('Bases : créer une base « autre société » isolée (données, comptes et synchro séparés)', async () => {
+  // on repart de la base en cours (démo, remplie) pour comparer avant/après
+  const ws0 = await page.evaluate(() => localStorage.getItem('fabevent.workspace') || 'demo');
+  await page.evaluate((w) => { try { localStorage.setItem('fabevent.workspace', w); } catch {} }, ws0);
+  await page.goto(U);
+  await page.waitForSelector('.sidebar nav');
+  await go('projets');
+  const nA = await page.locator('table.list tbody tr').count();
+  expect(nA >= 1, `base de départ remplie (${nA} projet(s))`);
+  // synchro stubbée : on capture le ws envoyé par la nouvelle base
+  let pullWs = '';
+  await ctx.route('**/api/sync.php**', (route) => {
+    const u = route.request().url();
+    if (u.includes('action=pull')) pullWs = new URL(u).searchParams.get('ws') || '';
+    route.fulfill({ contentType: 'application/json', body: u.includes('action=pull') ? '{"ok":true,"changes":[],"seq":0,"more":false}' : u.includes('action=ping') ? '{"ok":true,"user":"t","space":"u-t"}' : '{"ok":true,"applied":0,"skipped":0,"n":1}' });
+  });
+  await go('parametres');
+  await page.click('button:has-text("Nouvelle base pour une autre société")');
+  await page.waitForSelector('.modal');
+  await page.fill('input[aria-label="Nom de la société"]', 'Societe Beta');
+  await page.fill('input[aria-label="Adresse de synchro de la nouvelle base"]', 'http://localhost:9999/api/sync.php');
+  await page.click('.modal button:text-is("Créer et ouvrir")');
+  await page.waitForSelector('.sidebar nav');
+  await page.waitForTimeout(1500); // laisse la synchro démarrer (300 ms) et faire le pull
+  expect(await page.evaluate(() => localStorage.getItem('fabevent.workspace')) === 'societe-beta', 'base « societe-beta » ouverte');
+  expect(await page.evaluate(() => localStorage.getItem('fab.sync.url.societe-beta')) === 'http://localhost:9999/api/sync.php', 'URL de synchro propre à la base enregistrée');
+  expect(await page.evaluate(() => (JSON.parse(localStorage.getItem('fabevent.wsmeta') || '{}')['societe-beta'] || {}).society === true), 'métadonnée « société isolée » enregistrée');
+  expect(pullWs === 'societe-beta', `synchro de la nouvelle base avec ws=societe-beta (reçu : ${pullWs})`);
+  // la nouvelle base est vide : rien de l'autre base ne fuite
+  await go('projets');
+  const nBeta = await page.locator('table.list tbody tr').count();
+  expect(nBeta === 0, `base société vide (${nBeta} projet(s) au lieu de ${nA})`);
+  // badge « société isolée » affiché dans les paramètres
+  await go('parametres');
+  expect((await page.locator('.card', { hasText: 'Bases de données' }).innerText()).includes('société isolée'), 'badge société isolée affiché');
+  // retour à la base de départ : données intactes
+  await page.locator('.ws-list button', { hasText: ws0 }).first().click();
+  await page.waitForSelector('.sidebar nav');
+  await go('projets');
+  const nBack = await page.locator('table.list tbody tr').count();
+  expect(nBack === nA, `base de départ intacte (${nBack} = ${nA} projets)`);
+  await ctx.unroute('**/api/sync.php**');
+});
+
 await ctx.close();
 
 await step('Aucune erreur dans la console du navigateur', async () => {

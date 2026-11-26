@@ -35,6 +35,20 @@ export function switchWorkspace(name: string) {
   location.reload();
 }
 
+/* ---------- métadonnées des bases (ex. « société isolée ») ---------- */
+export interface WsMeta { label?: string; /** base d'une autre société : aucun lien avec les autres bases */ society?: boolean }
+const WS_META_KEY = 'fabevent.wsmeta';
+
+export function wsMeta(name: string): WsMeta {
+  try { return ((JSON.parse(safeGet(WS_META_KEY) || '{}') as Record<string, WsMeta>)[name]) || {}; } catch { return {}; }
+}
+export function setWsMeta(name: string, meta: WsMeta) {
+  let all: Record<string, WsMeta> = {};
+  try { all = JSON.parse(safeGet(WS_META_KEY) || '{}') as Record<string, WsMeta>; } catch { /* ignore */ }
+  all[name] = { ...all[name], ...meta };
+  safeSet(WS_META_KEY, JSON.stringify(all));
+}
+
 /**
  * Supprime définitivement une base de cet appareil (données, onglets, file de synchro).
  * La base principale ne se supprime pas. Si c'est la base ouverte, on revient sur la principale.
@@ -46,7 +60,11 @@ export async function deleteWorkspace(name: string) {
   await Dexie.delete('fabevent_' + name);
   safeSet(WS_LIST_KEY, JSON.stringify(listWorkspaces().filter((w) => w !== name && w !== 'principal')));
   try {
-    for (const k of Object.keys(localStorage)) if (k.endsWith('.' + name) && /^(fabevent\.tabs|fab\.sync\.(pending|seq|last))\./.test(k)) localStorage.removeItem(k);
+    let all: Record<string, WsMeta> = {};
+    try { all = JSON.parse(safeGet(WS_META_KEY) || '{}') as Record<string, WsMeta>; } catch { /* ignore */ }
+    delete all[name];
+    safeSet(WS_META_KEY, JSON.stringify(all));
+    for (const k of Object.keys(localStorage)) if (k.endsWith('.' + name) && /^(fabevent\.tabs|fab\.sync\.(pending|seq|last|url))\./.test(k)) localStorage.removeItem(k);
   } catch { /* stockage indisponible */ }
   if (active) switchWorkspace('principal');
 }
