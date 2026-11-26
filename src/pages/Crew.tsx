@@ -5,7 +5,8 @@ import { appBaseUrl, db } from '../db';
 import type { Person, ProjectFile, Unavailability } from '../types';
 import { buildIcs, crewWindow, download, fmtRange, money, save, toLocalInput, uid } from '../utils';
 import { CsvButton, exportCsv } from '../components/extra';
-import { mySheetLink, newToken, signupLink } from '../mailer';
+import { agendaLink, mySheetLink, newToken, signupLink } from '../mailer';
+import { syncEnabled, syncNow } from '../sync';
 import { FileViewer } from '../components/FileViewer';
 import { Icon } from '../components/Icon';
 
@@ -153,7 +154,16 @@ export default function Crew() {
                           if (!link) { setSheetMsg('Le lien « ma fiche » nécessite FabEvent installé sur un hébergement (serveur de synchronisation, comme le formulaire d\'inscription).'); return; }
                           await navigator.clipboard?.writeText(link).catch(() => undefined);
                           setSheetMsg(`Lien « ma fiche » de ${p.name} copié dans le presse-papiers.`);
-                        }}>Lien « ma fiche »</button>
+                        }}>Lien « ma fiche »</button>{' '}
+                        <button className="secondary small" title="Lien d'abonnement à son agenda (Google, iPhone/Mac, Outlook) : ses postes s'y ajoutent et se mettent à jour tout seuls ; « [Option] » tant que le projet n'est pas confirmé" onClick={async () => {
+                          const tok = p.calToken || newToken(24);
+                          if (!p.calToken) await save(db.people, { ...p, calToken: tok });
+                          const link = agendaLink(tok);
+                          if (!link) { setSheetMsg('L\'agenda en ligne nécessite FabEvent installé sur un hébergement (serveur de synchronisation).'); return; }
+                          if (syncEnabled()) await syncNow(); // le lien marche tout de suite
+                          await navigator.clipboard?.writeText(link).catch(() => undefined);
+                          setSheetMsg(`Lien d'agenda de ${p.name} copié : envoie-le-lui, il s'abonne en un clic (Google Agenda, iPhone/Mac, Outlook). ${link}`);
+                        }}>Lien agenda</button>
                       </td>
                     </tr>
                   );
@@ -163,7 +173,7 @@ export default function Crew() {
           </div>
         )}
       </div>
-      <p className="muted">Le bouton « Agenda .ics » produit le planning personnel de la personne, à lui envoyer pour son agenda (Google, Apple, Outlook).</p>
+      <p className="muted">« Lien agenda » : la personne s'abonne une fois et ses postes arrivent tout seuls dans son agenda (Google, iPhone/Mac, Outlook), mis à jour quand les horaires changent ; « [Option] » tant que le projet n'est pas confirmé. « Agenda .ics » : fichier ponctuel de son planning actuel.</p>
       {docsFor && <PersonDocs person={docsFor} files={files.filter((f) => f.personId === docsFor.id)} onClose={() => setDocsFor(null)} />}
       {unavFor && <UnavailabilityModal person={unavFor} list={unav.filter((u) => u.personId === unavFor.id)} onClose={() => setUnavFor(null)} />}
       {edit && (
@@ -216,6 +226,7 @@ export default function Crew() {
               </Field>
             )}
             <Field label="Notes" full><textarea value={edit.notes || ''} onChange={(e) => setEdit({ ...edit, notes: e.target.value })} /></Field>
+            {edit.calToken && <p className="field full muted" style={{ margin: 0 }}>Agenda en ligne actif. <button type="button" className="secondary small" onClick={() => setEdit({ ...edit, calToken: undefined })} title="L'ancien lien ne marchera plus ; « Lien agenda » en crée un nouveau">Désactiver le lien d'agenda</button></p>}
             <div className="form-actions">
               {edit.id && <button type="button" className="danger" style={{ marginRight: 'auto' }} onClick={async () => {
                 if (confirm('Supprimer cette personne ? Ses postes resteront « à pourvoir ».')) {

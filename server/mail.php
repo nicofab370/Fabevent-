@@ -63,7 +63,8 @@ function addrs($v): array {
 $to = addrs($b['to'] ?? []); $cc = addrs($b['cc'] ?? []); $bcc = addrs($b['bcc'] ?? []);
 if (!$to && !$bcc) out(400, ['error' => 'no_recipient', 'detail' => 'Aucun destinataire.']);
 if (count($to) + count($cc) + count($bcc) > 50) out(400, ['error' => 'too_many', 'detail' => '50 destinataires au plus.']);
-$replyTo = addrs($b['replyTo'] ?? '')[0] ?? '';
+// « Répondre à » : celle choisie dans FabEvent (Paramètres → Ma société), sinon celle de mail-config.php
+$replyTo = addrs($b['replyTo'] ?? '')[0] ?? (addrs($cfg['replyTo'] ?? '')[0] ?? '');
 $subject = trim(preg_replace('/[\r\n]+/', ' ', (string)($b['subject'] ?? '')));
 $text = str_replace(["\r\n", "\r"], "\n", (string)($b['text'] ?? ''));
 $atts = is_array($b['attachments'] ?? null) ? array_slice($b['attachments'], 0, 20) : [];

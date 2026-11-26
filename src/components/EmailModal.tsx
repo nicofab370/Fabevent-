@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { db } from '../db';
 import { buildEml, canShareFiles, mailtoUrl, shareFiles, type Attachment, type MailDraft } from '../email';
-import { fillVars, mailServer, MAIL_KINDS, newTemplate, sendMail, splitAddrs, templatesFor, toTemplate, type MailServer } from '../mailer';
+import { fillVars, mailServer, replyAddress, MAIL_KINDS, newTemplate, sendMail, splitAddrs, templatesFor, toTemplate, type MailServer } from '../mailer';
 import { requestLogin } from '../serverAuth';
 import { safeFileName } from '../pdf';
 import type { MailKind } from '../types';
@@ -149,7 +149,7 @@ export function EmailModal({ initial, prepare, onSent, onClose, kind, vars, hint
 
   const ready = !!files;
   const finish = (msg: string, how: 'direct' | 'autre') => { setDone(msg); onSent?.(how); };
-  const me = settings.company.email;
+  const me = replyAddress(settings);
   const choose = (id: string) => {
     setTpl(id);
     if (!id) { setM({ ...m, subject: initial.subject, body: initial.body }); return; }

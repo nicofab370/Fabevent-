@@ -4,7 +4,7 @@ import { EmailModal } from '../components/EmailModal';
 import { Field, Modal, useSettings } from '../components/ui';
 import { appBaseUrl, db } from '../db';
 import { mailtoUrl } from '../email';
-import { fillVars, mailServer, newToken, requestLink, sendMail, templatesFor, type MailServer } from '../mailer';
+import { fillVars, mailServer, newToken, replyAddress, requestLink, sendMail, templatesFor, type MailServer } from '../mailer';
 import { requestLogin } from '../serverAuth';
 import { placeAddress, placeName, projectPerson, spotOf } from '../places';
 import type { Contact, CrewAssignment, CrewRequest, Person, Project, Settings, Subproject } from '../types';
@@ -148,7 +148,7 @@ export function AskModal({ projectId, crewIds, onClose }: { projectId: string; c
       const m = { to: p.email || '', subject: fillVars(subject, vars), body: fillVars(body, vars) };
       if (!p.email) { out.push({ person: p, ok: false, msg: `pas d'adresse email${p.phone ? ` — appelle au ${p.phone}` : ''} (réponse à noter à la main)` }); continue; }
       if (canSend) {
-        try { await sendMail({ ...m, replyTo: settings.company.email }, []); out.push({ person: p, ok: true, msg: 'mail envoyé avec le lien de réponse' }); }
+        try { await sendMail({ ...m, replyTo: replyAddress(settings) }, []); out.push({ person: p, ok: true, msg: 'mail envoyé avec le lien de réponse' }); }
         catch (e) { out.push({ person: p, ok: false, msg: (e as Error).message, mailto: mailtoUrl(m) }); }
       } else out.push({ person: p, ok: false, msg: 'à envoyer avec ta messagerie (réponse à noter à la main)', mailto: mailtoUrl(m) });
     }
