@@ -178,6 +178,24 @@ describe.skipIf(!hasPhp)('serveur FabEvent autonome (auth.php + sync.php)', () =
     expect((await x.auth('login', { ws: 'principal', email: 'double@exemple.org', password: 'ancien' })).status).toBe(401);
     expect((await x.auth('recover', { ws: 'principal', email: 'personne@exemple.org', code, password: 'nouveau1' })).status).toBe(404);
   });
+  it('plusieurs bases avec le même email : même mot de passe = bases ouvertes ensemble ; autre mot de passe = jamais', async () => {
+    // une 3e base, gérée par quelqu'un d'autre, avec le même email mais un autre mot de passe
+    const autre = new Agent();
+    expect((await autre.auth('login', { ws: 'autrebase', email: 'autre@exemple.org', password: 'motdepasse' })).status).toBe(200);
+    const pirate = { id: 'dup-0003', name: 'Double', email: 'double@exemple.org', salt, passHash: hash('autre-mdp'), role: 'admin', active: true };
+    expect((await autre.auth('setup', { ws: 'troisieme', user: pirate })).status).toBe(200);
+    const me = new Agent();
+    const r = await me.auth('login', { ws: 'principal', email: 'double@exemple.org', password: 'nouveau1' });
+    expect(r.status).toBe(200);
+    expect(r.json.bases.map((b: { ws: string }) => b.ws).sort()).toEqual(['autrebase', 'principal']);
+    expect((await me.sync('ping', undefined, '&ws=autrebase')).status).toBe(200); // sans se reconnecter
+    expect((await me.sync('ping', undefined, '&ws=troisieme')).status).toBe(401); // autre mot de passe : fermé
+    const list = await me.auth('bases');
+    expect(list.json.bases.find((b: { ws: string }) => b.ws === 'autrebase')).toMatchObject({ userId: 'dup-0002', role: 'admin' });
+    // se déconnecter ferme toutes les bases
+    await me.auth('logout', { ws: 'principal', all: true });
+    expect((await me.sync('ping', undefined, '&ws=autrebase')).status).toBe(401);
+  });
   it('déconnexion', async () => {
     await collegue.auth('logout', { ws: 'principal' });
     expect((await collegue.sync('ping', undefined, '&ws=principal')).status).toBe(401);

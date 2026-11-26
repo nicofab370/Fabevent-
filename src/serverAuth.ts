@@ -1,5 +1,6 @@
-import { currentWorkspace, db } from './db';
-import type { User } from './types';
+import { setSession } from './auth';
+import { currentWorkspace, db, switchWorkspace } from './db';
+import type { Role, User } from './types';
 import { serverScript } from './mailer';
 import { syncEnabled } from './sync';
 
@@ -62,7 +63,34 @@ async function keep(u: User | undefined): Promise<User> {
 
 export async function serverLogin(email: string, password: string, code?: string): Promise<User> {
   const j = await call('login', { email, password, code: code || undefined });
+  if (Array.isArray(j.bases)) keepBases(j.bases as ServerBase[]);
   return keep(j.user as User);
+}
+
+/* ---------- plusieurs bases avec le même email ---------- */
+
+/** Base ouverte dans ce navigateur (même email, même mot de passe), éventuellement gérée par quelqu'un d'autre. */
+export interface ServerBase { ws: string; name: string; role: Role; userId: string; email?: string }
+const BASES = 'fab.bases';
+function keepBases(list: ServerBase[]) { try { localStorage.setItem(BASES, JSON.stringify(list)); } catch { /* sans stockage */ } }
+/** Bases connues (dernière liste reçue du serveur) ; un sous-traitant ne synchronise pas : ses bases ne sont pas proposées. */
+export function knownBases(): ServerBase[] {
+  try { return (JSON.parse(localStorage.getItem(BASES) || '[]') as ServerBase[]).filter((b) => b.role !== 'subcontractor'); } catch { return []; }
+}
+/** Liste à jour des bases ouvertes dans ce navigateur. */
+export async function refreshBases(): Promise<ServerBase[]> {
+  if (!serverOn()) return knownBases();
+  try {
+    const r = await fetch(`${authUrl()}?action=bases`, { credentials: 'include', cache: 'no-store' });
+    const j = await r.json();
+    if (r.ok && Array.isArray(j.bases)) keepBases(j.bases);
+  } catch { /* hors ligne : dernière liste connue */ }
+  return knownBases();
+}
+/** Ouvre une autre base, connecté avec son compte (sa session serveur est déjà ouverte). */
+export function openBase(b: ServerBase) {
+  setSession(b.userId, b.ws);
+  switchWorkspace(b.ws);
 }
 
 /** Premier compte administrateur d'une base sur le serveur (code d'installation si le serveur a déjà des données). */
@@ -77,9 +105,11 @@ export async function serverRecover(email: string, code: string, password: strin
   return Number(j.accounts || 0);
 }
 
+/** Se déconnecter : toutes les bases ouvertes dans ce navigateur. */
 export async function serverLogout() {
+  keepBases([]);
   if (!serverOn()) return;
-  try { await call('logout', {}); } catch { /* hors ligne : la session expirera d'elle-même */ }
+  try { await call('logout', { all: true }); } catch { /* hors ligne : les sessions expireront d'elles-mêmes */ }
 }
 
 /** Affiche l'écran de connexion (reconnexion au serveur), sans rien effacer sur l'appareil. */

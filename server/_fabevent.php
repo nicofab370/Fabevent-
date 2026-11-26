@@ -281,3 +281,41 @@ function fe_set_password(string $email, string $pass): int {
     }
     return $n;
 }
+
+/** Comptes actifs de cet email, dans toutes les bases : [[ws, compte], …]. */
+function fe_accounts(string $email): array {
+    $email = strtolower(trim($email));
+    if ($email === '') return [];
+    $q = fe_db()->prepare("SELECT space, data FROM changes WHERE tbl = 'users' AND data LIKE ?");
+    $q->execute(['%' . $email . '%']);
+    $out = [];
+    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $u = json_decode((string)$r['data'], true);
+        $prefix = FE_SPACE . '/';
+        if (!is_array($u) || empty($u['active']) || strtolower((string)($u['email'] ?? '')) !== $email || strncmp((string)$r['space'], $prefix, strlen($prefix)) !== 0) continue;
+        $out[] = [substr((string)$r['space'], strlen($prefix)), $u];
+    }
+    return $out;
+}
+
+/** Nom affiché d'une base : le nom de sa société (Paramètres → Ma société), sinon son identifiant. */
+function fe_base_name(string $ws): string {
+    $q = fe_db()->prepare("SELECT data FROM changes WHERE space = ? AND tbl = 'settings' AND id = 'main'");
+    $q->execute([fe_key($ws)]);
+    $s = json_decode((string)($q->fetchColumn() ?: ''), true);
+    $n = trim((string)($s['company']['name'] ?? ''));
+    return $n !== '' ? $n : $ws;
+}
+
+/** Bases ouvertes dans ce navigateur (une session par base) : pour passer de l'une à l'autre. */
+function fe_open_bases(): array {
+    $out = [];
+    foreach ($_COOKIE as $k => $v) {
+        if (strncmp((string)$k, 'fe_', 3) !== 0) continue;
+        $ws = fe_ws(substr((string)$k, 3));
+        if (!$ws || !($u = fe_session($ws))) continue;
+        $out[] = ['ws' => $ws, 'name' => fe_base_name($ws), 'role' => (string)($u['role'] ?? ''), 'userId' => (string)$u['id'], 'email' => (string)($u['email'] ?? '')];
+    }
+    usort($out, fn($a, $b) => strcmp($a['name'], $b['name']));
+    return $out;
+}

@@ -7,6 +7,7 @@
  *                                                    401 {error:'bad'} · 401 {error:'mfa'} (code MFA demandé) · 429 trop d'essais
  *   POST ?action=setup  {ws, user, code?}           → premier compte administrateur d'une base qui n'en a pas sur le serveur
  *   POST ?action=recover {email, code, password}   → nouveau mot de passe sans email, avec le code d'installation
+ *   GET  ?action=bases                             → bases ouvertes dans ce navigateur [{ws, name, role, userId}]
  *   POST ?action=logout {ws}
  *
  * Aucune dépendance aux pages internes du site : voir _fabevent.php.
@@ -27,6 +28,9 @@ if ($post) {
     $raw = (string)file_get_contents('php://input');
     $b = strlen($raw) < 100000 ? (json_decode($raw, true) ?: []) : [];
 }
+// bases ouvertes dans ce navigateur (sélecteur de base de l'application) : pas besoin d'indiquer une base
+if ($action === 'bases') fe_json(200, ['ok' => true, 'bases' => fe_open_bases()]);
+
 $ws = fe_ws($b['ws'] ?? ($_GET['ws'] ?? ''));
 if (!$ws) fe_json(400, ['error' => 'bad_ws']);
 
@@ -66,7 +70,15 @@ if ($action === 'login' && $post) {
         if (!fe_totp_ok((string)$found['totpSecret'], $code)) { fe_fail(); fe_json(401, ['error' => 'mfa_bad']); }
     }
     fe_open_session($ws, $found);
-    fe_json(200, ['ok' => true, 'user' => public_user($found)]);
+    // même email, même mot de passe (et même code MFA) dans d'autres bases, gérées par toi ou par d'autres :
+    // leurs sessions s'ouvrent aussi, pour passer de l'une à l'autre sans se reconnecter.
+    // (un compte avec un autre mot de passe n'est jamais ouvert ainsi : l'email seul ne prouve rien)
+    foreach (fe_accounts($email) as [$ows, $ou]) {
+        if ($ows === $ws || empty($ou['passHash']) || !hash_equals((string)$ou['passHash'], hash('sha256', (string)($ou['salt'] ?? '') . ':' . $pass))) continue;
+        if (!empty($ou['totpOn']) && !empty($ou['totpSecret']) && !fe_totp_ok((string)$ou['totpSecret'], (string)($b['code'] ?? ''))) continue;
+        fe_open_session($ows, $ou);
+    }
+    fe_json(200, ['ok' => true, 'user' => public_user($found), 'bases' => fe_open_bases()]);
 }
 
 if ($action === 'setup' && $post) {
@@ -102,6 +114,8 @@ if ($action === 'recover' && $post) {
 }
 
 if ($action === 'logout' && $post) {
+    // « se déconnecter » ferme toutes les bases ouvertes dans ce navigateur
+    if (!empty($b['all'])) foreach (fe_open_bases() as $x) fe_close_session($x['ws']);
     fe_close_session($ws);
     fe_json(200, ['ok' => true]);
 }
