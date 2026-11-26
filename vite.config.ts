@@ -21,7 +21,14 @@ export default defineConfig({
         icons: [{ src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }],
       },
       // tout est mis en cache pour fonctionner hors ligne, y compris le scanner (wasm) et le lecteur de PDF
-      workbox: { globPatterns: ['**/*.{js,mjs,css,html,svg,png,ico,wasm}'], maximumFileSizeToCacheInBytes: 6 * 1024 * 1024 },
+      // les pages du serveur (api/public.php : liens de disponibilité, inscription, devis…) ne sont JAMAIS
+      // remplacées par l'application en cache : sinon, sur un appareil où FabEvent a déjà été ouvert
+      // (ex. Safari sur iPhone), ces liens affichent une page blanche
+      workbox: {
+        globPatterns: ['**/*.{js,mjs,css,html,svg,png,ico,wasm}'],
+        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
+        navigateFallbackDenylist: [/\/api\//, /\.php$/],
+      },
     }),
   ],
 });
