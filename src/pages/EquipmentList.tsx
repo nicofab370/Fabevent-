@@ -132,7 +132,7 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
         ? <Field label="Quantité en stock"><span className="muted">= nombre d'unités en service (gérées sur la fiche article)</span></Field>
         : depots.length > 1 ? (
           <div className="field full">
-            <span>Stock par dépôt (total : {e.quantity})</span>
+            <span>{e.isKit ? 'Caisses montées par dépôt' : 'Stock par dépôt'} (total : {e.quantity})</span>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               {depots.map((dp, i) => {
                 const others = depots.slice(1).reduce((a, x) => a + (e.stock?.[x.id] || 0), 0);

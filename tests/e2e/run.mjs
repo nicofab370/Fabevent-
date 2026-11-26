@@ -3278,14 +3278,13 @@ await step('Kits : type d’article simple / kit virtuel / kit fixe (caisse mont
   await page.click('button:has-text("Nouvel article")');
   await page.waitForSelector('.modal');
   await page.fill('.modal input[aria-label="Désignation"]', 'Caisse micros test');
-  await page.selectOption('.modal select[aria-label="Type d’article"]', 'fixe');
+  await page.selectOption('.modal select[aria-label="Type d\'article"]', 'fixe');
   expect(await page.locator('.modal input[aria-label="Vérifier le contenu à la sortie et au retour"]').count() === 1, 'option « vérifier le contenu » proposée');
   expect((await page.locator('.modal').innerText()).includes('Caisses montées'), 'stock = caisses montées');
-  await page.fill('.modal input[aria-label="Quantité en stock"]', '2');
-  await page.selectOption('.modal select[aria-label="Type d’article"]', 'virtuel');
+  await page.selectOption('.modal select[aria-label="Type d\'article"]', 'virtuel');
   expect(await page.locator('.modal input[aria-label="Vérifier le contenu à la sortie et au retour"]').count() === 0, 'kit virtuel : pas d’option de vérification');
   expect((await page.locator('.modal').innerText()).includes('selon les quantités de ses composants'), 'kit virtuel : stock selon les composants');
-  await page.selectOption('.modal select[aria-label="Type d’article"]', 'fixe');
+  await page.selectOption('.modal select[aria-label="Type d\'article"]', 'fixe');
   await page.locator('.modal input[aria-label="Vérifier le contenu à la sortie et au retour"]').check();
   await page.click('.modal button[type=submit]:not([data-print])');
   await page.waitForSelector('.modal', { state: 'detached' });
