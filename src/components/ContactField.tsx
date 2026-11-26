@@ -14,13 +14,16 @@ const haystack = (c: Contact) => norm([c.company, c.city, c.postalCode, c.addres
 const matches = (c: Contact, q: string) => norm(q).split(/\s+/).filter(Boolean).every((w) => haystack(c).includes(w));
 const place = (c: Contact) => [c.postalCode, c.city].filter(Boolean).join(' ');
 
-export function ContactField({ contacts, value, onChange, label, placeholder }: {
+export function ContactField({ contacts, value, onChange, label, placeholder, onNew, onEdit }: {
   contacts: Contact[];
   value?: string;
   onChange: (id: string | undefined) => void;
   /** « lieu », « client »… (dans les textes de la fenêtre) */
   label: string;
   placeholder?: string;
+  /** boutons « Nouveau » et « Modifier » sous le champ (sinon absents) */
+  onNew?: () => void;
+  onEdit?: (c: Contact) => void;
 }) {
   const current = contacts.find((c) => c.id === value);
   const [q, setQ] = useState('');
@@ -58,8 +61,13 @@ export function ContactField({ contacts, value, onChange, label, placeholder }: 
           </ul>
         )}
       </div>
-      <button type="button" className="secondary small" title={`Choisir un ${label} dans une fenêtre avec filtres`} aria-label={`Parcourir les ${label}s`} onClick={() => setBrowse(true)}><Icon name="search" /></button>
-      {current && <button type="button" className="ghost small" title={`Retirer le ${label}`} aria-label={`Retirer le ${label}`} onClick={() => pick(undefined)}><Icon name="x" /></button>}
+      {/* actions sous le champ : le nom garde toute la largeur */}
+      <div className="cf-actions">
+        <button type="button" className="ghost small" title={`Choisir un ${label} dans une fenêtre avec filtres`} aria-label={`Parcourir les ${label}s`} onClick={() => setBrowse(true)}><Icon name="search" />Parcourir</button>
+        {onNew && <button type="button" className="ghost small" title={`Nouveau ${label}`} onClick={onNew}><Icon name="plus" />Nouveau</button>}
+        {current && onEdit && <button type="button" className="ghost small" title={`Modifier ce ${label}`} aria-label={`Modifier le ${label}`} onClick={() => onEdit(current)}><Icon name="edit" />Modifier</button>}
+        {current && <button type="button" className="ghost small" title={`Retirer le ${label}`} aria-label={`Retirer le ${label}`} onClick={() => pick(undefined)}><Icon name="x" />Retirer</button>}
+      </div>
       {browse && <ContactChooser contacts={contacts} label={label} initialQ={q} onPick={(c) => { pick(c); setBrowse(false); }} onClose={() => setBrowse(false)} />}
     </div>
   );

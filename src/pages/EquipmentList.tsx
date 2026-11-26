@@ -205,7 +205,7 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
             <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6, alignItems: 'center' }}>
               <NumInput className="w-qty" value={a.qty} step="1" min={1} onChange={(n) => upd({ qty: n })} />
               <span className="chosen-name">{nameOf(a.equipmentId)}{all.find((o) => o.id === a.equipmentId)?.accessoryOnly ? <span className="muted"> (hors inventaire)</span> : null}</span>
-              <label className="check-row" style={{ whiteSpace: 'nowrap' }} title="Coché = ajouté d'office avec l'article (ligne enfant automatique). Décoché = accessoire facultatif : proposé dans le sélecteur, ajouté seulement s'il est coché."><input type="checkbox" checked={!a.optional} onChange={(x) => upd({ optional: x.target.checked ? true : undefined })} aria-label={`Ajout automatique : ${nameOf(a.equipmentId)}`} /> auto</label>
+              <label className="check-row" style={{ whiteSpace: 'nowrap' }} title="Coché = ajouté d'office avec l'article (ligne enfant automatique). Décoché = accessoire facultatif : proposé dans le sélecteur, ajouté seulement s'il est coché."><input type="checkbox" checked={!a.optional} onChange={(x) => upd({ optional: x.target.checked ? undefined : true })} aria-label={`Ajout automatique : ${nameOf(a.equipmentId)}`} /> auto</label>
               <label className="check-row" style={{ whiteSpace: 'nowrap' }}><input type="checkbox" checked={a.free} onChange={(x) => upd({ free: x.target.checked })} /> gratuit</label>
               <button type="button" className="ghost" onClick={() => set('accessories', (e.accessories || []).filter((_, j) => j !== i))}><Icon name="x" /></button>
             </div>

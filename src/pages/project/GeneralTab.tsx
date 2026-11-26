@@ -130,11 +130,8 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
           <h2>Client</h2>
           <div className="form">
             <Field label="Client" full>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <ContactField label="client" contacts={contacts.filter((c) => c.type === 'client' || c.id === project.clientId)} value={project.clientId} onChange={(id) => changeClient(id)} />
-                <button type="button" className="secondary small" title="Nouveau client" onClick={() => setNewContact('client')}>+</button>
-                {client && <button type="button" className="secondary small" title="Modifier ce client" aria-label="Modifier le client" onClick={() => setEditContact(client)}><Icon name="edit" /></button>}
-              </div>
+              <ContactField label="client" contacts={contacts.filter((c) => c.type === 'client' || c.id === project.clientId)} value={project.clientId} onChange={(id) => changeClient(id)}
+                onNew={() => setNewContact('client')} onEdit={setEditContact} />
             </Field>
             <Field label="Régime de TVA" full>
               <select value={project.vatRegime || ''} onChange={(e) => upd({ vatRegime: (e.target.value || undefined) as VatRegime | undefined })}>
@@ -165,14 +162,10 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
           <h2>Lieu de la prestation</h2>
           <div className="form">
             <Field label="Lieu enregistré" full>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <ContactField label="lieu" contacts={contacts.filter((c) => c.type === 'lieu')} value={project.venueId} onChange={(id) => {
-                  const v = contacts.find((c) => c.id === id);
-                  upd({ venueId: id, spotId: undefined, venue: v ? v.company : project.venue });
-                }} />
-                <button type="button" className="secondary small" title="Nouveau lieu" onClick={() => setNewContact('lieu')}>+</button>
-                {venue && <button type="button" className="secondary small" title="Modifier ce lieu" aria-label="Modifier le lieu" onClick={() => setEditContact(venue)}><Icon name="edit" /></button>}
-              </div>
+              <ContactField label="lieu" contacts={contacts.filter((c) => c.type === 'lieu')} value={project.venueId} onChange={(id) => {
+                const v = contacts.find((c) => c.id === id);
+                upd({ venueId: id, spotId: undefined, venue: v ? v.company : project.venue });
+              }} onNew={() => setNewContact('lieu')} onEdit={setEditContact} />
             </Field>
             {venue && (
               <Field label="Endroit" full>
