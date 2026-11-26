@@ -206,12 +206,8 @@ if (isset($_GET['pw'])) {
         $q->execute([(string)$t['space'], (string)$t['user_id']]);
         $row = $q->fetch(PDO::FETCH_ASSOC);
         $u = $row ? json_decode((string)$row['data'], true) : null;
-        if (!is_array($u)) page('Compte introuvable', '<h1>Compte introuvable</h1><p class="m">Ce compte n\'existe plus. Contacte un administrateur.</p>', 404);
-        // même hachage que l'application : SHA-256 de « sel:motdepasse »
-        $salt = bin2hex(random_bytes(16));
-        $u['salt'] = $salt;
-        $u['passHash'] = hash('sha256', $salt . ':' . $p1);
-        put_row($db, (string)$t['space'], 'users', (string)$t['user_id'], $u);
+        // tous les comptes de cet email (toutes les bases) reçoivent le nouveau mot de passe
+        if (!is_array($u) || !fe_set_password((string)$t['email'], $p1)) page('Compte introuvable', '<h1>Compte introuvable</h1><p class="m">Ce compte n\'existe plus. Contacte un administrateur.</p>', 404);
         $db->prepare('UPDATE reset_tokens SET used = 1 WHERE token = ?')->execute([$tok]);
         page('Mot de passe changé', '<h1>' . ICO_CHECK . 'Mot de passe changé</h1><div class="c"><div class="msg ok">Ton nouveau mot de passe est enregistré ; il arrive sur tes autres appareils à la prochaine synchronisation.</div>'
             . '<p class="m">Connecte-toi dans FabEvent avec ce nouveau mot de passe' . (!empty($u['totpOn']) ? ' (le code de ton application d\'authentification sera aussi demandé)' : '') . '.</p></div>');

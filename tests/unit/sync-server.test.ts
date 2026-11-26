@@ -161,6 +161,23 @@ describe.skipIf(!hasPhp)('serveur FabEvent autonome (auth.php + sync.php)', () =
     expect(page).toContain('webcal://');
     expect((await fetch(`${root}/public.php?cal=INCONNUtoken12345678`)).status).toBe(404);
   });
+  it('mot de passe oublié avec le code d’installation : appliqué au compte dans toutes les bases', async () => {
+    const u = '2030-03-01T10:00:00Z';
+    const dup = (id: string) => ({ t: 'users', id, d: { id, name: 'Double', email: 'double@exemple.org', salt, passHash: hash('ancien'), role: 'admin', active: true, updatedAt: u }, u });
+    await collegue.sync('push', { ws: 'principal', changes: [dup('dup-0001')] });
+    const autre = new Agent();
+    expect((await autre.auth('login', { ws: 'autrebase', email: 'autre@exemple.org', password: 'motdepasse' })).status).toBe(200);
+    await autre.sync('push', { ws: 'autrebase', changes: [dup('dup-0002')] });
+    const x = new Agent();
+    expect((await x.auth('recover', { ws: 'principal', email: 'double@exemple.org', code: 'FAUXCODE00', password: 'nouveau1' })).status).toBe(401);
+    const code = readFileSync(join(data, 'code-installation.txt'), 'utf8').trim();
+    const r = await x.auth('recover', { ws: 'principal', email: 'Double@exemple.org', code, password: 'nouveau1' });
+    expect(r.json.accounts).toBe(2);
+    expect((await x.auth('login', { ws: 'principal', email: 'double@exemple.org', password: 'nouveau1' })).status).toBe(200);
+    expect((await x.auth('login', { ws: 'autrebase', email: 'double@exemple.org', password: 'nouveau1' })).status).toBe(200);
+    expect((await x.auth('login', { ws: 'principal', email: 'double@exemple.org', password: 'ancien' })).status).toBe(401);
+    expect((await x.auth('recover', { ws: 'principal', email: 'personne@exemple.org', code, password: 'nouveau1' })).status).toBe(404);
+  });
   it('déconnexion', async () => {
     await collegue.auth('logout', { ws: 'principal' });
     expect((await collegue.sync('ping', undefined, '&ws=principal')).status).toBe(401);

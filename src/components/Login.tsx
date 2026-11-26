@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createUser, hasUsers, sessionUserId, setSession, verifyUser } from '../auth';
 import { db } from '../db';
-import { clearLoginRequest, loginRequested, serverLogin, serverOn, serverSetup, serverStatus, type AuthError, type ServerStatus } from '../serverAuth';
+import { clearLoginRequest, loginRequested, serverLogin, serverRecover, serverOn, serverSetup, serverStatus, type AuthError, type ServerStatus } from '../serverAuth';
 import { Field } from './ui';
 import { oauthAvailable, oauthLogin, OAUTH_PROVIDERS } from '../oauth';
 import { verifyTotp } from '../totp';
@@ -30,6 +30,11 @@ export function Login() {
   const [mfa, setMfa] = useState<{ server: boolean; email: string; pass: string; local?: User; setup?: boolean } | null>(null);
   const [code, setCode] = useState('');
   const [forgot, setForgot] = useState(false);
+  /** secours sans email : code d'installation + nouveau mot de passe */
+  const [byCode, setByCode] = useState(false);
+  const [rCode, setRCode] = useState('');
+  const [rPass, setRPass] = useState('');
+  const [rPass2, setRPass2] = useState('');
   const [fEmail, setFEmail] = useState('');
   const [fMsg, setFMsg] = useState('');
   const [fErr, setFErr] = useState('');
@@ -70,6 +75,22 @@ export function Login() {
       else if (j.error === 'mail_failed') setFErr('Le serveur n’a pas pu envoyer l’email (' + String(j.detail || 'envoi indisponible') + '). Contacte ton administrateur.');
       else setFErr('Demande impossible pour l’instant (' + String(j.detail || j.error || r.status) + ').');
     } finally { setFBusy(false); }
+  };
+
+  /** Nouveau mot de passe avec le code d'installation, puis connexion directe. */
+  const recoverByCode = async () => {
+    setFMsg(''); setFErr('');
+    if (rPass.length < 6) return setFErr('Mot de passe : 6 caractères minimum.');
+    if (rPass !== rPass2) return setFErr('Les deux mots de passe ne correspondent pas.');
+    setFBusy(true);
+    try {
+      await serverRecover(fEmail, rCode, rPass);
+      try { open(await serverLogin(fEmail, rPass)); }
+      catch (e2) {
+        if ((e2 as AuthError).kind === 'mfa') { setForgot(false); setEmail(fEmail); setPass(rPass); setMfa({ server: true, email: fEmail, pass: rPass }); setCode(''); }
+        else setFMsg('Mot de passe changé : connecte-toi avec lui.');
+      }
+    } catch (e2) { setFErr((e2 as Error).message); } finally { setFBusy(false); }
   };
 
   /** Compte vérifié sur l'appareil : s'il n'existe pas encore sur le serveur, il y devient le premier administrateur. */
@@ -178,12 +199,21 @@ export function Login() {
             <div className="info" style={{ marginTop: 12 }}>
               <p className="muted" style={{ margin: '0 0 8px' }}>Indique l’email de ton compte : un lien de réinitialisation (valable 2 h, une seule fois) est envoyé par le serveur FabEvent, s’il est configuré.</p>
               <Field label="Email du compte" full><input type="email" required value={fEmail} onChange={(e) => setFEmail(e.target.value)} aria-label="Email du compte pour la réinitialisation" /></Field>
+              {byCode && <>
+                <p className="muted" style={{ margin: '8px 0' }}>Sans email : saisis le <b>code d’installation</b> (<code>'setup_code'</code> du fichier <code>api/fabevent-config.php</code>, lisible par FTP) et ton nouveau mot de passe. Il s’applique à ce compte dans toutes les bases.</p>
+                <Field label="Code d’installation" full><input value={rCode} onChange={(e) => setRCode(e.target.value.toUpperCase())} autoComplete="off" aria-label="Code d’installation pour la réinitialisation" /></Field>
+                <Field label="Nouveau mot de passe" full><input type="password" value={rPass} onChange={(e) => setRPass(e.target.value)} autoComplete="new-password" aria-label="Nouveau mot de passe" /></Field>
+                <Field label="Répéter le nouveau mot de passe" full><input type="password" value={rPass2} onChange={(e) => setRPass2(e.target.value)} autoComplete="new-password" aria-label="Répéter le nouveau mot de passe" /></Field>
+              </>}
               {fMsg && <p className="avail ok" style={{ margin: '8px 0' }}>{fMsg}</p>}
               {fErr && <p className="avail ko" style={{ margin: '8px 0' }}>{fErr}</p>}
               <div className="form-actions">
-                <button type="button" disabled={fBusy} onClick={requestReset}>{fBusy ? '…' : 'Envoyer le lien de réinitialisation'}</button>
-                <button type="button" className="secondary" onClick={() => setForgot(false)}>Retour</button>
+                {byCode
+                  ? <button type="button" disabled={fBusy} onClick={recoverByCode}>{fBusy ? '…' : 'Changer le mot de passe'}</button>
+                  : <button type="button" disabled={fBusy} onClick={requestReset}>{fBusy ? '…' : 'Envoyer le lien de réinitialisation'}</button>}
+                <button type="button" className="secondary" onClick={() => { setForgot(false); setByCode(false); }}>Retour</button>
               </div>
+              {serverOn() && <p style={{ margin: '8px 0 0', fontSize: 13 }}><button type="button" className="ghost small" onClick={() => { setByCode(!byCode); setFMsg(''); setFErr(''); }}>{byCode ? 'Recevoir plutôt un lien par email' : 'Pas reçu l’email ? Utiliser le code d’installation'}</button></p>}
             </div>
           )}
           {any && !mfa && oauthAvailable() && (
