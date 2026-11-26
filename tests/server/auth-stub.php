@@ -7,3 +7,5 @@ function api_user(): array {
 }
 function can_use_shared(array $u): bool { return !empty($u['shared']); }
 function data_dir(): string { $d = getenv('FABEVENT_DATA'); if (!is_dir($d)) mkdir($d, 0755, true); return $d; }
+/** comme la vraie bibliothèque interne/_lib/auth.php : h() y est déjà définie */
+function h($s): string { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
