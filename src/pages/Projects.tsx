@@ -81,6 +81,10 @@ export function ProjectForm({ initial, onDone }: { initial?: Draft; onDone: (p?:
       <Field label="Fin"><input type="datetime-local" required value={p.end} onChange={(e) => set('end', e.target.value)} /></Field>
       <Field label="Lieu"><input value={p.venue || ''} onChange={(e) => set('venue', e.target.value)} /></Field>
       <Field label="Remise globale (%)"><NumInput value={p.discount} onChange={(n) => set('discount', n)} /></Field>
+      <label className="check-row" style={{ margin: '2px 0 10px' }}>
+        <input type="checkbox" checked={!!p.free} onChange={(e) => set('free', e.target.checked)} aria-label="Projet offert (gratuit)" />
+        Projet offert (gratuit) — les devis et factures seront à 0 €
+      </label>
       <Field label="Notes (visibles sur feuille de route / bon de sortie)" full><textarea value={p.notes || ''} onChange={(e) => set('notes', e.target.value)} /></Field>
       <div className="form-actions">
         <button type="button" className="secondary" onClick={() => onDone()}>Annuler</button>
@@ -157,7 +161,7 @@ export default function Projects() {
                 {filtered.map((p) => (
                   <tr key={p.id} className="click" onClick={() => nav('/projets/' + p.id)}>
                     <td className="muted">{p.number}</td>
-                    <td><span className="color-dot" style={{ background: p.color || 'var(--border)' }} /><strong>{p.name}</strong> <Tags tags={p.tags} /></td>
+                    <td><span className="color-dot" style={{ background: p.color || 'var(--border)' }} /><strong>{p.name}</strong> {p.free && <span className="avail ok">offert</span>} <Tags tags={p.tags} /></td>
                     <td className="muted">{p.typeName}</td>
                     <td>{p.clientId && cMap.get(p.clientId)}</td>
                     <td>{fmtRange(p.start, p.end)}</td>

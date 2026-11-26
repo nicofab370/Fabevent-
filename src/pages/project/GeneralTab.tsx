@@ -101,6 +101,10 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
                 {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </Field>
+            <label className="check-row" style={{ margin: '2px 0 10px' }}>
+              <input type="checkbox" checked={!!project.free} onChange={(e) => upd({ free: e.target.checked || undefined })} aria-label="Projet offert (gratuit)" />
+              Projet offert (gratuit) — les documents générés seront à 0 €
+            </label>
             <Field label="Numéro"><LazyInput value={project.number} onSave={(v) => v.trim() && upd({ number: v.trim() })} /></Field>
             <Field label="Couleur"><input type="color" value={project.color || '#2563eb'} onChange={(e) => upd({ color: e.target.value })} style={{ height: 36, padding: 2 }} /></Field>
             {depots.length > 1 && (

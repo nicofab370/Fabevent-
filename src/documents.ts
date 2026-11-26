@@ -155,10 +155,18 @@ export async function buildSnapshot(projectId: string, type: DocType, only?: { i
       return { subId: sp.id, name: sp.name, venue: spot ? placeName(venueC, spot) : sp.venue || project.venue, address, start: sp.prepStart || sp.start, end: sp.returnEnd || sp.end, periods, equipment: eq, crew: cr, vehicles: vh, subtotal };
     });
 
+  // projet offert (gratuit) : tous les montants du document passent à 0
+  if (project.free) for (const sp of snapSubs) {
+    for (const l of sp.equipment) { l.unitPrice = 0; l.total = 0; }
+    for (const c of sp.crew) { c.total = 0; c.billable = false; }
+    for (const v of sp.vehicles) { v.price = 0; v.billable = false; }
+    sp.subtotal = 0;
+  }
+
   const costs = await db.costs.where({ projectId }).toArray();
   // les frais supplémentaires vont sur la facture finale, pas sur une facture partielle par salle
   // fournisseur en texte libre, ou nom du contact relié ; absent du document s'il est vide
-  const extras: NonNullable<DocSnapshot['extras']> = only?.include ? [] : costs.filter((c) => c.billable && c.price).map((c) => ({
+  const extras: NonNullable<DocSnapshot['extras']> = only?.include || project.free ? [] : costs.filter((c) => c.billable && c.price).map((c) => ({
     label: c.label, qty: c.qty || 1, unitPrice: c.price!, total: round2((c.qty || 1) * c.price!),
     supplier: c.supplierName?.trim() || (c.supplierId ? cMap.get(c.supplierId)?.company?.trim() : '') || undefined,
   }));
@@ -211,6 +219,7 @@ export async function buildSnapshot(projectId: string, type: DocType, only?: { i
     terms: s.terms?.trim() && (isQuote || (s.termsOnInvoices && (type === 'facture' || type === 'acompte'))) ? s.terms : undefined,
     footer: s.footer,
     hidePrices: isPacking,
+    free: project.free || undefined,
     template: { style: { ...DEFAULT_DOC_STYLE, ...s.templates?.style }, html: s.templates?.html, ...s.templates?.types?.[type] },
     optionalTotal: isQuote && optionalTotal ? optionalTotal : undefined,
   };

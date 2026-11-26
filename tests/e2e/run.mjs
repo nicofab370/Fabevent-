@@ -224,6 +224,7 @@ await step('Rappel de paiement d’une facture échue', async () => {
   expect(await page.locator('.doc .pay svg').count(), 'QR code sur le rappel');
 });
 
+
 await step('Modèles de documents : HTML + variable, ancien document inchangé', async () => {
   await openProject('Mariage Dupont-Lemaire');
   await tab('Finances & documents');
@@ -2812,6 +2813,63 @@ await step('Facture : QR code de paiement toujours imprimé (même si le gabarit
   await page.waitForSelector('.doc');
   expect(await page.locator('.doc .pay svg').count() >= 1, 'QR EPC présent sur la facture');
   expect((await page.locator('.doc .pay').innerText()).includes('+++'), 'communication structurée +++…+++');
+});
+
+await step('Facturation : récap par projet — facturé, reste, drapeau « évènement passé »', async () => {
+  // projet confirmé dont l'évènement est passé, avec du matériel mais rien de facturé
+  await go('projets');
+  await page.click('text=+ Nouveau projet');
+  await page.fill('.modal input >> nth=0', 'Projet passe test');
+  const d = new Date(Date.now() - 2 * 86400000);
+  const dd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  await page.locator('.modal .field', { hasText: 'Début' }).locator('input').fill(dd + 'T08:00');
+  await page.locator('.modal .field', { hasText: 'Fin' }).locator('input').fill(dd + 'T23:00');
+  await page.locator('.modal .field', { hasText: 'Statut' }).locator('select').selectOption('confirme');
+  await page.click('.modal button[type=submit]');
+  await page.waitForSelector('.project-tabs');
+  await tab('Équipement');
+  await page.locator('button:has-text("+ Matériel")').first().click();
+  await page.locator('.modal .pick-row').first().locator('input').fill('1');
+  await page.click('.modal button:has-text("Ajouter (")');
+  await page.waitForTimeout(400);
+  await go('comptabilite');
+  const card = page.locator('.card', { hasText: 'Ce qui est facturé par projet' });
+  await card.locator('table.list tbody tr').first().waitFor();
+  const row = card.locator('table.list tbody tr', { hasText: 'Projet passe test' });
+  expect((await row.count()) === 1, 'ligne du projet passé dans le récap');
+  const rt = await row.innerText();
+  expect(rt.includes('Évènement passé'), `drapeau « évènement passé » (${rt.slice(0, 220)})`);
+  expect(rt.includes('0,00'), `facturé à 0,00 € (${rt.slice(0, 220)})`);
+  // le Gala (terminé, facture + acompte) : tout facturé, visible avec la case « tout facturés »
+  await page.check('input[aria-label="Afficher aussi les projets tout facturés"]');
+  await page.waitForTimeout(300);
+  const gala = card.locator('table.list tbody tr', { hasText: 'Gala de fin' });
+  expect((await gala.count()) === 1, 'ligne du Gala');
+  expect((await gala.innerText()).includes('Tout facturé'), 'Gala marqué « tout facturé »');
+});
+
+await step('Projet offert (gratuit) : case à cocher, devis généré à 0 € avec mention « offert »', async () => {
+  await go('projets');
+  await page.click('text=+ Nouveau projet');
+  await page.fill('.modal input >> nth=0', 'Projet offert test');
+  await page.check('input[aria-label="Projet offert (gratuit)"]');
+  await page.click('.modal button[type=submit]');
+  await page.waitForSelector('.project-tabs');
+  // badge « offert » dans la liste
+  await go('projets');
+  expect((await page.locator('table.list tbody tr', { hasText: 'Projet offert test' }).innerText()).includes('offert'), 'badge « offert » dans la liste');
+  await openProject('Projet offert test');
+  await tab('Équipement');
+  await page.locator('button:has-text("+ Matériel")').first().click();
+  await page.locator('.modal .pick-row').first().locator('input').fill('2');
+  await page.click('.modal button:has-text("Ajouter (")');
+  await page.waitForTimeout(400);
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Devis")');
+  await page.waitForSelector('.doc');
+  const totals = await page.locator('.doc .totals').innerText();
+  expect(totals.includes('0,00'), `total du devis à 0 € malgré le matériel (${totals})`);
+  expect((await page.locator('.doc').innerText()).includes('offert'), 'mention « Projet offert » sur le document');
 });
 
 await step('Comptes et rôles : verrouillage, admin, entrepôt (sans les prix), sous-traitant (planning perso)', async () => {
