@@ -3111,8 +3111,6 @@ await step('Bases : créer une base « autre société » isolée (données, com
   await ctx.unroute('**/api/sync.php**');
 });
 
-await ctx.close();
-
 console.log('\n  — vérification de la liste (v51) —');
 
 await step('Kit : un élément manquant ne met pas tout le kit en manque (« incomplet » + élément en cause)', async () => {
@@ -3253,6 +3251,8 @@ await step('Rendez-vous : relié à un projet, avec un coût interne compté dan
   await go('planning');
   expect(((await page.locator('a.ev.appt', { hasText: 'Réunion de production' }).first().getAttribute('title')) || '').includes('Festival des Lumières'), 'projet indiqué au planning');
 });
+
+await ctx.close();
 
 await step('Aucune erreur dans la console du navigateur', async () => {
   expect(consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '));

@@ -26,29 +26,6 @@ export default function PlanningTab({ d, onEditSub }: { d: ProjectData; onEditSu
         Découpe le projet en sous-projets (salle, scène, zone, jour…), puis donne à chacun ses créneaux : montage, jours de prestation, démontage.
         Le matériel est bloqué du premier au dernier créneau ; seuls les jours de prestation sont facturés.
       </div>
-      <div className="card project-appts">
-        <div className="page-head" style={{ marginBottom: 6 }}>
-          <h2 style={{ margin: 0 }}>Rendez-vous du projet</h2>
-          <button className="secondary small" title="Repérage, réunion de production… relié à ce projet, avec son coût interne éventuel" onClick={() => {
-            const s0 = new Date(project.start || Date.now()); s0.setDate(s0.getDate() - 7); s0.setHours(10, 0, 0, 0);
-            const e0 = new Date(s0); e0.setHours(12, 0, 0, 0);
-            setAppt({ title: '', start: toLocalInput(s0), end: toLocalInput(e0), personIds: [], projectId: project.id, location: project.venue });
-          }}>+ Rendez-vous</button>
-        </div>
-        {d.projectAppts.length === 0 ? <p className="muted" style={{ margin: 0 }}>Aucun rendez-vous relié (repérage, réunion…).</p> : (
-          <table className="list">
-            <tbody>
-              {d.projectAppts.map((a) => (
-                <tr key={a.id} className="click" onClick={() => setAppt(a)} title="Modifier le rendez-vous">
-                  <td>{a.title}</td><td className="muted">{fmtRange(a.start, a.end)}{a.location ? ` · ${a.location}` : ''}</td>
-                  <td className="n">{a.cost ? <span title="Coût interne, non facturé au client">{a.cost.toLocaleString('fr-BE', { style: 'currency', currency: 'EUR' })}</span> : ''}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-      {appt && <AppointmentModal appt={appt} people={d.people} onClose={() => setAppt(null)} />}
       {subs.length === 0 && <Empty>Aucun sous-projet.</Empty>}
       {subs.map((sp) => {
         const [b0, b1] = blockPeriod(sp);
@@ -92,6 +69,29 @@ export default function PlanningTab({ d, onEditSub }: { d: ProjectData; onEditSu
         );
       })}
       <button className="secondary" onClick={() => onEditSub(newSubDraft(d))}>+ Ajouter un sous-projet</button>
+      <div className="card project-appts" style={{ marginTop: 16 }}>
+        <div className="page-head" style={{ marginBottom: 6 }}>
+          <h2 style={{ margin: 0 }}>Rendez-vous du projet</h2>
+          <button className="secondary small" title="Repérage, réunion de production… relié à ce projet, avec son coût interne éventuel" onClick={() => {
+            const s0 = new Date(project.start || Date.now()); s0.setDate(s0.getDate() - 7); s0.setHours(10, 0, 0, 0);
+            const e0 = new Date(s0); e0.setHours(12, 0, 0, 0);
+            setAppt({ title: '', start: toLocalInput(s0), end: toLocalInput(e0), personIds: [], projectId: project.id, location: project.venue });
+          }}>+ Rendez-vous</button>
+        </div>
+        {d.projectAppts.length === 0 ? <p className="muted" style={{ margin: 0 }}>Aucun rendez-vous relié (repérage, réunion…).</p> : (
+          <table className="list">
+            <tbody>
+              {d.projectAppts.map((a) => (
+                <tr key={a.id} className="click" onClick={() => setAppt(a)} title="Modifier le rendez-vous">
+                  <td>{a.title}</td><td className="muted">{fmtRange(a.start, a.end)}{a.location ? ` · ${a.location}` : ''}</td>
+                  <td className="n">{a.cost ? <span title="Coût interne, non facturé au client">{a.cost.toLocaleString('fr-BE', { style: 'currency', currency: 'EUR' })}</span> : ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+      {appt && <AppointmentModal appt={appt} people={d.people} onClose={() => setAppt(null)} />}
     </>
   );
 }
