@@ -30,10 +30,10 @@ import { categoryLabel } from '../categories';
  *    renommer, dupliquer à zéro, exporter, supprimer.
  */
 
-export type Phase = 'sortie' | 'retour';
+type Phase = 'sortie' | 'retour';
 
 /** Ligne normalisée, quelle que soit l'origine (sous-projet FabEvent ou checklist libre). */
-export interface CLine {
+interface CLine {
   key: string;
   name: string;
   code?: string;
@@ -53,9 +53,9 @@ export interface CLine {
   extra?: boolean;
 }
 
-export interface LineDraft { name: string; qty: number; code?: string; cat: string; parentKey?: string }
+interface LineDraft { name: string; qty: number; code?: string; cat: string; parentKey?: string }
 
-export interface ChecklistSource {
+interface ChecklistSource {
   title: string;
   subtitle?: string;
   backTo?: { to: string; label: string };
@@ -102,7 +102,7 @@ interface Flash { ok: boolean; msg: string; actions?: { label: string; run: () =
 /** Question posée après un scan (quantité, ajout en plus, kit) : Entrée valide, un nouveau scan l'annule. */
 interface Ask { title: string; body?: ReactNode; qty?: { def: number; max?: number }; okLabel: string; onOk: (n: number) => void | Promise<void> }
 
-export function ChecklistView({ src }: { src: ChecklistSource }) {
+function ChecklistView({ src }: { src: ChecklistSource }) {
   const av = useAvailability();
   const [code, setCode] = useState('');
   const [camera, setCamera] = useState(false);
@@ -923,7 +923,7 @@ function ProjectFromList({ cl, equipment, onClose }: { cl: FreeChecklist; equipm
 }
 
 /** Transforme un bon importé en checklist libre ; les codes connus sont reliés au catalogue (pour le scan). */
-export async function createFreeChecklist(r: ImportedList, equipment: Equipment[]): Promise<FreeChecklist> {
+async function createFreeChecklist(r: ImportedList, equipment: Equipment[]): Promise<FreeChecklist> {
   const byCode = new Map(equipment.filter((e) => e.code).map((e) => [e.code!.toLowerCase(), e]));
   const byName = new Map(equipment.map((e) => [e.name.toLowerCase(), e]));
   return save(db.checklists, {

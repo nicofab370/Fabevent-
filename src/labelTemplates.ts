@@ -1,5 +1,6 @@
 import { qrSvg } from './payment';
 import { TAPES as PT_TAPES, printableMm as ptPrintable } from './ptouch';
+import { escHtml as esc } from './utils';
 
 /*
  * Modèles d'étiquettes (planches A4 et rouleaux) : format, mise en page, champs imprimés.
@@ -213,7 +214,7 @@ export function code128Modules(text: string): string {
 }
 
 /** code-barres Code 128 en SVG (largeur fixée par le conteneur) */
-export function code128Svg(text: string): string {
+function code128Svg(text: string): string {
   const widths = code128Modules(text);
   const quiet = 10;
   let x = quiet, d = '';
@@ -227,7 +228,6 @@ export function code128Svg(text: string): string {
 }
 
 /* ---------- rendu HTML ---------- */
-const esc = (v: unknown) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /** lignes de texte d'une étiquette, dans l'ordre des champs choisis */
 function lines(t: LabelTemplate, l: SheetLabel, company: string): { cls: string; text: string; part: LabelPart }[] {
@@ -406,7 +406,7 @@ function titleHtml(x: { cls: string; text: string }): string {
 /** mise en page libre, code à gauche ou à droite : zones placées sous le code, sur toute la largeur */
 export const sideLayout = (t: Pick<LabelTemplate, 'layout' | 'symbolPos' | 'symbol'>) => t.layout === 'libre' && t.symbol !== 'aucun' && (!t.symbolPos || t.symbolPos === 'gauche' || t.symbolPos === 'droite');
 const isBelow = (t: LabelTemplate, p: LabelPart) => sideLayout(t) && t.styles?.[p]?.place === 'dessous';
-export const hasBelow = (t: LabelTemplate) => sideLayout(t) && (['header', 'footer', ...t.fields] as LabelPart[]).some((p) => isBelow(t, p));
+const hasBelow = (t: LabelTemplate) => sideLayout(t) && (['header', 'footer', ...t.fields] as LabelPart[]).some((p) => isBelow(t, p));
 
 export function labelHtml(t: LabelTemplate, l: SheetLabel, company: string, qrPayload: (code: string) => string = (c) => c, logo?: string): string {
   const img = logo && t.logo && t.logo !== 'aucun' ? `<img class="logo" src="${esc(logo)}" alt="">` : '';

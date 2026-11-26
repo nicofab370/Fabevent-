@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { fold as norm } from '../utils';
 import type { Contact } from '../types';
 import { Icon } from './Icon';
 import { Empty, Modal } from './ui';
@@ -9,7 +10,6 @@ import { Empty, Modal } from './ui';
  * ou « Parcourir » ouvre une fenêtre avec recherche et filtres (ville, étiquette).
  */
 
-const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const haystack = (c: Contact) => norm([c.company, c.city, c.postalCode, c.address, c.firstName, c.lastName, ...(c.tags || [])].filter(Boolean).join(' '));
 const matches = (c: Contact, q: string) => norm(q).split(/\s+/).filter(Boolean).every((w) => haystack(c).includes(w));
 const place = (c: Contact) => [c.postalCode, c.city].filter(Boolean).join(' ');
@@ -66,7 +66,7 @@ export function ContactField({ contacts, value, onChange, label, placeholder }: 
 }
 
 /** fenêtre : recherche, filtre par ville et par étiquette, liste avec adresse */
-export function ContactChooser({ contacts, label, initialQ = '', onPick, onClose }: { contacts: Contact[]; label: string; initialQ?: string; onPick: (c: Contact) => void; onClose: () => void }) {
+function ContactChooser({ contacts, label, initialQ = '', onPick, onClose }: { contacts: Contact[]; label: string; initialQ?: string; onPick: (c: Contact) => void; onClose: () => void }) {
   const [q, setQ] = useState(initialQ);
   const [city, setCity] = useState('');
   const [tag, setTag] = useState('');

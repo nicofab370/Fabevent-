@@ -6,7 +6,7 @@
  * (client, n° de projet, lieu…) et les périodes (jj-mm-aaaa hh:mm → …) sont gardés.
  */
 
-export interface ImportedLine {
+interface ImportedLine {
   id: string;
   cat: string;
   parent: string | null;
@@ -43,7 +43,7 @@ function asItem(row: Row) {
 }
 
 /** Construit la liste à partir des lignes lues ; thr = retrait (en points) à partir duquel une ligne est le contenu d'un kit. */
-export function buildFromRows(rows: Row[], thr: number): ImportedList {
+function buildFromRows(rows: Row[], thr: number): ImportedList {
   const cls = rows.map((r) => ({ r, item: asItem(r) }));
   const xs = cls.filter((c) => c.item && c.r.kid == null && c.r.x != null).map((c) => c.r.x as number);
   const minX = xs.length ? Math.min(...xs) : 0;
@@ -126,7 +126,7 @@ async function rowsFromPdf(buf: ArrayBuffer): Promise<ImportedList> {
 }
 
 /* --- HTML (export Rentman .doc / .html) --- */
-export function rowsFromHtml(text: string): ImportedList {
+function rowsFromHtml(text: string): ImportedList {
   const doc = new DOMParser().parseFromString(text, 'text/html');
   doc.querySelectorAll('style,script').forEach((e) => e.remove());
   const rows: Row[] = [];

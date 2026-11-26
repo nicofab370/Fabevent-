@@ -1,7 +1,7 @@
 import type { Role, User } from './types';
 
 /** Pages accessibles par rôle (préfixes de routes). */
-export const ROLE_PATHS: Record<Role, string[]> = {
+const ROLE_PATHS: Record<Role, string[]> = {
   admin: ['/'],
   warehouse: ['/entrepot', '/checklists', '/inventaire', '/materiel', '/transferts', '/penuries', '/q/'],
   subcontractor: ['/attribution', '/planning', '/materiel', '/q/'],

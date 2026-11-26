@@ -51,7 +51,7 @@ export function hasUsers(): boolean | undefined {
 
 /* ---------- permissions par rôle : voir src/roles.ts ---------- */
 
-export async function findUserByEmail(email: string): Promise<User | undefined> {
+async function findUserByEmail(email: string): Promise<User | undefined> {
   return db.users.where({ email: email.trim().toLowerCase() }).first();
 }
 

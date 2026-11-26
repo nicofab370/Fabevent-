@@ -54,7 +54,7 @@ export function isPerPiece(l: EquipmentLine, eqMap: Map<string, Equipment>) {
   return !!l.equipmentId && eqMap.get(l.equipmentId)?.kind === 'vente';
 }
 
-export interface Finance {
+interface Finance {
   rows: { label: string; revenue: number; cost: number }[];
   gross: number;
   discount: number;
@@ -121,7 +121,7 @@ export function computeFinance(
 }
 
 /** Assurance du matériel loué (% du prix de location, hors ventes). */
-export function insuranceAmount(rentalHT: number, project: Pick<Project, 'insurancePct'>, s: Pick<Settings, 'insurancePct'>) {
+function insuranceAmount(rentalHT: number, project: Pick<Project, 'insurancePct'>, s: Pick<Settings, 'insurancePct'>) {
   const pct = project.insurancePct ?? s.insurancePct ?? 0;
   return pct > 0 ? round2(rentalHT * pct / 100) : 0;
 }

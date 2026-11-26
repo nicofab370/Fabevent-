@@ -1,5 +1,5 @@
 import { DOC_CSS } from '../../components/DocRender';
-import { crewAmount, crewCostProfile, fmtDate, money, round2 } from '../../utils';
+import { crewAmount, crewCostProfile, escHtml as esc, fmtDate, money, round2 } from '../../utils';
 import { printHtml, type ProjectData } from './shared';
 
 export interface HrOrder {
@@ -35,7 +35,6 @@ export function hrOrders(d: ProjectData): HrOrder[] {
   return [...groups.values()].sort((a, b) => b.total - a.total);
 }
 
-const esc = (v: unknown) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 export function printHrOrder(d: ProjectData, o: HrOrder) {
   printHtml(`Bon de commande — ${o.supplier}`, hrOrderHtml(d, o), DOC_CSS);

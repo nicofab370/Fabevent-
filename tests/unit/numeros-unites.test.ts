@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { missingNumbers, nextNumber, unitNo, unitTitle } from '../../src/unitNumbers';
+import { missingNumbers, nextNumber, unitNo } from '../../src/unitNumbers';
 import type { SerialUnit } from '../../src/types';
 
 const u = (id: string, equipmentId: string, createdAt: string, number?: number): SerialUnit =>
@@ -21,6 +21,5 @@ describe('numéro d’unité #x', () => {
   it('libellés', () => {
     expect(unitNo({ number: 3 })).toBe('#3');
     expect(unitNo({})).toBe('');
-    expect(unitTitle({ number: 3, barcode: 'F-S-0001-03', serial: 'X' })).toBe('#3 · F-S-0001-03');
   });
 });

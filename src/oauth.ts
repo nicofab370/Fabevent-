@@ -20,7 +20,7 @@ export const OAUTH_PROVIDERS: { id: OAuthProvider; label: string }[] = [
   { id: 'apple', label: 'Apple' },
 ];
 
-export interface OAuthProfile { email: string; name?: string; provider: OAuthProvider; sub: string }
+interface OAuthProfile { email: string; name?: string; provider: OAuthProvider; sub: string }
 
 export const oauthAvailable = () => !!serverScript('oauth.php');
 

@@ -3,14 +3,13 @@
  * Le fichier XML produit est à déposer chez ton point d'accès Peppol.
  */
 import type { CompanyInfo, Contact, Doc } from './types';
-import { orderedSubprojects, round2 } from './utils';
+import { escHtml as esc, orderedSubprojects, round2 } from './utils';
 
-const esc = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const amt = (n: number) => round2(n).toFixed(2);
 const day = (iso?: string) => (iso || new Date().toISOString()).slice(0, 10);
 
 const COUNTRIES: Record<string, string> = { belgique: 'BE', belgium: 'BE', france: 'FR', luxembourg: 'LU', 'pays-bas': 'NL', netherlands: 'NL', allemagne: 'DE', suisse: 'CH' };
-export function countryCode(v?: string, fallback = 'BE'): string {
+function countryCode(v?: string, fallback = 'BE'): string {
   if (!v) return fallback;
   const t = v.trim();
   if (/^[A-Za-z]{2}$/.test(t)) return t.toUpperCase();

@@ -80,7 +80,7 @@ export function overlaps(aStart: string, aEnd: string, bStart: string, bEnd: str
 
 /* ---------- Disponibilité du matériel ---------- */
 
-export const FOREVER = '9999-12-31T23:59';
+const FOREVER = '9999-12-31T23:59';
 
 /** Période pendant laquelle le matériel est bloqué (préparation → retour). */
 export function blockPeriod(sp: Pick<Subproject, 'start' | 'end' | 'prepStart' | 'returnEnd'>): [string, string] {
@@ -102,7 +102,7 @@ export interface Reservation {
   firm?: boolean;
 }
 
-export interface AvailabilityExtras {
+interface AvailabilityExtras {
   repairs?: Repair[];
   subrentals?: Subrental[];
   transfers?: Transfer[];
@@ -153,7 +153,7 @@ export function stockAt(eq: Equipment, depotId: string | undefined, res?: Reserv
 }
 
 /** Quantité d'un article dans un dépôt (sans dépôt = tout le parc). */
-export function stockIn(eq: Equipment, depotId?: string): number {
+function stockIn(eq: Equipment, depotId?: string): number {
   if (!depotId || !eq._stock) return eq.quantity;
   return eq._stock[depotId] || 0;
 }
@@ -217,7 +217,7 @@ export function buildReservations(lines: EquipmentLine[], subs: Subproject[], eq
  * Pic de quantité réservée sur la période. Les apports (sous-locations, transferts entrants)
  * sont négatifs : le résultat peut donc être négatif si du stock arrive pendant toute la période.
  */
-export function peakReserved(res: Reservation[], equipmentId: string, start: string, end: string, excludeLineId?: string, depotId?: string): number {
+function peakReserved(res: Reservation[], equipmentId: string, start: string, end: string, excludeLineId?: string, depotId?: string): number {
   const rs = res.filter((r) => r.equipmentId === equipmentId && r.lineId !== excludeLineId && (!depotId || r.depotId === depotId) && overlaps(r.start, r.end, start, end));
   if (!rs.length) return 0;
   // le net réservé ne change qu'au début d'une réservation ou à la fin d'un apport : on l'évalue à ces instants
@@ -254,7 +254,7 @@ export function availableQty(
 }
 
 /** une ligne du contenu d'un kit : quantité par kit, stock et dispo de l'élément, kits que cela permet */
-export interface KitRow { equipment: Equipment; perKit: number; stock: number; avail: number; kitsStock: number; kitsAvail: number; limiting: boolean }
+interface KitRow { equipment: Equipment; perKit: number; stock: number; avail: number; kitsStock: number; kitsAvail: number; limiting: boolean }
 
 /**
  * Contenu d'un kit avec les quantités : pour chaque élément, combien par kit, combien en stock (dans le dépôt),
@@ -347,9 +347,17 @@ export function parseDate(v: unknown): string {
   return isNaN(d.getTime()) ? '' : toLocalInput(d);
 }
 
+/* ---------- Texte ---------- */
+
+/** Échappe un texte pour l'insérer dans du HTML ou du XML (contenu ou attribut). */
+export const escHtml = (v: unknown) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/** Texte comparable pour une recherche : sans accents, en minuscules. */
+export const fold = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
 /* ---------- Agenda (.ics) ---------- */
 
-export interface IcsEvent {
+interface IcsEvent {
   uid: string;
   title: string;
   start: string;
@@ -402,7 +410,7 @@ export async function deleteProject(projectId: string) {
   });
 }
 
-export async function deleteSubproject(subprojectId: string) {
+async function deleteSubproject(subprojectId: string) {
   await db.transaction('rw', [db.subprojects, db.lines, db.crew, db.vehicleAssignments, db.subrentals], async () => {
     await db.lines.where({ subprojectId }).delete();
     await db.crew.where({ subprojectId }).delete();
@@ -436,7 +444,7 @@ export async function confirmDeleteSubproject(sp: { id: string; name: string; pr
 
 /* ---------- Contrôles périodiques ---------- */
 
-export interface InspectionDue {
+interface InspectionDue {
   equipment: Equipment;
   unit?: SerialUnit;
   last?: string;
@@ -558,7 +566,7 @@ export function lineDays(l: Pick<EquipmentLine, 'groupId' | 'periodIds'>, sp: Su
 
 /* ---------- Personnel : montants, heures supplémentaires, trajet ---------- */
 
-export interface CrewAmount {
+interface CrewAmount {
   unit: 'jour' | 'heure'; qty: number; hours: number; overtime: number; billed: number; cost: number;
   /** heures sup. du technicien (au-delà de son forfait journalier) */
   costOvertime: number;
@@ -573,9 +581,9 @@ export interface CrewAmount {
  * son forfait. Seulement un prix horaire : tout est compté à l'heure. Seulement un forfait :
  * les heures sup. valent forfait ÷ heures du forfait.
  */
-export interface CostProfile { day?: number; hour?: number; dayHours?: number }
+interface CostProfile { day?: number; hour?: number; dayHours?: number }
 /** Heures par jour calendaire d'un intervalle. */
-export function hoursPerDay(start: string, end: string): number[] {
+function hoursPerDay(start: string, end: string): number[] {
   const out: number[] = [];
   let t = new Date(start).getTime();
   const e = new Date(end).getTime();
@@ -657,20 +665,6 @@ export function fmtHours(x: number): string {
 export function crewWindow(c: { start: string; end: string; travel?: boolean }, travelMinutes = 0): [string, string] {
   if (!c.travel || !travelMinutes) return [c.start, c.end];
   return [toLocalInput(new Date(new Date(c.start).getTime() - travelMinutes * 60000)), toLocalInput(new Date(new Date(c.end).getTime() + travelMinutes * 60000))];
-}
-
-/** Coût d'un poste : saisi à la main, sinon celui de la personne affectée selon l'unité. */
-export function crewCostRate(
-  c: { cost?: number; rateUnit?: 'jour' | 'heure'; function?: string },
-  person?: { costRate?: number; hourlyCost?: number; rates?: { function: string; cost?: number; hourCost?: number }[] },
-): number {
-  if (c.cost != null) return c.cost;
-  // tarif propre à la fonction du poste (vidéo, son, road…), sinon le coût par défaut de la personne
-  const fn = c.function?.trim().toLowerCase();
-  const r = fn ? person?.rates?.find((x) => x.function.trim().toLowerCase() === fn) : undefined;
-  const own = c.rateUnit === 'heure' ? r?.hourCost : r?.cost;
-  if (own != null && own > 0) return own;
-  return (c.rateUnit === 'heure' ? person?.hourlyCost : person?.costRate) ?? 0;
 }
 
 /** Profil de coût d'un poste : tarif propre à la fonction, sinon forfait et prix horaire de la personne. */

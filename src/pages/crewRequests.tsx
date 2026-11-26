@@ -22,10 +22,10 @@ import { Icon, type IconName } from '../components/Icon';
  *  - « Remplacer » : la personne n'est plus disponible → notée « pas dispo », prévenue, et on choisit quelqu'un d'autre.
  */
 
-export type Answer = 'oui' | 'non' | 'attente';
+type Answer = 'oui' | 'non' | 'attente';
 
 /** Réponse d'une demande pour un poste donné. */
-export function postAnswer(r: CrewRequest, crewId: string): Answer {
+function postAnswer(r: CrewRequest, crewId: string): Answer {
   if (!r.answer) return 'attente';
   const v = r.answers?.[crewId];
   return (v ?? r.answer === 'oui') ? 'oui' : 'non';
@@ -38,11 +38,11 @@ export function requestsFor(crewId: string, requests: CrewRequest[]) {
   return [...byPerson.values()].map((r) => ({ r, state: postAnswer(r, crewId) }));
 }
 
-export const ANSWER_ICON: Record<Answer, IconName> = { oui: 'check', non: 'x', attente: 'hourglass' };
-export const ANSWER_LABEL: Record<Answer, string> = { oui: 'disponible', non: 'pas disponible', attente: 'demandé, pas de réponse' };
+const ANSWER_ICON: Record<Answer, IconName> = { oui: 'check', non: 'x', attente: 'hourglass' };
+const ANSWER_LABEL: Record<Answer, string> = { oui: 'disponible', non: 'pas disponible', attente: 'demandé, pas de réponse' };
 
 /** Lieu et adresse d'un poste (endroit du sous-projet, sinon lieu du projet). */
-export function placeOf(project: Project, sp: Subproject | undefined, contacts: Contact[]) {
+function placeOf(project: Project, sp: Subproject | undefined, contacts: Contact[]) {
   const venue = contacts.find((c) => c.id === project.venueId);
   const spot = spotOf(venue, sp?.spotId || project.spotId);
   return { lieu: sp?.venue || placeName(venue, spot) || project.venue || '', adresse: placeAddress(venue, spot) };
@@ -62,7 +62,7 @@ export async function closeFilledRequests(projectId: string) {
 }
 
 /** Note à la main la réponse d'une personne pour un poste (téléphone, SMS…). */
-export async function setManualAnswer(c: CrewAssignment, person: Person, project: Project, yes: boolean, settings: Settings) {
+async function setManualAnswer(c: CrewAssignment, person: Person, project: Project, yes: boolean, settings: Settings) {
   const existing = (await db.crewRequests.where({ personId: person.id }).toArray()).filter((r) => r.posts.some((p) => p.crewId === c.id))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
   if (existing) {
@@ -98,7 +98,7 @@ const canDo = (p: Person, fn: string) => [p.role, ...(p.skills || [])].some((x) 
 
 /* ======================= Demander les disponibilités ======================= */
 
-export function AskModal({ projectId, crewIds, onClose }: { projectId: string; crewIds: string[]; onClose: () => void }) {
+function AskModal({ projectId, crewIds, onClose }: { projectId: string; crewIds: string[]; onClose: () => void }) {
   const settings = useSettings();
   const d = useProjectCrew(projectId);
   const [posts, setPosts] = useState<Set<string>>(new Set(crewIds));
@@ -216,7 +216,7 @@ export function AskModal({ projectId, crewIds, onClose }: { projectId: string; c
 
 /* ======================= Détails du poste (technicien confirmé) ======================= */
 
-export function DetailsMail({ projectId, personId, onClose }: { projectId: string; personId: string; onClose: () => void }) {
+function DetailsMail({ projectId, personId, onClose }: { projectId: string; personId: string; onClose: () => void }) {
   const settings = useSettings();
   const d = useProjectCrew(projectId);
   const person = useLiveQuery(() => db.people.get(personId), [personId]);
@@ -252,7 +252,7 @@ export function DetailsMail({ projectId, personId, onClose }: { projectId: strin
 
 /* ======================= Remplacer un technicien ======================= */
 
-export function ReplaceModal({ crewId, onClose, onAsk }: { crewId: string; onClose: () => void; onAsk: (crewIds: string[]) => void }) {
+function ReplaceModal({ crewId, onClose, onAsk }: { crewId: string; onClose: () => void; onAsk: (crewIds: string[]) => void }) {
   const settings = useSettings();
   const c = useLiveQuery(() => db.crew.get(crewId), [crewId]);
   const d = useProjectCrew(c?.projectId || '');

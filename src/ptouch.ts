@@ -15,11 +15,11 @@
  * hauteur = points imprimables en travers du ruban, centrés sur la tête (bit 0x80 du 1er octet = point 0).
  */
 
-export const HEAD_DOTS = 128;
-export const DPI = 180;
+const HEAD_DOTS = 128;
+const DPI = 180;
 export const DOTS_PER_MM = DPI / 25.4;
-export const BROTHER_VENDOR = 0x04f9;
-export const PT_P750W_PRODUCT = 0x2062;
+const BROTHER_VENDOR = 0x04f9;
+const PT_P750W_PRODUCT = 0x2062;
 
 /**
  * Rubans TZe : points imprimables en travers, d'après la table officielle Brother (Raster Command Reference
@@ -37,13 +37,13 @@ export const TAPES: { mm: number; dots: number; label: string }[] = [
 ];
 export const tapeDots = (mm: number) => TAPES.find((t) => t.mm === mm)?.dots ?? 70;
 /** largeur du ruban telle que la machine la code (3,5 mm → 4) */
-export const tapeCode = (mm: number) => (mm === 3.5 ? 4 : Math.round(mm));
+const tapeCode = (mm: number) => (mm === 3.5 ? 4 : Math.round(mm));
 /** largeur imprimable en travers du ruban (mm) */
 export const printableMm = (mm: number) => tapeDots(mm) / (180 / 25.4);
 /** Longueur minimale de ruban sortie par la machine (position du coupe-ruban) : 24,5 mm. */
 export const MIN_FEED_MM = 24.5;
 /** Marge d'avance minimale avant et après l'étiquette : 2 mm = 14 points (§ 2.3.3). */
-export const MIN_MARGIN_DOTS = 14;
+const MIN_MARGIN_DOTS = 14;
 
 /** Image 1 bit : width = longueur (lignes raster), height = points en travers ; data[y * width + x] = 1 si noir. */
 export interface Bitmap { width: number; height: number; data: Uint8Array }
@@ -65,17 +65,6 @@ export function packBits(src: Uint8Array): Uint8Array {
     const start = i;
     while (i < src.length && i - start < 128 && !(i + 1 < src.length && src[i] === src[i + 1])) i++;
     out.push(i - start - 1, ...src.subarray(start, i));
-  }
-  return Uint8Array.from(out);
-}
-
-export function unpackBits(src: Uint8Array): Uint8Array {
-  const out: number[] = [];
-  let i = 0;
-  while (i < src.length) {
-    const n = src[i++];
-    if (n < 128) { out.push(...src.subarray(i, i + n + 1)); i += n + 1; }
-    else if (n > 128) { const v = src[i++]; for (let k = 0; k < 257 - n; k++) out.push(v); }
   }
   return Uint8Array.from(out);
 }
@@ -146,19 +135,10 @@ export function encodePage(p: Bitmap, page: number, last: boolean, o: JobOptions
   return Uint8Array.from(out);
 }
 
-/** Travail complet d'un bloc (aperçu, tests) : début + une page par étiquette. */
-export function encodeJob(pages: Bitmap[], o: JobOptions): Uint8Array {
-  const parts = [jobStart(), ...pages.map((p, i) => encodePage(p, i, i === pages.length - 1, o))];
-  const out = new Uint8Array(parts.reduce((a, b) => a + b.length, 0));
-  let k = 0;
-  for (const part of parts) { out.set(part, k); k += part.length; }
-  return out;
-}
-
 /** Demande de statut (à faire précéder d'une initialisation). */
-export const STATUS_REQUEST = Uint8Array.from([...new Array(100).fill(0), 0x1b, 0x40, 0x1b, 0x69, 0x53]);
+const STATUS_REQUEST = Uint8Array.from([...new Array(100).fill(0), 0x1b, 0x40, 0x1b, 0x69, 0x53]);
 
-export interface PtStatus {
+interface PtStatus {
   tapeMm: number;
   mediaType: number;
   /** 0 réponse au statut, 1 impression terminée, 2 erreur, 4 éteinte, 5 notification, 6 changement de phase */
@@ -200,7 +180,7 @@ export interface LabelSpec {
   extra?: string;
 }
 
-export interface LayoutOptions {
+interface LayoutOptions {
   tapeMm: number;
   /** longueur minimale de l'étiquette en mm (0 = au plus juste) */
   minLengthMm?: number;
@@ -209,7 +189,7 @@ export interface LayoutOptions {
 }
 
 /** Matrice du QR (modules) ; renvoie null si impossible. */
-export type QrMatrix = { size: number; get: (r: number, c: number) => boolean };
+type QrMatrix = { size: number; get: (r: number, c: number) => boolean };
 
 /** Taille d'un module QR en points pour un ruban donné (2 au minimum pour rester lisible). */
 export function qrModuleDots(modules: number, bandDots: number): number {
@@ -317,7 +297,7 @@ interface UsbDevice {
 }
 interface UsbApi { requestDevice(o: { filters: { vendorId: number; productId?: number }[] }): Promise<UsbDevice>; getDevices(): Promise<UsbDevice[]> }
 
-export const usbApi = (): UsbApi | undefined => (navigator as unknown as { usb?: UsbApi }).usb;
+const usbApi = (): UsbApi | undefined => (navigator as unknown as { usb?: UsbApi }).usb;
 export const webUsbAvailable = () => !!usbApi() && window.isSecureContext;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

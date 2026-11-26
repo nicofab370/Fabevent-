@@ -42,11 +42,6 @@ export function findByCode(raw: string, equipment: Equipment[], units: SerialUni
   return e ? { equipment: e } : undefined;
 }
 
-/** Le code est-il déjà utilisé par un autre article ou une autre unité ? */
-export function codeOwner(raw: string, equipment: Equipment[], units: SerialUnit[]): CodeHit | undefined {
-  return findByCode(raw, equipment, units);
-}
-
 /** Ajoute un code en plus à un article ou à une unité (20 au plus). */
 export async function addExtraCode(target: { equipmentId: string; unitId?: string }, raw: string) {
   const code = raw.replace(/[\s,;]+/g, '').slice(0, 120);

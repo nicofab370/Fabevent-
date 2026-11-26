@@ -15,7 +15,7 @@ import { Icon } from '../components/Icon';
 
 type Draft = Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'number'> & Partial<Project>;
 
-export function ProjectForm({ initial, onDone }: { initial?: Draft; onDone: (p?: Project) => void }) {
+function ProjectForm({ initial, onDone }: { initial?: Draft; onDone: (p?: Project) => void }) {
   const today = new Date();
   today.setHours(8, 0, 0, 0);
   const end = new Date(today);

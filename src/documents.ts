@@ -6,7 +6,7 @@ import { DEFAULT_VAT_MENTIONS, structuredCommunication } from './payment';
 import { INVOICE_TYPES, VENUE_INFO_LABELS, type VenueInfo } from './types';
 import { contentsText } from './codes';
 import { deptOf, ownAddress, placeAddress, placeName, projectPerson, spotOf } from './places';
-import { crewAmount, crewCostProfile, crewWindow, daysBetween, factorFor, lineDays, lineTotal, round2, save, sortPeriods } from './utils';
+import { crewAmount, crewCostProfile, crewWindow, factorFor, lineDays, lineTotal, round2, save, sortPeriods } from './utils';
 
 const PREFIX: Record<DocType, 'D' | 'F' | 'AV' | 'BS' | 'FR' | 'RP'> = {
   devis: 'D', facture: 'F', acompte: 'F', avoir: 'AV', rappel: 'RP', bon_sortie: 'BS', feuille_route: 'FR',
@@ -24,7 +24,7 @@ export function fieldKey(label: string): string {
   return label.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 }
 
-export interface DocOptions {
+interface DocOptions {
   /** acompte : pourcentage du total TTC du projet */
   percent?: number;
   /** acompte / avoir : montant HT fixe (prioritaire sur percent) */
@@ -61,7 +61,7 @@ async function contactsFor(client: Contact | undefined, project: { venueId?: str
 }
 
 /** Construit une photo figée du projet à l'instant T. */
-export async function buildSnapshot(projectId: string, type: DocType, only?: { include?: string[]; exclude?: string[] }): Promise<DocSnapshot> {
+async function buildSnapshot(projectId: string, type: DocType, only?: { include?: string[]; exclude?: string[] }): Promise<DocSnapshot> {
   const s = await getSettings();
   const project = await db.projects.get(projectId);
   if (!project) throw new Error('Projet introuvable');

@@ -158,12 +158,12 @@ export interface Category extends Base {
   letter?: string;
 }
 
-export interface KitItem {
+interface KitItem {
   equipmentId: ID;
   qty: number;
 }
 
-export interface Accessory extends KitItem {
+interface Accessory extends KitItem {
   /** true = ajouté gratuitement, false = facturé à son prix */
   free: boolean;
   /** true = facultatif : proposé dans le sélecteur mais PAS ajouté automatiquement avec l'article */
@@ -171,10 +171,10 @@ export interface Accessory extends KitItem {
 }
 
 /** location = facturé par jour et revient ; vente = consommable vendu à l'unité */
-export type EquipmentKind = 'location' | 'vente';
+type EquipmentKind = 'location' | 'vente';
 
 /** Dépôt / emplacement de stock. Le premier de la liste est le dépôt principal. */
-export interface Depot {
+interface Depot {
   id: ID;
   name: string;
   /** lettre des codes du matériel basé dans ce dépôt (F-S-0010) */

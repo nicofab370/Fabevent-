@@ -6,7 +6,7 @@ import type { Doc, DocHtml } from './types';
 import { INVOICE_TYPES, VAT_REGIME_LABELS } from './types';
 import { DOC_TITLES, docLang, tr } from './i18n';
 import { epcPayload, qrSvg } from './payment';
-import { fmtDate, money } from './utils';
+import { escHtml as esc, fmtDate, money } from './utils';
 
 export const DEFAULT_HTML: DocHtml = {
   header: `<div class="head">
@@ -122,10 +122,9 @@ export const VARIABLE_GROUPS: { label: string; items: [string, string][] }[] = [
   ] },
 ];
 
-const esc = (v: unknown) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /** Valeurs des variables simples d'un document (non échappées). */
-export function docValues(doc: Doc): Record<string, string> {
+function docValues(doc: Doc): Record<string, string> {
   const s = doc.snapshot;
   const c = s.client;
   const co = s.company;

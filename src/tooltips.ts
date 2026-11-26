@@ -258,4 +258,3 @@ export function startAutoTooltips() {
   run();
 }
 
-export const __test = { explain, apply };

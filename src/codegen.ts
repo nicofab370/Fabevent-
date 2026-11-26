@@ -78,7 +78,7 @@ export function unitSuffix(n: number): string {
   if (n >= 1 && n < SUFFIXES.length) return SUFFIXES[n];
   return n.toString(16).toUpperCase().padStart(3, '0'); // au-delà de 255 : 3 caractères
 }
-export function suffixIndex(s: string): number {
+function suffixIndex(s: string): number {
   return SUFFIXES.indexOf(s.toUpperCase());
 }
 

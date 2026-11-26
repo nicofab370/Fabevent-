@@ -11,7 +11,7 @@ import { db, logIsSuppressed, TABLES } from './db';
  */
 
 interface Entry { table: string; id: string; before?: unknown; created?: Record<string, unknown> }
-export interface UndoStep { label: string; at: number; entries: Entry[] }
+interface UndoStep { label: string; at: number; entries: Entry[] }
 
 const SKIP = new Set(['log']);
 const MAX_STEPS = 40;
@@ -28,7 +28,6 @@ const NAMES: Record<string, string> = {
 const steps: UndoStep[] = [];
 let lastAt = 0;
 let lastTx: unknown = null;
-let pausedUntil = 0;
 const listeners = new Set<() => void>();
 let notifyTimer: ReturnType<typeof setTimeout> | null = null;
 const notify = () => {
@@ -44,7 +43,7 @@ const nameOf = (o: unknown) => {
 };
 
 function record(table: string, id: string, kind: 'ajout' | 'modification' | 'suppression', before: unknown, after: unknown, tx: unknown) {
-  if (logIsSuppressed() || Date.now() < pausedUntil) return;
+  if (logIsSuppressed()) return;
   const t = tx as { __remote?: boolean; __undo?: boolean } | undefined;
   if (t?.__remote || t?.__undo) return;
   const now = Date.now();
@@ -82,8 +81,6 @@ export function installUndo() {
   }
 }
 
-/** n'enregistre rien pendant ms millisecondes (chargement de données, import technique…) */
-export function pauseUndo(ms = 1500) { pausedUntil = Date.now() + ms; }
 export function clearUndo() { steps.length = 0; notify(); }
 export const lastUndo = (): UndoStep | undefined => steps[steps.length - 1];
 export const undoCount = () => steps.length;

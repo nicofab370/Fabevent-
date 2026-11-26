@@ -303,7 +303,6 @@ textarea.code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; fon
 .drop { display: grid; gap: 4px; place-items: center; text-align: center; border: 2px dashed var(--border); border-radius: 12px; padding: 22px; margin-bottom: 12px; cursor: pointer; background: var(--panel); }
 .drop.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 @media screen and (max-width: 640px) {
-  .cl-all { display: none; } /* la case à cocher fait « tout » */
   .checklist-cat { padding: 8px 10px; }
   .cl-count { gap: 0; }
 }
@@ -751,16 +750,12 @@ tr.post-open td:first-child { box-shadow: inset 4px 0 0 #d97706; }
 .link-btn { background: none; border: 0; padding: 0; color: inherit; font-weight: 400; text-decoration: underline; cursor: pointer; font: inherit; font-size: 12px; min-height: 0; }
 .pick-stock { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; text-align: right; white-space: nowrap; }
 .pick-stock .avail { font-weight: 600; }
-.uses-btn { color: #b45309; }
-@media (prefers-color-scheme: dark) { .uses-btn { color: #fbbf24; } }
-.uses-btn.on { font-weight: 600; }
 .pick-uses { padding: 6px 12px 10px 48px; border-bottom: 1px solid var(--border); background: var(--soft); }
-.eq-avail .uses-btn { display: block; margin-left: auto; white-space: nowrap; }
 .other-uses { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
 .other-uses li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .other-uses .ou-dates { margin-left: auto; }
 .other-uses-empty { margin: 0; font-size: 13px; }
-@media screen and (max-width: 640px) { .uses-btn { min-height: 32px; padding: 8px 0; } .pick-uses { padding-left: 12px; } .other-uses .ou-dates { margin-left: 0; width: 100%; } }
+@media screen and (max-width: 640px) { .pick-uses { padding-left: 12px; } .other-uses .ou-dates { margin-left: 0; width: 100%; } }
 .quick-add-list li.qa-browse { justify-content: center; color: var(--muted, #6b7280); border-top: 1px solid var(--border); border-radius: 0; font-style: italic; }
 .chosen-name { flex: 1; min-width: 0; align-self: center; }
 .contact-field { display: flex; gap: 6px; align-items: center; flex: 1; min-width: 0; }

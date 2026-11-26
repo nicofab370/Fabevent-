@@ -10,7 +10,7 @@ import { fmtRange, toLocalInput } from '../utils';
 import type { Subproject } from '../types';
 import { FIRM } from '../types';
 
-export const LEVEL_LABELS: Record<Conflict['level'], string> = {
+const LEVEL_LABELS: Record<Conflict['level'], string> = {
   ferme: 'Manque réel',
   concurrence: 'Concurrence entre options',
 };

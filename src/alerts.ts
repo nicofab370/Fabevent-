@@ -6,7 +6,7 @@ import { upcomingShortages } from './pages/Shortages';
 import { RESERVING } from './types';
 import { inspectionsDue, toLocalInput } from './utils';
 
-export interface Alerts { penuries: number; enRetard: number; controles: number; postes: number }
+interface Alerts { penuries: number; enRetard: number; controles: number; postes: number }
 
 /**
  * Compteurs d'alertes pour les badges du menu :

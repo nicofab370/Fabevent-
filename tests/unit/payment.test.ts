@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { epcPayload, isValidStructured, qrSvg, structuredCommunication, suggestRegime } from '../../src/payment';
+import { epcPayload, qrSvg, structuredCommunication, suggestRegime } from '../../src/payment';
+
+/** Contrôle modulo 97 d'une communication structurée belge. */
+function isValidStructured(comm: string): boolean {
+  const d = comm.replace(/\D/g, '');
+  if (d.length !== 12) return false;
+  const check = Number(d.slice(0, 10)) % 97 || 97;
+  return check === Number(d.slice(10));
+}
+
 
 describe('communication structurée belge', () => {
   it('calcule la clé modulo 97', () => {

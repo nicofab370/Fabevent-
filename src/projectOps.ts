@@ -70,7 +70,7 @@ export async function shiftProject(projectId: string, sh: Shift, opts: { subIds?
   await refreshProjectDates(projectId);
 }
 
-export interface CopyOptions {
+interface CopyOptions {
   name?: string;
   status?: ProjectStatus;
   isTemplate?: boolean;

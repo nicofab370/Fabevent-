@@ -7,7 +7,7 @@ import { useAvailability } from '../data';
 import { db, nextNumber } from '../db';
 import type { Transfer, TransferStatus } from '../types';
 import { TRANSFER_LABELS } from '../types';
-import { availableQty, fmtDate, fmtRange, save, stockAt, toLocalInput } from '../utils';
+import { availableQty, escHtml as esc, fmtDate, fmtRange, save, stockAt, toLocalInput } from '../utils';
 import { applyTransfer } from '../transferApply';
 import { unitNo } from '../unitNumbers';
 import type { SerialUnit } from '../types';
@@ -15,7 +15,6 @@ import { printHtml } from './project/shared';
 import { Icon } from '../components/Icon';
 import { EquipmentChooser } from '../components/EquipmentChooser';
 
-const esc = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /** Transferts de matériel entre dépôts (définitifs ou temporaires). */
 export default function Transfers() {

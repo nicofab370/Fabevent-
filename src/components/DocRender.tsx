@@ -5,8 +5,7 @@ import { DEFAULT_HTML, fillTemplate, stripScripts, withDefaults } from '../docTe
 import { epcPayload, qrSvg } from '../payment';
 import { docLang, REMINDER_TEXTS, tr, VAT_SHORT } from '../i18n';
 import type { Doc, DocStyle } from '../types';
-import { INVOICE_TYPES } from '../types';
-import { fmtDate, money, orderedSubprojects } from '../utils';
+import { escHtml as esc, fmtDate, money, orderedSubprojects } from '../utils';
 
 export const DOC_CSS = `
 .doc{--accent:#1d4ed8;--accent-soft:#eef2fd;--accent-line:#c7d4f7;--accent-ink:#fff;--accent2:#0f766e;--accent2-soft:#f0fdfa;font-family:Inter,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#1c2330;background:#fff;max-width:820px;margin:0 auto;padding:0 40px 36px;font-size:12.5px;line-height:1.5;border-top:8px solid var(--accent);-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -83,7 +82,7 @@ export function DocRender({ doc, mark, highlight, onPick }: { doc: Doc; mark?: b
 }
 
 /** style du document ; l'ancien noir par défaut devient la couleur par défaut actuelle */
-export function docStyle(doc: Doc): DocStyle {
+function docStyle(doc: Doc): DocStyle {
   const st = { ...DEFAULT_DOC_STYLE, ...doc.snapshot.template?.style };
   if (/^#1{6}$/i.test(st.color)) st.color = DEFAULT_DOC_STYLE.color;
   if (!/^#([0-9a-f]{6})$/i.test(st.color2 || '')) st.color2 = DEFAULT_DOC_STYLE.color2;
@@ -91,7 +90,7 @@ export function docStyle(doc: Doc): DocStyle {
 }
 
 /** variables de couleur : teinte claire, filet et couleur du texte sur l'accent (calculés, pour le PDF aussi) */
-export function accentVars(color: string, color2?: string): CSSProperties {
+function accentVars(color: string, color2?: string): CSSProperties {
   const vars = (hex: string, prefix: 'accent' | 'accent2') => {
     const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
     const [r, g, b] = m ? [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16)) : [29, 78, 216];
@@ -110,7 +109,6 @@ export function buildDocHtml(doc: Doc, opts: { mark?: boolean } = {}): string {
   const showPrices = !s.hidePrices;
   const isRoadmap = doc.type === 'feuille_route';
   const isPacking = doc.type === 'bon_sortie';
-  const isInvoice = INVOICE_TYPES.includes(doc.type);
   const depositsTTC = (s.deposits || []).reduce((a, d) => a + d.ttc, 0);
   const r = (el: ReactElement) => renderToStaticMarkup(el);
   const text = (v?: string) => (v ? `<div class="text">${fillTemplate(v, doc)}</div>` : '');
@@ -350,12 +348,9 @@ function Rooms({ doc, st }: { doc: Doc; st: DocStyle }) {
 }
 
 
-const esc = (v: unknown) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-export const DEFAULT_REMINDER_TEXT = REMINDER_TEXTS.fr;
 
 /** Bloc de paiement : IBAN, communication (structurée) et QR code de virement. */
-export function paymentBlock(doc: Doc): string {
+function paymentBlock(doc: Doc): string {
   const s = doc.snapshot;
   const payable = doc.type === 'facture' || doc.type === 'acompte' || doc.type === 'rappel';
   if (!payable || !s.company.iban) return '';

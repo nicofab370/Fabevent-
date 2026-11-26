@@ -13,7 +13,7 @@ import { ensureSerialCodes } from './autoCodes';
  */
 
 /** Tables synchronisées : tout, sauf le registre (recréé sur chaque appareil). */
-export const SYNCED = TABLES.filter((t) => t !== 'log');
+const SYNCED = TABLES.filter((t) => t !== 'log');
 
 const ws = () => currentWorkspace();
 const K = {
@@ -46,7 +46,7 @@ let pending: Pending | null = null;
 let version = 0;
 const loadPending = (): Pending => (pending ??= JSON.parse(get(K.pending()) || '{}'));
 const savePending = () => set(K.pending(), JSON.stringify(pending || {}));
-export const pendingCount = () => Object.keys(loadPending()).length;
+const pendingCount = () => Object.keys(loadPending()).length;
 
 function note(table: string, id: string) {
   if (!syncEnabled()) return;
@@ -56,7 +56,7 @@ function note(table: string, id: string) {
 }
 
 /** Transaction d'application des changements reçus : marquée pour ne pas être renvoyée. */
-export const isRemote = (tx: unknown) => !!(tx as { __remote?: boolean } | undefined)?.__remote;
+const isRemote = (tx: unknown) => !!(tx as { __remote?: boolean } | undefined)?.__remote;
 
 for (const t of SYNCED) {
   const table = db.table(t);
@@ -75,7 +75,6 @@ function emit(s: Partial<SyncState>) {
   listeners.forEach((l) => l(state));
 }
 export function onSync(l: (s: SyncState) => void) { listeners.add(l); l(state); return () => { listeners.delete(l); }; }
-export const syncState = () => state;
 
 /* ---------- échanges avec le serveur ---------- */
 

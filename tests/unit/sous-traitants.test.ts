@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { defaultSettings } from '../../src/db';
 import { computeFinance } from '../../src/pages/project/shared';
 import type { CrewAssignment, Person, Project, Subproject } from '../../src/types';
-import { crewCostRate, functionRate } from '../../src/utils';
+import { crewCostProfile, crewCostShown, functionRate } from '../../src/utils';
+
+const crewCost = (c: { cost?: number; rateUnit?: 'jour' | 'heure' }, p: Person) => crewCostShown(c, crewCostProfile({}, p)).value;
 
 const t = '2026-01-01T00:00:00.000Z';
 const catalogue = [{ name: 'Rigger', dayRate: 420, hourRate: 52 }];
@@ -16,10 +18,10 @@ describe('tarif client et coût du prestataire', () => {
     expect(functionRate('Inconnue', 'jour', catalogue, { dailyRate: 300 })).toBe(300);
   });
   it('le coût suit la personne, sauf coût saisi à la main', () => {
-    expect(crewCostRate({}, karim)).toBe(300);
-    expect(crewCostRate({}, sam)).toBe(260);
-    expect(crewCostRate({ rateUnit: 'heure' }, sam)).toBe(30);
-    expect(crewCostRate({ cost: 250 }, sam)).toBe(250);
+    expect(crewCost({}, karim)).toBe(300);
+    expect(crewCost({}, sam)).toBe(260);
+    expect(crewCost({ rateUnit: 'heure' }, sam)).toBe(30);
+    expect(crewCost({ cost: 250 }, sam)).toBe(250);
   });
 
   it('changer de sous-traitant change la marge, pas le chiffre facturé', () => {
