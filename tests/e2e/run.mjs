@@ -3249,13 +3249,13 @@ await step('Remplissage automatique : adresse d’un lieu trouvée sur la carte,
   await go('lieux');
   await page.click('button:has-text("Nouveau lieu")');
   await page.waitForSelector('.modal');
-  await page.locator('.modal .field', { hasText: 'Société / Nom' }).locator('input').fill('Boverie');
+  await page.locator('.modal label.field', { has: page.locator('span:text-is("Société / Nom *")') }).locator('input').fill('Boverie');
   await page.click('.modal button:has-text("Chercher l’adresse")');
   await page.waitForSelector('.lookup-hits button');
   await page.click('.lookup-hits button');
-  const val = (label) => page.locator('.modal .field', { hasText: label }).first().locator('input').inputValue();
+  const val = (label) => page.locator('.modal label.field', { has: page.locator(`span:text-is("${label}")`) }).locator('input').inputValue();
   expect((await val('Adresse')) === 'Parc de la Boverie 3' && (await val('Code postal')) === '4020' && (await val('Ville')) === 'Liège', 'adresse remplie');
-  expect((await val('Téléphone')) === '+32 4 238 55 01' && (await val('Société / Nom')) === 'Boverie', 'téléphone ajouté, nom saisi conservé');
+  expect((await val('Téléphone')) === '+32 4 238 55 01' && (await val('Société / Nom *')) === 'Boverie', 'téléphone ajouté, nom saisi conservé');
   await page.keyboard.press('Escape');
   await ctx.unroute('**/nominatim.openstreetmap.org/search**');
   // article : même marque et modèle qu'un article de la démo
