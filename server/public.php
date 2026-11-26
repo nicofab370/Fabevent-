@@ -18,6 +18,12 @@ if (!is_file($auth)) { http_response_code(503); echo 'Service indisponible'; exi
 require $auth;   // seulement pour data_dir() : aucune connexion n'est demandée ici
 
 header('Content-Type: text/html; charset=utf-8');
+set_exception_handler(function (Throwable $e) {
+    error_log('FabEvent public.php : ' . $e->getMessage());
+    if (!headers_sent()) http_response_code(500);
+    echo '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Erreur</title>'
+        . '<p style="font:16px system-ui;max-width:520px;margin:40px auto;padding:0 16px">Le service est momentanément indisponible. Réessaie dans quelques minutes ou contacte l\'organisateur.</p>';
+});
 header('Cache-Control: no-store');
 header('X-Content-Type-Options: nosniff');
 header('X-Robots-Tag: noindex, nofollow');
@@ -26,8 +32,12 @@ header("Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; 
 
 $db = new PDO('sqlite:' . data_dir() . '/fabevent-sync.sqlite', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 $db->exec('PRAGMA busy_timeout=5000;');
+// même table que sync.php (si personne n'a encore synchronisé, elle n'existe pas : on la crée vide)
+$db->exec('CREATE TABLE IF NOT EXISTS changes (seq INTEGER PRIMARY KEY AUTOINCREMENT, space TEXT NOT NULL, tbl TEXT NOT NULL, id TEXT NOT NULL,
+    data TEXT, u TEXT NOT NULL, who TEXT, UNIQUE(space, tbl, id))');
 
-function h($v): string { return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'); }
+// h() existe déjà dans la bibliothèque de connexion des pages internes : ne pas la redéclarer (erreur fatale = page blanche)
+if (!function_exists('h')) { function h($v): string { return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'); } }
 function now_u(): string { $t = microtime(true); return gmdate('Y-m-d\TH:i:s', (int)$t) . sprintf('.%03dZ', (int)(($t - floor($t)) * 1000)); }
 function rid(): string { return bin2hex(random_bytes(10)); }
 const ICO_CHECK = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px;margin-right:6px"><path d="M5 12.5l4.5 4.5L19 7"/></svg>';
