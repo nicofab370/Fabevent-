@@ -1,14 +1,14 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Empty, Field, Modal, NumInput, PageHead, StatusBadge } from '../components/ui';
 import { nextNumber, unitNo } from '../unitNumbers';
 import { useAvailability } from '../data';
-import { nextUnitCode } from '../codegen';
+import { newArticleCode, nextUnitCode } from '../codegen';
 import { ensureSerialCodes } from '../autoCodes';
-import { db } from '../db';
-import type { SerialUnit } from '../types';
-import { availableQty, kitBreakdown, stockAt, fmtDate, fmtRange, inspectionsDue, money, save, toLocalInput } from '../utils';
+import { db, getSettings } from '../db';
+import type { Equipment, SerialUnit } from '../types';
+import { availableQty, kitBreakdown, stockAt, fmtDate, fmtRange, inspectionsDue, money, save, toLocalInput, uid } from '../utils';
 import { EquipmentForm } from './EquipmentList';
 import { InspectionModal, RepairModal } from './Maintenance';
 import PrintLabelModal from '../components/PrintLabelModal';
@@ -27,6 +27,14 @@ export default function EquipmentDetail() {
   const projects = useLiveQuery(() => db.projects.toArray(), []) || [];
   const inspections = useLiveQuery(() => db.inspections.where({ equipmentId: id! }).reverse().sortBy('date'), [id]) || [];
   const [editing, setEditing] = useState(false);
+  // copie qui vient d'être créée (« Dupliquer ») : sa fiche s'ouvre en modification
+  const [params, setParams] = useSearchParams();
+  // (on attend que la fiche affichée soit bien celle de la copie, pas encore l'original)
+  useEffect(() => { if (params.get('modifier') && raw?.id === id) { setEditing(true); setParams({}, { replace: true }); } }, [id, raw?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // autre article : on ferme le formulaire de l'article précédent
+  useEffect(() => { if (!params.get('modifier')) setEditing(false); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // le formulaire de modification est en bas de la fiche : on y descend
+  useEffect(() => { if (editing) setTimeout(() => document.querySelector('.edit-inline')?.scrollIntoView({ block: 'start' }), 80); }, [editing]);
   const [unitEdit, setUnitEdit] = useState<Partial<SerialUnit> | null>(null);
   const [repair, setRepair] = useState<{ unitId?: string } | null>(null);
   const [inspect, setInspect] = useState<{ unitId?: string } | null>(null);
@@ -68,6 +76,15 @@ export default function EquipmentDetail() {
         <button className="secondary" onClick={() => setRepair({})}>Déclarer une réparation</button>
         {eq.inspectionMonths ? <button className="secondary" onClick={() => setInspect({})}>Enregistrer un contrôle</button> : null}
         {!eq.isKit && !eq.accessoryOnly && <button className="secondary" onClick={() => setPrinting({})}><Icon name="tag" />Imprimer l'étiquette</button>}
+        {canEditEquipment(me) && <button className="secondary" title="Créer un nouvel article avec les mêmes infos (catégorie, prix, kit, accessoires…), avec son propre code ; les unités et codes-barres ne sont pas copiés" onClick={async () => {
+          const [all, cats, st] = await Promise.all([db.equipment.toArray(), db.categories.toArray(), getSettings()]);
+          // nouvel article : ni identifiant, ni code, ni code-barres, ni unités de l'original
+          const { id: _id, createdAt: _c, updatedAt: _u, code, barcode: _b, extraCodes: _x, ...rest } = raw || eq;
+          const copy = { ...rest, id: uid(), name: `${eq.name} (copie)`, quantity: rest.trackSerials ? 0 : rest.quantity, archived: undefined } as Equipment;
+          if (code) copy.code = newArticleCode(copy, st, cats, all);
+          await save(db.equipment, copy);
+          nav('/materiel/' + copy.id + '?modifier=1');
+        }}><Icon name="copy" />Dupliquer</button>}
         {canEditEquipment(me) && <button onClick={() => setEditing(true)}>Modifier</button>}
         {canDeleteEquipment(me) && <button className="danger" onClick={async () => {
           if (confirm('Supprimer cet article ? Les lignes de projet existantes garderont leur désignation.')) {
@@ -246,7 +263,7 @@ export default function EquipmentDetail() {
             <h2 style={{ margin: 0 }}>Modifier l'article (directement sur cette page)</h2>
             <button className="secondary small" onClick={() => setEditing(false)}>Fermer</button>
           </div>
-          <EquipmentForm initial={raw} onDone={() => setEditing(false)} onPrint={() => setPrinting({})} />
+          <EquipmentForm key={raw.id} initial={raw} onDone={() => setEditing(false)} onPrint={() => setPrinting({})} />
         </div>
       )}
       {printing && <PrintLabelModal equipmentId={eq.id} unitIds={printing.unitIds} onClose={() => setPrinting(null)} />}

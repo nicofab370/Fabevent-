@@ -364,6 +364,8 @@ export interface Project extends Base {
   confirmedAt?: string;
   /** coûts réels saisis après le projet, par catégorie de l'onglet Finances */
   actualCosts?: Record<string, number>;
+  /** éditions successives d'un même évènement : identifiant du projet de la 1re édition */
+  editionOf?: ID;
 }
 
 export interface Task {

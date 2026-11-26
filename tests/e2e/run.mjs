@@ -3113,6 +3113,57 @@ await step('Bases : créer une base « autre société » isolée (données, com
 
 console.log('\n  — vérification de la liste (v51) —');
 
+await step('Matériel : dupliquer un article (nouveau code, fiche ouverte en modification, sans les unités)', async () => {
+  await resetDemo();
+  await go('materiel');
+  await page.locator('table.list tbody tr', { hasText: 'Amplificateur LA4X' }).first().click();
+  await page.waitForTimeout(400);
+  const code0 = (await page.locator('main').innerText()).match(/F-[A-Z]-\d{4}/)?.[0];
+  await page.click('main button:has-text("Dupliquer")');
+  await page.waitForSelector('.edit-inline');
+  const name = page.locator('.edit-inline input[aria-label="Désignation"]');
+  expect((await name.inputValue()) === 'Amplificateur LA4X (copie)', 'copie nommée « (copie) »');
+  await name.fill('Amplificateur LA4X bis');
+  await page.click('.edit-inline button[type=submit]');
+  await page.waitForTimeout(400);
+  const txt = await page.locator('main').innerText();
+  const code1 = txt.match(/F-[A-Z]-\d{4}/)?.[0];
+  expect(code1 && code1 !== code0, `nouveau code (${code0} → ${code1})`);
+  await go('materiel');
+  expect(await page.locator('table.list tbody tr', { hasText: 'Amplificateur LA4X bis' }).count() === 1, 'copie dans le catalogue');
+  expect(await page.locator('table.list tbody tr', { hasText: /^.*Amplificateur LA4X(?! bis)/ }).count() >= 1, 'original conservé');
+});
+
+await step('Projet : dupliquer pour l\'édition suivante (dates +1 an, éditions reliées, sans les documents)', async () => {
+  await resetDemo();
+  await openProject('Festival des Lumières');
+  await tab('Équipement');
+  const nLines = await page.locator('table.list.eq-table tbody tr').count();
+  const y = new Date().getFullYear();
+  await page.click('main button:has-text("Dupliquer…")');
+  await page.waitForSelector('.modal');
+  const date = await page.locator('.modal input[type=date]').inputValue();
+  expect((await page.locator('.modal input[required]').inputValue()) === `Festival des Lumières ${+date.slice(0, 4)}`, 'nom proposé avec l’année de la nouvelle édition');
+  const url0 = page.url();
+  await page.click('.modal button[type=submit]');
+  await page.waitForFunction((u) => location.href !== u, url0);
+  await page.waitForSelector('.editions');
+  await page.waitForTimeout(300);
+  const head = await page.locator('main h1').first().innerText();
+  expect(head.includes(`Festival des Lumières ${+date.slice(0, 4)}`), 'copie ouverte : ' + head);
+  expect((await page.locator('.editions .badge').count()) === 2, 'deux éditions reliées');
+  expect((await page.locator('.project-tabs').innerText()).length > 0, 'onglets présents');
+  await tab('Équipement');
+  expect((await page.locator('table.list.eq-table tbody tr').count()) === nLines, `matériel copié (${nLines} lignes)`);
+  await tab('Planning');
+  expect((await page.locator('main').innerText()).includes(String(+date.slice(0, 4))), 'horaires décalés à la nouvelle année');
+  await tab('Finances & documents');
+  expect(!(await page.locator('table.list tr.click', { hasText: /D-\d{4}|F-\d{4}/ }).count()), 'aucun document copié');
+  await page.locator('.editions a.badge').first().click();
+  await page.waitForTimeout(500);
+  expect((await page.locator('main h1').first().innerText()).includes('Festival des Lumières') && y > 0, 'retour à l’édition d’origine depuis l’en-tête');
+});
+
 await step('Kit : un élément manquant ne met pas tout le kit en manque (« incomplet » + élément en cause)', async () => {
   await resetDemo();
   await openProject("Salon de l'emploi");
