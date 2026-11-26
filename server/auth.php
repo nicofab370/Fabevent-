@@ -99,7 +99,7 @@ if ($action === 'setup' && $post) {
         ->execute([fe_key($ws), 'users', $u['id'], json_encode($u, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $u['updatedAt'], (string)$u['email']]);
     if ($mode === 'code') @unlink(data_dir() . '/code-installation.txt'); // usage unique (un code de fabevent-config.php est à retirer ensuite)
     fe_open_session($ws, $u);
-    fe_json(200, ['ok' => true, 'user' => $u]);
+    fe_json(200, ['ok' => true, 'user' => $u, 'bases' => fe_open_bases()]);
 }
 
 // mot de passe oublié SANS email : avec le code d'installation (que seul le propriétaire lit par FTP)

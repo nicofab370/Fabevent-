@@ -79,7 +79,8 @@ export function knownBases(): ServerBase[] {
 }
 /** Liste à jour des bases ouvertes dans ce navigateur. */
 export async function refreshBases(): Promise<ServerBase[]> {
-  if (!serverOn()) return knownBases();
+  // liste reçue à la connexion ; on ne la rafraîchit (noms, bases fermées) que si l'appareil en connaît déjà une
+  if (!serverOn() || !knownBases().length) return knownBases();
   try {
     const r = await fetch(`${authUrl()}?action=bases`, { credentials: 'include', cache: 'no-store' });
     const j = await r.json();
@@ -96,6 +97,7 @@ export function openBase(b: ServerBase) {
 /** Premier compte administrateur d'une base sur le serveur (code d'installation si le serveur a déjà des données). */
 export async function serverSetup(user: User, code?: string): Promise<User> {
   const j = await call('setup', { user, code: code || undefined });
+  if (Array.isArray(j.bases)) keepBases(j.bases as ServerBase[]);
   return keep(j.user as User);
 }
 
