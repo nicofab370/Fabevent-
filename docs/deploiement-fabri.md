@@ -73,6 +73,25 @@ l'ancien emplacement ensuite. `diag.php` indique si cette reprise a eu lieu (`re
 - Rôles : administrateur et entrepôt synchronisent ; un compte sous-traitant ne reçoit pas toute la base.
 - MFA : si le compte a activé le code à 6 chiffres, le serveur le demande aussi.
 
+## Mises à jour automatiques par FTP
+
+Une fois réglé, chaque PR fusionnée est mise en ligne toute seule (quelques minutes) : GitHub construit le paquet
+et envoie **uniquement les fichiers modifiés** dans `fabevent/` sur l'hébergement.
+
+1. GitHub → dépôt → **Settings** → **Secrets and variables** → **Actions** → onglet **Secrets** → « New repository secret » :
+   - `FTP_SERVER` : l'adresse FTP de l'hébergement (ex. `ftp.fabri.live`) ;
+   - `FTP_USERNAME` et `FTP_PASSWORD` : les identifiants FTP.
+2. Onglet **Variables** (facultatif) :
+   - `FTP_DIR` : dossier de FabEvent vu depuis la racine du FTP, terminé par `/` (défaut : `www/fabevent/`) ;
+   - `FTP_PROTOCOL` : `ftps` (défaut, chiffré) ou `ftp` si l'hébergement ne propose pas FTPS.
+3. Pour tester sans attendre : onglet **Actions** → « Paquet pour l'hébergement… » → **Run workflow**.
+   L'étape « Envoi sur l'hébergement (FTP) » doit être verte.
+
+Ne sont jamais envoyés ni supprimés : `api/mail-config.php`, `api/fabevent-config.php` et les données
+(`fabevent-prive/` est hors du dossier). Le premier envoi dépose tout le paquet, les suivants seulement les différences
+(un petit fichier `.ftp-deploy-sync-state.json` le mémorise dans `fabevent/`).
+Les appareils reçoivent la nouvelle version à leur prochaine ouverture de FabEvent.
+
 ## Envoi des mails depuis FabEvent
 
 Avec `mail.php`, les devis, factures, bons, plannings et demandes de disponibilité partent **directement** de FabEvent,
