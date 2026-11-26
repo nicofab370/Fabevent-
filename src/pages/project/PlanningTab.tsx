@@ -2,18 +2,20 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
 import { Empty, Field, Modal, NumInput, StatusBadge } from '../../components/ui';
 import { db } from '../../db';
-import type { Period, PeriodKind, Project, ProjectStatus, Subproject } from '../../types';
+import type { Appointment, Period, PeriodKind, Project, ProjectStatus, Subproject } from '../../types';
 import { FIRM, PERIOD_LABELS, STATUS_LABELS } from '../../types';
 import { shiftBetween, shiftDate, shiftProject, type Shift } from '../../projectOps';
 import { blockPeriod, confirmDeleteSubproject, deleteSubproject, fmtDate, fmtRange, nowIso, patch, save, sortPeriods, syncPeriods, toLocalInput, uid, usageDays } from '../../utils';
 import type { ProjectData } from './shared';
 import { ownAddress, placeAddress, placeName, spotOf } from '../../places';
 import { Icon } from '../../components/Icon';
+import { AppointmentModal } from '../Calendar';
 
 /** Onglet Planning : toutes les salles et tous leurs créneaux. */
 export default function PlanningTab({ d, onEditSub }: { d: ProjectData; onEditSub: (sp: Partial<Subproject>) => void }) {
   const { project, subs } = d;
   const [shifting, setShifting] = useState(false);
+  const [appt, setAppt] = useState<Partial<Appointment> | null>(null);
   return (
     <>
       <div className="toolbar">
@@ -67,6 +69,29 @@ export default function PlanningTab({ d, onEditSub }: { d: ProjectData; onEditSu
         );
       })}
       <button className="secondary" onClick={() => onEditSub(newSubDraft(d))}>+ Ajouter un sous-projet</button>
+      <div className="card project-appts" style={{ marginTop: 16 }}>
+        <div className="page-head" style={{ marginBottom: 6 }}>
+          <h2 style={{ margin: 0 }}>Rendez-vous du projet</h2>
+          <button className="secondary small" title="Repérage, réunion de production… relié à ce projet, avec son coût interne éventuel" onClick={() => {
+            const s0 = new Date(project.start || Date.now()); s0.setDate(s0.getDate() - 7); s0.setHours(10, 0, 0, 0);
+            const e0 = new Date(s0); e0.setHours(12, 0, 0, 0);
+            setAppt({ title: '', start: toLocalInput(s0), end: toLocalInput(e0), personIds: [], projectId: project.id, location: project.venue });
+          }}>+ Rendez-vous</button>
+        </div>
+        {d.projectAppts.length === 0 ? <p className="muted" style={{ margin: 0 }}>Aucun rendez-vous relié (repérage, réunion…).</p> : (
+          <table className="list">
+            <tbody>
+              {d.projectAppts.map((a) => (
+                <tr key={a.id} className="click" onClick={() => setAppt(a)} title="Modifier le rendez-vous">
+                  <td>{a.title}</td><td className="muted">{fmtRange(a.start, a.end)}{a.location ? ` · ${a.location}` : ''}</td>
+                  <td className="n">{a.cost ? <span title="Coût interne, non facturé au client">{a.cost.toLocaleString('fr-BE', { style: 'currency', currency: 'EUR' })}</span> : ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+      {appt && <AppointmentModal appt={appt} people={d.people} onClose={() => setAppt(null)} />}
     </>
   );
 }

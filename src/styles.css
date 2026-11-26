@@ -86,6 +86,10 @@ input[type="checkbox"] { width: auto; }
 .field > span { font-weight: 600; }
 .check-row { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--text); }
 .form-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+/* bouton Enregistrer toujours visible : la barre d'actions d'un formulaire de page reste collée en bas de l'écran */
+form > .form-actions:last-child { position: sticky; bottom: 0; z-index: 4; background: var(--panel); padding: 10px 0; border-top: 1px solid var(--border); }
+.save-dock { position: fixed; right: 16px; bottom: 16px; z-index: 40; display: flex; align-items: center; gap: 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 8px 10px 8px 14px; box-shadow: 0 6px 24px rgba(0,0,0,.15); font-size: 13px; }
+@media (max-width: 760px) { .save-dock { left: 12px; right: 12px; bottom: 12px; justify-content: space-between; } }
 
 .table-wrap { overflow-x: auto; }
 table.list { width: 100%; border-collapse: collapse; }
@@ -108,6 +112,7 @@ table.list input, table.list select { padding: 4px 6px; }
 .st-annule { background: #fee2e2; color: #991b1b; }
 .avail { font-weight: 700; font-size: 12px; }
 .avail.ok { color: var(--ok); } .avail.ko { color: var(--danger); }
+.avail.warn { color: var(--warn, #b45309); }
 .muted { color: var(--muted); }
 .alert { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; }
 .info { background: var(--soft); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; font-size: 13px; }
@@ -129,7 +134,7 @@ table.list input, table.list select { padding: 4px 6px; }
 .modal-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--border); flex: none; }
 .modal-body { padding: 16px; overflow-y: auto; min-height: 0; }
 /* les actions (Enregistrer…) restent toujours visibles en bas de la modale */
-.modal .form-actions { position: sticky; bottom: -16px; margin: 8px -16px -16px; padding: 10px 16px; background: var(--panel); border-top: 1px solid var(--border); border-radius: 0 0 14px 14px; z-index: 2; }
+.modal .form-actions, .modal form > .form-actions:last-child { position: sticky; bottom: -16px; margin: 8px -16px -16px; padding: 10px 16px; background: var(--panel); border-top: 1px solid var(--border); border-radius: 0 0 14px 14px; z-index: 2; }
 .pick-list { max-height: 50vh; overflow-y: auto; }
 
 .cal { display: grid; grid-template-columns: repeat(7, 1fr); border-left: 1px solid var(--border); border-top: 1px solid var(--border); }

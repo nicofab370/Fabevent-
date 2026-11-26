@@ -53,7 +53,7 @@ async function seedAll() {
       address: 'Rue de l\'Exemple 12\n4000 Liège\nBelgique',
       street: 'Rue de l\'Exemple 12', postalCode: '4000', city: 'Liège', country: 'BE',
       email: 'contact@exemple.be', phone: '+32 4 000 00 00',
-      vatNumber: 'BE0000000097', siret: '0000.000.097', iban: 'BE00 0000 0000 0000', bic: 'GEBABEBB',
+      vatNumber: 'BE0000000097', siret: '0000.000.097', iban: 'BE00 0000 0000 0000', bic: 'GEBABEBB', rpm: 'SRL · RPM Liège, division Liège',
       peppolId: '0208:0000000097',
     },
     vatRate: 21,

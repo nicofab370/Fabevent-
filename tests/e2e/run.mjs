@@ -3111,6 +3111,147 @@ await step('Bases : créer une base « autre société » isolée (données, com
   await ctx.unroute('**/api/sync.php**');
 });
 
+console.log('\n  — vérification de la liste (v51) —');
+
+await step('Kit : un élément manquant ne met pas tout le kit en manque (« incomplet » + élément en cause)', async () => {
+  await resetDemo();
+  await openProject("Salon de l'emploi");
+  await tab('Équipement');
+  const kit = page.locator('table.list tbody tr', { hasText: 'Pack conférence' }).first();
+  const cell = await kit.locator('.eq-avail').innerText();
+  expect(cell.includes('incomplet') && !cell.includes('manque 1'), 'kit « incomplet », pas « manque » : ' + cell);
+  expect(cell.includes('Pied de micro perche'), 'élément manquant nommé : ' + cell);
+  const x12 = await page.locator('table.list tbody tr.kid', { hasText: 'Enceinte L-Acoustics X12' }).first().locator('.eq-avail').innerText();
+  expect(!x12.includes('manque'), 'les enceintes du kit ne sont pas comptées deux fois : ' + x12);
+});
+
+await step('Scan au-delà du prévu : alerte « déjà complet, êtes-vous sûr… », rien n\'est ajouté sans accord', async () => {
+  await resetDemo();
+  await openChecklist('Mariage Dupont-Lemaire');
+  const line = page.locator('.cl-line:not(.kid)', { hasText: 'L-Acoustics X12' });
+  await line.locator('button[aria-label="Plus"]').click();
+  await line.locator('button[aria-label="Plus"]').click();
+  await page.waitForTimeout(300);
+  await scanRaw('F-S-0008');
+  const ask = await page.locator('.cl-ask').innerText();
+  expect(ask.includes('déjà complet') && ask.includes('scanné une seule fois'), 'alerte affichée : ' + ask);
+  await page.locator('.cl-ask button', { hasText: /Annuler|Non/ }).first().click();
+  await page.waitForTimeout(200);
+  const n = (await line.locator('.cl-n').innerText()).replace(/\s+/g, '');
+  expect(n === '2/2', 'quantité inchangée sans accord : ' + n);
+});
+
+await step('Info-bulles : boutons, cases et listes expliquent ce qu\'ils font au survol', async () => {
+  await go('materiel');
+  expect(((await page.locator('main button', { hasText: 'Exporter (CSV)' }).first().getAttribute('title')) || '').includes('CSV'), 'bouton Exporter expliqué');
+  const archived = await page.locator('main label', { hasText: 'Archivés' }).locator('input').getAttribute('title');
+  expect((archived || '').length > 10, 'case « Archivés » expliquée : ' + archived);
+  const missing = await page.evaluate(() => [...document.querySelectorAll('main button, main input[type=checkbox], main select')].filter((el) => el.getBoundingClientRect().width && !el.title && !el.closest('[title]')).length);
+  expect(missing <= 2, `contrôles sans info-bulle sur la page Matériel : ${missing}`);
+});
+
+await step('Facture : service et contact de facturation du client, RPM de la société', async () => {
+  await resetDemo();
+  await go('contacts');
+  await page.fill('.toolbar input', 'Namur');
+  await page.waitForTimeout(200);
+  await page.locator('table.list tbody tr', { hasText: 'Ville de Namur' }).first().click();
+  await page.selectOption('select[aria-label="Service de facturation"]', { label: 'Culture' });
+  await page.selectOption('select[aria-label="Contact de facturation"]', { label: 'Anne Collin (Programmatrice)' });
+  await page.click('.modal button[type=submit]');
+  await page.waitForTimeout(300);
+  await openProject('Marché de Noël');
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Facture")');
+  await page.waitForSelector('.doc');
+  const txt = await page.locator('.doc').innerText();
+  expect(txt.includes('Service Culture'), 'facture adressée au service de facturation');
+  expect(txt.includes("À l'attention de Anne Collin"), 'à l’attention du contact de facturation');
+  expect(txt.includes('RPM Liège'), 'forme juridique et RPM de la société');
+  expect(txt.includes('TVA BE0000000097') && txt.includes("N° d'entreprise"), 'n° d’entreprise et TVA de la société');
+  await openProject('Marché de Noël');
+  await tab('Finances & documents');
+  await page.click('button:text-is("+ Devis")');
+  await page.waitForSelector('.doc');
+  expect(!(await page.locator('.doc').innerText()).includes('Anne Collin'), 'le devis reste adressé à l’interlocuteur du projet');
+});
+
+await step('Retour : on revient à l\'endroit où l\'on était (document → projet, fiche → liste)', async () => {
+  await openProject('Gala de fin d');
+  await tab('Finances & documents');
+  const row = page.locator('table.list tr.click', { hasText: /F-\d{4}/ }).first();
+  await row.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(400);
+  const y0 = await page.evaluate(() => scrollY);
+  await row.click();
+  await page.waitForSelector('.doc');
+  await page.locator('main button', { hasText: 'Projet' }).first().click();
+  await page.waitForTimeout(900);
+  expect(page.url().includes('onglet=finances'), 'retour sur l’onglet Finances');
+  expect(Math.abs((await page.evaluate(() => scrollY)) - y0) < 40, `même position (${y0})`);
+  await row.click();
+  await page.waitForSelector('.doc');
+  await page.goBack();
+  await page.waitForTimeout(900);
+  expect(Math.abs((await page.evaluate(() => scrollY)) - y0) < 40, 'même position avec le retour du navigateur');
+});
+
+await step('Bouton Enregistrer toujours visible (Paramètres, Modèles de documents)', async () => {
+  await go('parametres');
+  await page.evaluate(() => scrollTo(0, 0));
+  const box = await page.locator('main form .form-actions button[type=submit]').first().boundingBox();
+  const vh = await page.evaluate(() => innerHeight);
+  expect(box && box.y >= 0 && box.y + box.height <= vh + 1, 'Enregistrer visible en haut de la page Paramètres');
+  await go('modeles');
+  await page.locator('.theme-opt').last().click();
+  await page.evaluate(() => scrollTo(0, document.body.scrollHeight));
+  await page.waitForTimeout(200);
+  expect(await page.locator('.save-dock button').isVisible(), 'Enregistrer visible en bas de la page Modèles');
+  await page.locator('.save-dock button').click();
+  await page.waitForTimeout(300);
+});
+
+await step('Import : la référence unique relie et met à jour les articles existants', async () => {
+  await go('import');
+  await page.selectOption('select', 'equipment');
+  await page.setInputFiles('input[type=file]', { name: 'mat.csv', mimeType: 'text/csv', buffer: Buffer.from('Nom;Code;Quantité;Prix de location\nBarre LED renommée;BLU1;4;9,00\n') });
+  await page.waitForSelector('text=Correspondance');
+  await page.click('button:has-text("Importer 1 lignes")');
+  await page.waitForSelector('text=importé');
+  await page.setInputFiles('input[type=file]', { name: 'mat2.csv', mimeType: 'text/csv', buffer: Buffer.from('Nom;Code;Quantité;Prix de location\nBarre LED v2;BLU1;6;11,00\n') });
+  await page.waitForSelector('text=Correspondance');
+  expect(await page.locator('label', { hasText: 'Mettre à jour les articles déjà présents' }).locator('input').isChecked(), 'mise à jour par référence cochée');
+  await page.click('button:has-text("Importer 1 lignes")');
+  await page.waitForSelector('text=mis à jour par leur référence');
+  await go('materiel');
+  const rows = await page.locator('table.list tbody tr', { hasText: /Barre LED (renommée|v2)/ }).allInnerTexts();
+  expect(rows.length === 1 && rows[0].includes('Barre LED v2') && rows[0].includes('11,00'), 'un seul article, mis à jour : ' + rows.join(' | '));
+});
+
+await step('Rendez-vous : relié à un projet, avec un coût interne compté dans la marge (pas facturé)', async () => {
+  await resetDemo();
+  await openProject('Festival des Lumières');
+  await tab('Finances & documents');
+  const cost0 = await page.locator('.stat', { hasText: 'coûts' }).first().locator('b').innerText();
+  const ht0 = await page.locator('.stat', { hasText: 'total HT' }).first().locator('b').innerText();
+  await tab('Planning');
+  await page.click('.project-appts button:has-text("+ Rendez-vous")');
+  await page.fill('.modal input[required]', 'Réunion de production');
+  await page.locator('.modal .field', { hasText: 'Coût pour moi' }).locator('input').fill('150');
+  expect((await page.locator('.modal .field', { hasText: 'Projet relié' }).locator('option:checked').innerText()).includes('Festival des Lumières'), 'projet pré-sélectionné');
+  await page.click('.modal button[type=submit]');
+  await page.waitForTimeout(400);
+  expect(await page.locator('.project-appts tr', { hasText: 'Réunion de production' }).count(), 'rendez-vous listé dans le projet');
+  await tab('Finances & documents');
+  const num = (t) => parseFloat(t.replace(/[^\d,]/g, '').replace(',', '.'));
+  const cost1 = await page.locator('.stat', { hasText: 'coûts' }).first().locator('b').innerText();
+  expect(Math.abs(num(cost1) - num(cost0) - 150) < 0.01, `coût +150 € (${cost0} → ${cost1})`);
+  expect((await page.locator('.stat', { hasText: 'total HT' }).first().locator('b').innerText()) === ht0, 'rien de facturé au client');
+  expect(await page.locator('table.list tr', { hasText: 'Rendez-vous' }).count(), 'ligne « Rendez-vous » dans le détail des coûts');
+  await go('planning');
+  expect(((await page.locator('a.ev.appt', { hasText: 'Réunion de production' }).first().getAttribute('title')) || '').includes('Festival des Lumières'), 'projet indiqué au planning');
+});
+
 await ctx.close();
 
 await step('Aucune erreur dans la console du navigateur', async () => {

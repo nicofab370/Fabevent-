@@ -251,6 +251,7 @@ function DocTemplates() {
         <button type="button" className="secondary" onClick={() => setIo('import')}><Icon name="upload" />Importer</button>
         <button onClick={saveAll} disabled={!dirty}><Icon name="check" />Enregistrer</button>
       </PageHead>
+      {dirty && <div className="save-dock" role="status"><span>Modifications non enregistrées</span><button onClick={saveAll} title="Enregistrer les modifications des modèles"><Icon name="check" />Enregistrer</button></div>}
       {io === 'ia' && <AiModal text={aiBrief(tpl)} onClose={() => setIo(null)} />}
       {io === 'import' && (
         <ImportModal onClose={() => setIo(null)} onImport={(text) => {

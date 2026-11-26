@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Field, Modal, PageHead, useSettings } from '../components/ui';
+import { Field, Modal, NumInput, PageHead, useSettings } from '../components/ui';
 import { appBaseUrl, db } from '../db';
 import type { Appointment, Person, ProjectStatus } from '../types';
 import { STATUS_LABELS } from '../types';
@@ -86,7 +86,7 @@ export default function Calendar() {
                 </div>
               )}
               {appts.filter((a) => a.start.slice(0, 10) <= key && a.end.slice(0, 10) >= key).map((a) => (
-                <a key={a.id} href="#" className="ev appt" title={`${a.title}${a.location ? ' — ' + a.location : ''}`} onClick={(e) => { e.preventDefault(); setAppt(a); }}>
+                <a key={a.id} href="#" className="ev appt" title={`${a.title}${a.location ? ' — ' + a.location : ''}${a.projectId && pMap.get(a.projectId) ? ` · projet ${pMap.get(a.projectId)!.name}` : ''}${a.cost ? ` · coût ${a.cost} €` : ''}`} onClick={(e) => { e.preventDefault(); setAppt(a); }}>
                   {a.start.slice(0, 10) === key ? a.start.slice(11, 16) + ' ' : ''}{a.title}
                 </a>
               ))}
@@ -113,10 +113,11 @@ export default function Calendar() {
   );
 }
 
-/** Rendez-vous hors projet (repérage, réunion…) ; ses participants deviennent indisponibles. */
-function AppointmentModal({ appt, people, onClose }: { appt: Partial<Appointment>; people: Person[]; onClose: () => void }) {
+/** Rendez-vous (repérage, réunion…), relié ou non à un projet ; ses participants deviennent indisponibles. */
+export function AppointmentModal({ appt, people, onClose }: { appt: Partial<Appointment>; people: Person[]; onClose: () => void }) {
   const [a, setA] = useState(appt);
   const ids = a.personIds || [];
+  const projects = (useLiveQuery(() => db.projects.toArray(), []) || []).filter((p) => !p.isTemplate && (p.status !== 'annule' || p.id === a.projectId)).sort((x, y) => (y.start || '').localeCompare(x.start || ''));
   return (
     <Modal title={a.id ? 'Rendez-vous' : 'Nouveau rendez-vous'} onClose={onClose}>
       <form className="form" onSubmit={async (e) => {
@@ -129,6 +130,15 @@ function AppointmentModal({ appt, people, onClose }: { appt: Partial<Appointment
         <Field label="Début"><input type="datetime-local" value={a.start} onChange={(e) => setA({ ...a, start: e.target.value })} /></Field>
         <Field label="Fin"><input type="datetime-local" value={a.end} onChange={(e) => setA({ ...a, end: e.target.value })} /></Field>
         <Field label="Lieu" full><input value={a.location || ''} onChange={(e) => setA({ ...a, location: e.target.value })} /></Field>
+        <Field label="Projet relié">
+          <select value={a.projectId || ''} onChange={(e) => setA({ ...a, projectId: e.target.value || undefined })} title="Le rendez-vous apparaît dans l'onglet Planning du projet ; son coût interne compte dans la marge du projet">
+            <option value="">Aucun (hors projet)</option>
+            {projects.map((p) => <option key={p.id} value={p.id}>{p.number ? `${p.number} · ` : ''}{p.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Coût pour moi (HT, non facturé)">
+          <NumInput value={a.cost || 0} onChange={(n) => setA({ ...a, cost: n || undefined })} placeholder="0" title="Frais internes du rendez-vous (déplacement, temps…) : jamais facturés au client, comptés dans les coûts du projet relié" aria-label="Coût du rendez-vous" />
+        </Field>
         <div className="field full">
           <span>Participants (indisponibles pendant le rendez-vous)</span>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>

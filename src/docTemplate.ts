@@ -136,7 +136,7 @@ export function docValues(doc: Doc): Record<string, string> {
   return {
     'societe.nom': co.name, 'societe.adresse': co.address || '', 'societe.telephone': co.phone || '', 'societe.email': co.email || '',
     'societe.tva': co.vatNumber || '', 'societe.numero_entreprise': co.siret || '', 'societe.iban': co.iban || '', 'societe.bic': co.bic || '',
-    'societe.identifiants': [co.siret && `${tr(doc, 'companyNo')} ${co.siret}`, co.vatNumber && `${tr(doc, 'vat')} ${co.vatNumber}`].filter(Boolean).join(' · '),
+    'societe.identifiants': [co.siret && `${tr(doc, 'companyNo')} ${co.siret}`, co.vatNumber && `${tr(doc, 'vat')} ${co.vatNumber}`, co.rpm].filter(Boolean).join(' · '),
     'libelle.numero': tr(doc, 'no'), 'libelle.date': tr(doc, 'date'), 'libelle.projet': tr(doc, 'project'), 'libelle.client': tr(doc, 'client'), 'libelle.document': tr(doc, 'document'),
     'societe.pied': s.footer || '',
     'client.nom': c?.company || '', 'client.contact': doc.contactPerson || [c?.firstName, c?.lastName].filter(Boolean).join(' '),
@@ -156,6 +156,8 @@ export function docValues(doc: Doc): Record<string, string> {
   };
 }
 
+const INVOICE_DOC = ['facture', 'acompte', 'avoir', 'rappel'];
+
 /** Variables composées (HTML) utiles dans l'en-tête. */
 function composite(doc: Doc, v: Record<string, string>): Record<string, string> {
   const s = doc.snapshot;
@@ -165,7 +167,7 @@ function composite(doc: Doc, v: Record<string, string>): Record<string, string> 
   return {
     'societe.logo': s.company.logo ? `<img src="${esc(s.company.logo)}" alt="">` : '',
     'client.bloc': c && !isRoadmap ? `<strong>${esc(c.company)}</strong>` + lines([
-      s.department && esc(s.department.name),
+      s.department && esc((s.billingPerson || INVOICE_DOC.includes(doc.type) ? `${tr(doc, 'service')} ` : '') + s.department.name),
       !s.department && !doc.contactPerson && (c.firstName || c.lastName) && esc([c.firstName, c.lastName].filter(Boolean).join(' ')),
       clientAddress(doc).address && esc(clientAddress(doc).address!),
       (clientAddress(doc).postalCode || clientAddress(doc).city) && esc([clientAddress(doc).postalCode, clientAddress(doc).city].filter(Boolean).join(' ')), c.vatNumber && `<span class="muted">${tr(doc, 'vat')} ${esc(c.vatNumber)}</span>`,

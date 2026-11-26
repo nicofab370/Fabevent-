@@ -98,6 +98,12 @@ export default function SettingsPage() {
           <Field label="Téléphone"><input value={s.company.phone || ''} onChange={(e) => setCo('phone', e.target.value)} /></Field>
           <Field label="N° d'entreprise / SIRET"><input value={s.company.siret || ''} onChange={(e) => setCo('siret', e.target.value)} /></Field>
           <Field label="N° TVA intracom."><input value={s.company.vatNumber || ''} onChange={(e) => setCo('vatNumber', e.target.value)} /></Field>
+          <Field label="Forme juridique et RPM"><input value={s.company.rpm || ''} onChange={(e) => setCo('rpm', e.target.value)} placeholder="SRL · RPM Liège, division Liège" title="Obligatoire sur les factures d'une société belge (Code des sociétés) : forme juridique et registre des personnes morales avec le tribunal" /></Field>
+          {(() => {
+            // mentions obligatoires sur une facture belge (AR n° 1 TVA, art. 5 ; Code des sociétés, art. 2:20)
+            const miss = [!s.company.name && 'nom', !(s.company.address || s.company.street) && 'adresse', !s.company.siret && "n° d'entreprise (BCE)", !s.company.vatNumber && 'n° de TVA', !s.company.rpm && 'forme juridique et RPM', !s.company.iban && 'IBAN'].filter(Boolean);
+            return miss.length ? <p className="info warn-txt full" style={{ margin: 0, gridColumn: "1 / -1" }}>Mentions légales manquantes sur tes factures : {miss.join(', ')}.</p> : null;
+          })()}
           <Field label="IBAN (factures)"><input value={s.company.iban || ''} onChange={(e) => setCo('iban', e.target.value)} /></Field>
           <Field label="BIC"><input value={s.company.bic || ''} onChange={(e) => setCo('bic', e.target.value)} /></Field>
           <Field label="Logo">
