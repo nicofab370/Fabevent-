@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { db } from '../db';
 import type { Equipment } from '../types';
 import { StatusBadge } from './ui';
-import { fmtDate, fmtRange, overlaps, type Reservation } from '../utils';
+import { fmtDate, fmtRange, isFixedKit, isVirtualKit, overlaps, type Reservation } from '../utils';
 
 /*
  * Qui d'autre utilise ce matériel pendant la même période ? (autres projets, réparations, transferts)
@@ -33,7 +33,7 @@ export interface OtherUse extends Reservation { equipmentName: string; kind: Use
 /** toutes les utilisations de l'article (ou des composants d'un kit) sur la période, sauf la ligne `lineId` */
 export function projectUses(eq: Equipment, equipment: Equipment[], res: Reservation[], start: string, end: string,
   ctx: { projectId?: string; subprojectId?: string; lineId?: string; depot?: string } = {}): OtherUse[] {
-  const ids = eq.isKit && eq.kitItems.length ? eq.kitItems.map((k) => k.equipmentId) : [eq.id];
+  const ids = isVirtualKit(eq) ? eq.kitItems.map((k) => k.equipmentId) : [eq.id];
   const byId = new Map(equipment.map((e) => [e.id, e]));
   return res
     .filter((r) => ids.includes(r.equipmentId) && r.qty > 0 && overlaps(r.start, r.end, start, end) && (!ctx.lineId || r.lineId !== ctx.lineId)
@@ -73,7 +73,7 @@ export function UseChips({ uses, onOpen, label }: { uses: OtherUse[]; onOpen: ()
 export function UsageBreakdown({ eq, uses, stock, here, avail, hereLabel = 'cette ligne' }: { eq: Equipment; uses: OtherUse[]; stock?: number; here?: number; avail: number; hereLabel?: string }) {
   const k = usesByKind(uses);
   const rows: [string, number | undefined, string][] = [
-    ['Stock' + (eq.isKit ? ' (kit : selon les composants)' : ''), eq.isKit ? undefined : stock, ''],
+    ['Stock' + (isVirtualKit(eq) ? ' (kit : selon les composants)' : isFixedKit(eq) ? ' (caisses montées)' : ''), isVirtualKit(eq) ? undefined : stock, ''],
     ...(here ? [[hereLabel[0].toUpperCase() + hereLabel.slice(1), here, 'ici'] as [string, number, string]] : []),
     ...USE_KINDS.map((x) => [USE_LABEL[x], k[x], x] as [string, number, string]),
   ];
@@ -87,14 +87,14 @@ export function UsageBreakdown({ eq, uses, stock, here, avail, hereLabel = 'cett
           <tr className="usage-free"><td><strong>Disponible{here ? ` après ${hereLabel}` : ''}</strong></td><td className="n"><span className={'avail ' + (avail >= 0 ? 'ok' : 'ko')}>{avail >= 0 ? avail : `manque ${-avail}`}</span></td></tr>
         </tbody>
       </table>
-      {eq.isKit && <p className="muted" style={{ fontSize: 12 }}>Kit : les quantités sont celles de ses composants.</p>}
+      {isVirtualKit(eq) && <p className="muted" style={{ fontSize: 12 }}>Kit : les quantités sont celles de ses composants.</p>}
       <p className="muted" style={{ fontSize: 12, margin: '6px 0' }}>Les quantités s'additionnent sur toute la période ; si les dates ne se chevauchent pas entre elles, le disponible peut être plus grand.</p>
-      <OtherUsesList uses={uses} kit={eq.isKit} />
+      <OtherUsesList uses={uses} kit={isVirtualKit(eq)} />
     </div>
   );
 }
 
-const SOURCE: Record<Reservation['source'], string> = { projet: '', reparation: 'En réparation', souslocation: 'Sous-location', transfert: 'Transfert' };
+const SOURCE: Record<Reservation['source'], string> = { projet: '', reparation: 'En réparation', souslocation: 'Sous-location', transfert: 'Transfert', kit: 'Monté dans un kit fixe' };
 
 /** liste des autres utilisations, avec un lien vers chaque projet */
 function OtherUsesList({ uses, kit }: { uses: OtherUse[]; kit?: boolean }) {
@@ -119,7 +119,7 @@ function OtherUsesList({ uses, kit }: { uses: OtherUse[]; kit?: boolean }) {
             {p && <StatusBadge status={p.status} />}
             {u.subprojectId && subName.get(u.subprojectId) && <span className="muted">› {subName.get(u.subprojectId)}</span>}
             {(u.kind !== 'autre' || p) && <span className={'use-chip uk-' + u.kind}>{u.kind === 'ici' ? 'ce sous-projet' : u.kind === 'sousprojet' ? 'ce projet' : u.kind === 'option' ? 'option' : u.kind === 'reserve' ? 'réservé' : SOURCE[u.source] || 'autre'}</span>}
-            <span className="muted ou-dates">{u.end.startsWith('9999') ? `depuis le ${fmtDate(u.start, false)}` : fmtRange(u.start, u.end)}</span>
+            <span className="muted ou-dates">{u.source === 'kit' ? 'en permanence' : u.end.startsWith('9999') ? `depuis le ${fmtDate(u.start, false)}` : fmtRange(u.start, u.end)}</span>
           </li>
         );
       })}

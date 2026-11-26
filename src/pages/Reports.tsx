@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom';
 import { Empty, PageHead, useSettings } from '../components/ui';
 import { db } from '../db';
 import { INVOICE_TYPES } from '../types';
-import { lineDays, lineTotal, money, round2 } from '../utils';
+import { isVirtualKit, lineDays, lineTotal, money, round2 } from '../utils';
 import { Icon } from '../components/Icon';
 
 const MONTHS = ['Janv.', 'Févr.', 'Mars', 'Avr.', 'Mai', 'Juin', 'Juil.', 'Août', 'Sept.', 'Oct.', 'Nov.', 'Déc.'];
@@ -55,7 +55,7 @@ export default function Reports() {
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 15);
   const maxEq = Math.max(1, ...top.map((t) => t.revenue));
-  const unused = equipment.filter((e) => !e.isKit && !e.archived && e.kind !== 'vente' && !stats.has(e.id));
+  const unused = equipment.filter((e) => !isVirtualKit(e) && !e.archived && e.kind !== 'vente' && !stats.has(e.id));
 
   return (
     <>

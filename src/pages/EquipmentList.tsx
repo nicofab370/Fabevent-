@@ -8,7 +8,7 @@ import type { Category, Equipment } from '../types';
 import { useAvailability } from '../data';
 import { resizeImage } from '../image';
 import { CsvButton, CustomFieldsEditor, exportCsv, TagInput, Tags } from '../components/extra';
-import { availableQty, inDepot, kitBreakdown, money, save, stockAt, toLocalInput } from '../utils';
+import { availableQty, inDepot, isFixedKit, isVirtualKit, kitBreakdown, money, save, stockAt, toLocalInput } from '../utils';
 import PrintLabelModal from '../components/PrintLabelModal';
 import { Icon } from '../components/Icon';
 import { CategoryOptions } from '../components/CategoryOptions';
@@ -128,7 +128,7 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
       <Field label=" ">
         <label className="check-row" title="Chargeur, dock, housse… : seulement comme accessoire d'autres articles"><input type="checkbox" checked={!!e.accessoryOnly} onChange={(x) => set('accessoryOnly', x.target.checked || undefined)} /> Élément hors inventaire (accessoire seulement)</label>
       </Field>
-      {e.accessoryOnly ? <Field label="Quantité en stock"><span className="muted">pas de stock : l'élément suit l'article dont il est l'accessoire</span></Field> : e.trackSerials
+      {e.isKit && e.kitType !== 'fixe' ? <Field label="Quantité en stock"><span className="muted">kit virtuel : selon les quantités de ses composants</span></Field> : e.accessoryOnly ? <Field label="Quantité en stock"><span className="muted">pas de stock : l'élément suit l'article dont il est l'accessoire</span></Field> : e.trackSerials
         ? <Field label="Quantité en stock"><span className="muted">= nombre d'unités en service (gérées sur la fiche article)</span></Field>
         : depots.length > 1 ? (
           <div className="field full">
@@ -152,7 +152,7 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
             </div>
           </div>
         )
-        : <Field label="Quantité en stock"><NumInput value={e.quantity} onChange={(n) => set('quantity', n)} step="1" min={0} /></Field>}
+        : <Field label={e.isKit ? 'Caisses montées (stock du kit fixe)' : 'Quantité en stock'}><NumInput value={e.quantity} onChange={(n) => set('quantity', n)} step="1" min={0} aria-label="Quantité en stock" /></Field>}
       {lockPrices
         ? <Field label={e.kind === 'vente' ? 'Prix de vente unitaire HT (€)' : 'Prix location / jour HT (€)'}><span className="muted">réservé à l'administrateur — valeur actuelle : {money(e.dailyPrice)} €</span></Field>
         : <Field label={e.kind === 'vente' ? 'Prix de vente unitaire HT (€)' : 'Prix location / jour HT (€)'}><NumInput value={e.dailyPrice} onChange={(n) => set('dailyPrice', n)} /></Field>}
@@ -164,12 +164,20 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
       <Field label="Valeur de remplacement (€)"><NumInput value={e.replacementValue || 0} onChange={(n) => set('replacementValue', n)} /></Field>
       <Field label="Poids unitaire (kg)"><NumInput value={e.weight || 0} onChange={(n) => set('weight', n)} /></Field>
       <Field label="Emplacement dépôt"><input value={e.location || ''} onChange={(x) => set('location', x.target.value)} placeholder="ex. Rack A3" /></Field>
-      <Field label=" ">
-        <label className="check-row"><input type="checkbox" checked={e.isKit} onChange={(x) => set('isKit', x.target.checked)} /> C'est un kit / pack</label>
+      <Field label="Type d'article" full>
+        <select value={!e.isKit ? '' : e.kitType === 'fixe' ? 'fixe' : 'virtuel'} aria-label="Type d'article"
+          onChange={(x) => { const v = x.target.value; setE({ ...e, isKit: !!v, kitType: v === 'fixe' ? 'fixe' : undefined, kitCheck: v === 'fixe' ? e.kitCheck : undefined }); }}>
+          <option value="">Article simple</option>
+          <option value="virtuel">Kit virtuel — un ensemble d'articles, ajoutés ensemble (rien n'est assemblé)</option>
+          <option value="fixe">Kit fixe — caisse montée : le contenu reste dedans</option>
+        </select>
+        {e.isKit && <small className="muted">{e.kitType === 'fixe'
+          ? 'La caisse est un article à part entière (son stock = caisses montées, son étiquette, une ligne dans les projets). Son contenu y est bloqué : il n’est plus disponible seul.'
+          : 'Ajouté dans un projet, le kit ajoute ses composants ; sa disponibilité est celle de ses composants, qui restent louables seuls.'}</small>}
       </Field>
       {e.isKit && (
         <div className="field full">
-          <span>Contenu du kit (la disponibilité est calculée à partir des composants)</span>
+          <span>{e.kitType === 'fixe' ? 'Contenu de chaque caisse (bloqué dans les caisses montées)' : 'Composants du kit'}</span>
           {e.kitItems.map((k, i) => (
             <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
               <NumInput className="w-qty" value={k.qty} step="1" min={1} onChange={(n) => set('kitItems', e.kitItems.map((x, j) => (j === i ? { ...x, qty: n } : x)))} />
@@ -180,6 +188,15 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
           <div>
             <button type="button" className="secondary small" disabled={!all.length} onClick={() => setChoosing('kit')}>+ Composants…</button>
           </div>
+          {e.kitType === 'fixe' && (
+            <label className="check-row" style={{ marginTop: 8 }}>
+              <input type="checkbox" checked={!!e.kitCheck} onChange={(x) => set('kitCheck', x.target.checked || undefined)} aria-label="Vérifier le contenu à la sortie et au retour" />
+              Vérifier le contenu à la sortie et au retour <span className="muted">(sinon on scanne la caisse seule)</span>
+            </label>
+          )}
+          {e.kitType === 'fixe' && e.kitItems.length > 0 && e.quantity > 0 && (
+            <small className="muted">Bloqué dans les {e.quantity} caisse(s) : {e.kitItems.map((k) => `${k.qty * e.quantity} × ${nameOf(k.equipmentId)}`).join(', ')}.</small>
+          )}
         </div>
       )}
       <div className="field full contents-editor">
@@ -265,7 +282,7 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
         <button type="button" className="secondary" onClick={onDone}>Annuler</button>
         <button type="submit">Enregistrer</button>
         {/* après « Enregistrer » dans le code (Entrée enregistre sans imprimer), affiché à gauche */}
-        {onPrint && !e.isKit && !e.accessoryOnly && (
+        {onPrint && !isVirtualKit(e) && !e.accessoryOnly && (
           <button type="submit" className="secondary" data-print="1" style={{ order: -1, marginRight: 'auto' }} title="Enregistre l'article puis ouvre l'impression de son étiquette (Brother PT-P750W)"><Icon name="tag" />Enregistrer et imprimer l'étiquette</button>
         )}
       </div>
@@ -309,7 +326,7 @@ export default function EquipmentList() {
   const toggle = (id: string) => { const n = new Set(selected); if (n.has(id)) n.delete(id); else n.add(id); setSelected(n); };
 
   const csv = () => exportCsv('materiel.csv', ['Désignation', 'Marque', 'Modèle', 'Description courte', 'Référence', 'Catégorie', 'Type', 'Stock', 'Prix HT', "Valeur de remplacement", 'Poids', 'Code-barres', 'Emplacement', 'Étiquettes', 'Archivé'],
-    filtered.map((e) => [e.name, e.brand, e.model, e.summary, e.code, e.categoryId ? catName.get(e.categoryId) : '', e.isKit ? 'kit' : e.kind || 'location', e.quantity, e.dailyPrice, e.replacementValue, e.weight, e.barcode, e.location, (e.tags || []).join(', '), e.archived ? 'oui' : '']));
+    filtered.map((e) => [e.name, e.brand, e.model, e.summary, e.code, e.categoryId ? catName.get(e.categoryId) : '', e.isKit ? (isFixedKit(e) ? 'kit fixe' : 'kit') : e.kind || 'location', e.quantity, e.dailyPrice, e.replacementValue, e.weight, e.barcode, e.location, (e.tags || []).join(', '), e.archived ? 'oui' : '']));
 
   return (
     <>
@@ -367,7 +384,7 @@ export default function EquipmentList() {
               <tbody>
                 {filtered.map((e) => {
                   const av = availableQty(e, equipment, res, from, to, undefined, depot || undefined);
-                  const kit = e.isKit && e.kitItems.length ? kitBreakdown(e, equipment, res, from, to, depot || undefined) : null;
+                  const kit = isVirtualKit(e) ? kitBreakdown(e, equipment, res, from, to, depot || undefined) : null;
                   const open = !!kit && kitContents && !folded.has(e.id);
                   return (
                     <Fragment key={e.id}>
@@ -376,7 +393,7 @@ export default function EquipmentList() {
                       <td>{kit && kitContents && (
                         <button type="button" className="ghost small kit-fold" aria-expanded={open} aria-label={`${open ? 'Replier' : 'Déplier'} le contenu de ${e.name}`}
                           onClick={(x) => { x.stopPropagation(); setFolded((f) => { const n = new Set(f); if (n.has(e.id)) n.delete(e.id); else n.add(e.id); return n; }); }}>{open ? '▾' : '▸'}</button>
-                      )}{e.photo && <img src={e.photo} alt="" className="thumb" />}<strong>{e.name}</strong> {e.isKit && <span className="badge">Kit · {e.kitItems.reduce((a, k) => a + k.qty, 0)} élément(s)</span>} {e.kind === 'vente' && <span className="badge">vente</span>} {e.trackSerials && <span className="badge">n° série</span>} <Tags tags={e.tags} /></td>
+                      )}{e.photo && <img src={e.photo} alt="" className="thumb" />}<strong>{e.name}</strong> {e.isKit && <span className="badge">{isFixedKit(e) ? 'Kit fixe' : 'Kit'} · {e.kitItems.reduce((a, k) => a + k.qty, 0)} élément(s)</span>} {e.kind === 'vente' && <span className="badge">vente</span>} {e.trackSerials && <span className="badge">n° série</span>} <Tags tags={e.tags} /></td>
                       <td>{e.code}</td>
                       <td>{e.categoryId ? catName.get(e.categoryId) : ''}</td>
                       <td className="n" title={e._stock ? depots.map((dp) => `${dp.name} : ${stockAt(e, dp.id, res)}`).join('\n') : undefined}>{kit ? <span title="Kits complets possibles avec le stock des éléments">{kit.kitsStock} kit{kit.kitsStock > 1 ? 's' : ''}</span> : e.isKit || e.accessoryOnly ? '—' : depot ? stockAt(e, depot, res) : e.quantity}</td>

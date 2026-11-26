@@ -9,7 +9,7 @@ import { categoryLabel } from '../categories';
 import { db, getSettings } from '../db';
 import { BUILTIN_TEMPLATES, DEVICE_LABELS, LAYOUT_LABELS, emptyTemplate, perSheet, type LabelTemplate, type SheetLabel } from '../labelTemplates';
 import { unitNo } from '../unitNumbers';
-import { uid } from '../utils';
+import { isVirtualKit, uid } from '../utils';
 
 /** format d'étiquette : support et taille (les modèles d'un même format s'impriment sur les mêmes étiquettes) */
 // ruban : même format = même machine et même largeur de ruban (la longueur se règle dans chaque modèle)
@@ -31,7 +31,7 @@ export default function LabelTemplatesTab() {
   const all = [...BUILTIN_TEMPLATES, ...mine];
   const [editing, setEditing] = useState<{ t: LabelTemplate; existing: boolean } | null>(null);
   const [sampleId, setSampleId] = useState('');
-  const equipment = useLiveQuery(() => db.equipment.orderBy('name').filter((e) => !e.archived && !e.isKit && !e.accessoryOnly).toArray(), []) || [];
+  const equipment = useLiveQuery(() => db.equipment.orderBy('name').filter((e) => !e.archived && !isVirtualKit(e) && !e.accessoryOnly).toArray(), []) || [];
   const units = useLiveQuery(() => db.units.toArray(), []) || [];
   const cats = useLiveQuery(() => db.categories.toArray(), []) || [];
   const saveTemplates = async (list: LabelTemplate[], extra: Partial<typeof settings> = {}) => { const s = await getSettings(); await db.settings.put({ ...s, labelTemplates: list, ...extra }); };

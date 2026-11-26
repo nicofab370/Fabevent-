@@ -96,7 +96,7 @@ export interface Reservation {
   lineId: string;
   subprojectId: string;
   projectId: string;
-  source: 'projet' | 'reparation' | 'souslocation' | 'transfert';
+  source: 'projet' | 'reparation' | 'souslocation' | 'transfert' | 'kit';
   depotId?: string;
   /** réservation ferme (projet confirmé ou matériel réservé à la main) ; sinon simple option */
   firm?: boolean;
@@ -137,10 +137,25 @@ export function effectiveEquipment(equipment: Equipment[], units: SerialUnit[], 
   });
 }
 
+/** Kit virtuel : ensemble de composants (sa disponibilité est celle de ses composants). */
+export const isVirtualKit = (e?: Pick<Equipment, 'isKit' | 'kitType' | 'kitItems'>) => !!e?.isKit && e.kitType !== 'fixe' && !!e.kitItems?.length;
+/** Kit fixe : caisse montée, un article avec son propre stock ; ses composants y sont bloqués. */
+export const isFixedKit = (e?: Pick<Equipment, 'isKit' | 'kitType'>) => !!e?.isKit && e.kitType === 'fixe';
+
+/** Quantité d'un article bloquée dans les kits fixes montés (dans un dépôt, ou tout le parc). */
+export function fixedKitBlocked(eqId: string, all: Equipment[], depotId?: string): number {
+  let n = 0;
+  for (const k of all) {
+    if (!isFixedKit(k) || k.archived) continue;
+    for (const it of k.kitItems) if (it.equipmentId === eqId) n += it.qty * stockIn(k, depotId);
+  }
+  return n;
+}
+
 /** L'article est-il dans ce dépôt ? du stock y est, ou c'est son dépôt d'attache (kits, articles à 0). */
 export function inDepot(eq: Equipment, depotId: string | undefined, depots: { id: string }[], res?: Reservation[]): boolean {
   if (!depotId) return true;
-  if (!eq.isKit && !eq.accessoryOnly && stockAt(eq, depotId, res) > 0) return true;
+  if (!isVirtualKit(eq) && !eq.accessoryOnly && stockAt(eq, depotId, res) > 0) return true;
   const home = eq.homeDepotId && depots.some((d) => d.id === eq.homeDepotId) ? eq.homeDepotId : depots[0]?.id;
   return home === depotId;
 }
@@ -170,7 +185,7 @@ export function buildReservations(lines: EquipmentLine[], subs: Subproject[], eq
     const eq = eqMap.get(eqId);
     // élément hors inventaire (accessoire) : ni stock ni réservation
     if (!eq || depth > 4 || eq.accessoryOnly) return;
-    if (eq.isKit && eq.kitItems.length) {
+    if (isVirtualKit(eq)) {
       for (const k of eq.kitItems) push(k.equipmentId, k.qty * qty, l, sp, depth + 1);
     } else {
       const [start, end] = lineBlock(l, sp);
@@ -187,6 +202,15 @@ export function buildReservations(lines: EquipmentLine[], subs: Subproject[], eq
     if (!sp || !l.equipmentId || l.optional || !RESERVING.includes(sp.status)) continue;
     if (l.parentLineId && kitLines.has(l.parentLineId)) continue;
     push(l.equipmentId, l.qty, l, sp, 0);
+  }
+  // kits fixes montés : leurs composants sont bloqués dans les caisses, en permanence (dans le dépôt de chaque caisse)
+  for (const k of equipment) {
+    if (!isFixedKit(k) || k.archived || !k.kitItems.length) continue;
+    const perDepot = k._stock ? Object.entries(k._stock) : [[main, k.quantity] as [string, number]];
+    for (const [depotId, n] of perDepot) {
+      if (n <= 0) continue;
+      for (const it of k.kitItems) out.push({ equipmentId: it.equipmentId, qty: it.qty * n, start: '1970-01-01T00:00', end: FOREVER, lineId: 'kit:' + k.id, subprojectId: '', projectId: '', source: 'kit', depotId, firm: true });
+    }
   }
   for (const r of extras.repairs || []) {
     if (r.status !== 'ouvert') continue;
@@ -240,7 +264,7 @@ export function availableQty(
   eq: Equipment, all: Equipment[], res: Reservation[], start: string, end: string, excludeLineId?: string, depotId?: string,
 ): number {
   if (eq.accessoryOnly) return Infinity;
-  if (eq.isKit && eq.kitItems.length) {
+  if (isVirtualKit(eq)) {
     const map = new Map(all.map((e) => [e.id, e]));
     let min = Infinity;
     for (const k of eq.kitItems) {
@@ -267,7 +291,7 @@ export function kitBreakdown(kit: Equipment, all: Equipment[], res: Reservation[
     const c = map.get(k.equipmentId);
     if (!c) continue;
     const per = Math.max(1, k.qty);
-    const stock = c.isKit ? kitBreakdown(c, all, res, start, end, depotId).kitsStock : depotId ? stockAt(c, depotId, res) : c.quantity;
+    const stock = isVirtualKit(c) ? kitBreakdown(c, all, res, start, end, depotId).kitsStock : depotId ? stockAt(c, depotId, res) : c.quantity;
     const avail = Math.max(0, availableQty(c, all, res, start, end, undefined, depotId));
     rows.push({ equipment: c, perKit: per, stock, avail, kitsStock: Math.floor(stock / per), kitsAvail: Math.floor(avail / per), limiting: false });
   }

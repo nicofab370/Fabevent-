@@ -238,6 +238,13 @@ export interface Equipment extends Base {
   weight?: number;
   isKit: boolean;
   kitItems: KitItem[];
+  /**
+   * kit fixe (caisse montée) : article à part entière, avec son propre stock (nombre de caisses montées) ;
+   * ses composants y sont bloqués (plus disponibles seuls). Sinon kit virtuel : ensemble de composants.
+   */
+  kitType?: 'fixe';
+  /** kit fixe : vérifier son contenu à la sortie et au retour (sinon on scanne la caisse seule) */
+  kitCheck?: boolean;
   barcode?: string;
   /** dépôt de base (première lettre du code) */
   homeDepotId?: ID;
