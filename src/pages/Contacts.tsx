@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { ContactLookup } from '../components/ContactLookup';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
 import { Empty, Field, Modal, PageHead, NumInput, useSettings } from '../components/ui';
@@ -30,6 +31,7 @@ export function ContactForm({ initial, onDone }: { initial?: Draft; onDone: (c?:
           {Object.entries(CONTACT_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
       </Field>
+      <ContactLookup c={c} setC={setC} />
       <Field label="Prénom"><input value={c.firstName || ''} onChange={(e) => set('firstName', e.target.value)} /></Field>
       <Field label="Nom"><input value={c.lastName || ''} onChange={(e) => set('lastName', e.target.value)} /></Field>
       <Field label="Email"><input type="email" value={c.email || ''} onChange={(e) => set('email', e.target.value)} /></Field>

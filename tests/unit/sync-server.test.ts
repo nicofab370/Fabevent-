@@ -196,6 +196,11 @@ describe.skipIf(!hasPhp)('serveur FabEvent autonome (auth.php + sync.php)', () =
     await me.auth('logout', { ws: 'principal', all: true });
     expect((await me.sync('ping', undefined, '&ws=autrebase')).status).toBe(401);
   });
+  it('recherche par n° de TVA (lookup.php) : réservée aux comptes connectés, n° vérifié', async () => {
+    expect((await new Agent().req('lookup.php', 'x', undefined, '&vat=BE0417497106')).status).toBe(401);
+    const r = await collegue.req('lookup.php', 'x', undefined, '&ws=principal&vat=abc');
+    expect(r.status).toBe(400);
+  });
   it('déconnexion', async () => {
     await collegue.auth('logout', { ws: 'principal' });
     expect((await collegue.sync('ping', undefined, '&ws=principal')).status).toBe(401);

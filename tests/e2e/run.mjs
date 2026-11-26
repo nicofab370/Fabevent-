@@ -3240,6 +3240,38 @@ await step('Bases : créer une base « autre société » isolée (données, com
   await ctx.unroute('**/api/auth.php**');
 });
 
+await step('Remplissage automatique : adresse d’un lieu trouvée sur la carte, article complété depuis un article semblable', async () => {
+  await resetDemo();
+  // carte simulée (OpenStreetMap)
+  await ctx.route('**/nominatim.openstreetmap.org/search**', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify([
+    { display_name: 'La Boverie, Parc de la Boverie 3, 4020 Liège, Belgique', name: 'La Boverie',
+      address: { road: 'Parc de la Boverie', house_number: '3', postcode: '4020', city: 'Liège', country_code: 'be' }, extratags: { phone: '+32 4 238 55 01' } }]) }));
+  await go('lieux');
+  await page.click('button:has-text("Nouveau lieu")');
+  await page.waitForSelector('.modal');
+  await page.locator('.modal .field', { hasText: 'Société / Nom' }).locator('input').fill('Boverie');
+  await page.click('.modal button:has-text("Chercher l’adresse")');
+  await page.waitForSelector('.lookup-hits button');
+  await page.click('.lookup-hits button');
+  const val = (label) => page.locator('.modal .field', { hasText: label }).first().locator('input').inputValue();
+  expect((await val('Adresse')) === 'Parc de la Boverie 3' && (await val('Code postal')) === '4020' && (await val('Ville')) === 'Liège', 'adresse remplie');
+  expect((await val('Téléphone')) === '+32 4 238 55 01' && (await val('Société / Nom')) === 'Boverie', 'téléphone ajouté, nom saisi conservé');
+  await page.keyboard.press('Escape');
+  await ctx.unroute('**/nominatim.openstreetmap.org/search**');
+  // article : même marque et modèle qu'un article de la démo
+  await go('materiel');
+  await page.click('button:has-text("Nouvel article")');
+  await page.waitForSelector('.modal');
+  await page.fill('.modal input[aria-label="Marque"]', 'L-Acoustics');
+  await page.fill('.modal input[aria-label="Modèle"]', 'X12');
+  const btn = page.locator('.modal button:has-text("Reprendre de")');
+  await btn.waitFor({ timeout: 5000 });
+  await btn.click();
+  expect((await page.locator('.modal .lookup .avail.ok').innerText()).includes('poids'), 'poids repris de l’article semblable');
+  expect(await page.locator('.modal a:has-text("Chercher la fiche technique")').getAttribute('href').then((h) => h.includes('X12')), 'lien vers la fiche technique');
+  await page.keyboard.press('Escape');
+});
+
 console.log('\n  — vérification de la liste (v51) —');
 
 await step('Matériel : dupliquer un article (nouveau code, fiche ouverte en modification, sans les unités)', async () => {

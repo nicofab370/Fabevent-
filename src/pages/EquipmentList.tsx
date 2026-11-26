@@ -17,6 +17,7 @@ import { EquipmentChooser } from '../components/EquipmentChooser';
 import { categoryLabel, inCategory, mainCategories } from '../categories';
 import { composeName, splitName } from '../equipmentName';
 import { useUser } from '../auth';
+import { fillFromSimilar, similarEquipment, specSearchUrl } from '../lookup';
 import { canEditEquipment, canEditPrices } from '../roles';
 
 type Draft = Omit<Equipment, 'id' | 'createdAt' | 'updatedAt'> & Partial<Equipment>;
@@ -78,6 +79,7 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
           }}>Découper</button>}
         </div>
       </Field>
+      <EquipmentLookup e={e} all={all} onFill={(v) => setE(v)} />
       <Field label="Code (automatique : dépôt-catégorie-numéro)">
         <input value={e.code || ''} onChange={(x) => { set('code', x.target.value); setCodeAuto(!x.target.value); }}
           placeholder={codeAuto ? `auto : ${newArticleCode({ ...e, categoryId: newCat.trim() ? '__new' : e.categoryId }, settings, previewCats, all)}` : ''} />
@@ -602,5 +604,37 @@ function BulkEdit({ ids, onClose }: { ids: string[]; onClose: (done: boolean) =>
         </div>
       </form>
     </Modal>
+  );
+}
+
+const FIELD_LABELS: Record<string, string> = {
+  brand: 'marque', summary: 'description', weight: 'poids', replacementValue: 'valeur de remplacement', dailyPrice: 'prix / jour',
+  costPrice: 'coût d’achat', inspectionMonths: 'contrôle périodique', categoryId: 'catégorie', photo: 'photo', notes: 'notes', contents: 'contenu fourni',
+};
+
+/**
+ * Compléter un article : reprendre les infos d'un article semblable du catalogue (même marque et modèle),
+ * pour les champs encore vides, ou ouvrir la fiche technique sur le web (poids, dimensions, consommation).
+ */
+function EquipmentLookup({ e, all, onFill }: { e: Draft; all: Equipment[]; onFill: (e: Draft) => void }) {
+  const [msg, setMsg] = useState('');
+  if (!(e.model || e.name)?.trim()) return null;
+  const src = similarEquipment(e, all)[0];
+  const preview = src ? fillFromSimilar(e, src).filled : [];
+  return (
+    <div className="field full lookup">
+      <div className="lookup-actions">
+        {src && preview.length > 0 && (
+          <button type="button" className="secondary small" title={`Reprend ${preview.map((k) => FIELD_LABELS[k] || k).join(', ')} — seulement les champs vides`}
+            onClick={() => { const r = fillFromSimilar(e, src); onFill(r.value); setMsg(`Repris de « ${src.name} » : ${r.filled.map((k) => FIELD_LABELS[k] || k).join(', ')}. À vérifier.`); }}>
+            <Icon name="copy" />Reprendre de « {src.name} »
+          </button>
+        )}
+        <a className="button-link secondary small" href={specSearchUrl(e)} target="_blank" rel="noreferrer" title="Recherche web : poids, dimensions, consommation (à reporter à la main)">
+          <Icon name="search" />Chercher la fiche technique
+        </a>
+      </div>
+      {msg && <p className="avail ok" style={{ margin: '4px 0 0' }}>{msg}</p>}
+    </div>
   );
 }
