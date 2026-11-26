@@ -216,6 +216,8 @@ export default function ImportPage() {
   const [busy, setBusy] = useState(false);
   /** chemin Rentman « Fabri / Son / Console » : le premier niveau (société, dépôt) n'est pas une catégorie */
   const [skipRoot, setSkipRoot] = useState(true);
+  /** article déjà présent avec la même référence (code unique) : ses infos sont mises à jour depuis le fichier */
+  const [updateByCode, setUpdateByCode] = useState(true);
 
   const onFile = (file: File) => {
     setResult('');
@@ -302,8 +304,27 @@ export default function ImportPage() {
       const byName = new Map(known.map((e) => [e.name.toLowerCase(), e]));
       const fresh = new Set<string>();
       const units = await db.units.toArray();
-      let created = 0; let existing = 0; let added = 0; let skipped = 0;
+      let created = 0; let existing = 0; let added = 0; let skipped = 0; let updated = 0;
       const unitCols = !!map.unitBarcode;
+      const refreshed = new Set<string>();
+      /** mise à jour d'un article connu par sa référence : seules les colonnes reliées et remplies changent */
+      const refresh = async (e: Equipment, r: Record<string, string>, serialRow: boolean) => {
+        if (refreshed.has(e.id)) return;
+        refreshed.add(e.id);
+        const p: Partial<Equipment> = {};
+        const txt = (k: string, f: keyof Equipment) => { const v = get(r, k); if (map[k] && v && v !== e[f]) (p as Record<string, unknown>)[f] = v; };
+        const num = (k: string, f: keyof Equipment) => { const v = get(r, k); if (map[k] && v) { const n = parseNumber(v); if (n !== e[f]) (p as Record<string, unknown>)[f] = n; } };
+        const nm = get(r, 'name') || composeName(get(r, 'brand'), get(r, 'model'), get(r, 'summary'));
+        if (nm && nm !== e.name) p.name = nm;
+        txt('brand', 'brand'); txt('model', 'model'); txt('summary', 'summary'); txt('location', 'location');
+        num('dailyPrice', 'dailyPrice'); num('costPrice', 'costPrice'); num('replacementValue', 'replacementValue'); num('weight', 'weight');
+        if (!serialRow || unitCols) txt('barcode', 'barcode');
+        if (map.quantity && !e.trackSerials) { const g = groups.get(keyOf(r)); if (g && g.qty !== e.quantity) p.quantity = g.qty; }
+        if ((map.category || map.path) && get(r, map.path ? 'path' : 'category')) { const c = await categoryOf(r); if (c && c !== e.categoryId) p.categoryId = c; }
+        if (map.tags && get(r, 'tags')) { const tg = list(get(r, 'tags')); if (JSON.stringify(tg) !== JSON.stringify(e.tags || [])) p.tags = tg; }
+        if (map.archived) { const a = yes(get(r, 'archived')) || undefined; if (!!a !== !!e.archived) p.archived = a; }
+        if (Object.keys(p).length) { p.updatedAt = t; await db.equipment.update(e.id, p); Object.assign(e, p); updated++; }
+      };
       for (const r of rows) {
         // désignation : colonne du fichier, sinon composée de la marque, du modèle et de la description courte
         const name = get(r, 'name') || composeName(get(r, 'brand'), get(r, 'model'), get(r, 'summary'));
@@ -337,7 +358,8 @@ export default function ImportPage() {
           fresh.add(e.id);
           created++;
         } else if (!fresh.has(e.id)) {
-          if (!serial) { existing++; continue; }
+          if (updateByCode && code) await refresh(e, r, !!serial);
+          if (!serial) { if (!(updateByCode && code)) existing++; continue; }
           if (!e.trackSerials) { await db.equipment.update(e.id, { trackSerials: true, updatedAt: t }); e.trackSerials = true; }
         }
         if (!serial) continue;
@@ -363,7 +385,7 @@ export default function ImportPage() {
         units.push(unit);
         added++;
       }
-      return `${created} article(s) importé(s)` + (added ? `, ${added} numéro(s) de série ajouté(s)` : '')
+      return `${created} article(s) importé(s)` + (updated ? `, ${updated} article(s) existant(s) mis à jour par leur référence` : '') + (added ? `, ${added} numéro(s) de série ajouté(s)` : '')
         + (existing ? `, ${existing} article(s) déjà présent(s) ignoré(s)` : '') + (skipped ? `, ${skipped} numéro(s) déjà connu(s) ignoré(s)` : '') + '.';
     }
 
@@ -540,7 +562,7 @@ export default function ImportPage() {
         le type d'export et les colonnes sont reconnus automatiquement, tu peux corriger la correspondance avant de valider.
         Importe les contacts avant les projets pour que les clients et leurs interlocuteurs soient reliés.
         Les lignes répétées sont regroupées : une ligne par numéro de série (matériel), par personne de contact (contacts) ou par tarif (équipe).
-        Une fiche déjà présente (même code, même nom ou même numéro) n'est pas recréée.
+        Une fiche déjà présente (même code, même nom ou même numéro) n'est pas recréée ; pour le matériel, la référence sert d'identifiant unique et permet de mettre à jour les articles existants.
       </div>
       <div className="card">
         <div className="form">
@@ -561,6 +583,12 @@ export default function ImportPage() {
         <div className="card">
           <h2>Correspondance des colonnes ({rows.length} lignes)</h2>
           <p className="muted">{mapped.length} champ(s) reliés à une colonne du fichier ; {unused.length} colonne(s) non utilisée(s).</p>
+          {target === 'equipment' && (
+            <label className="check-row" title="La référence (code équipement) est l'identifiant unique : un article déjà présent avec la même référence est mis à jour (désignation, prix, quantité, catégorie…) au lieu d'être ignoré ou créé en double">
+              <input type="checkbox" checked={updateByCode} onChange={(e) => setUpdateByCode(e.target.checked)} disabled={!map.code} />
+              Mettre à jour les articles déjà présents (reconnus par leur référence unique){!map.code && <span className="muted"> — relie d'abord la colonne « Référence »</span>}
+            </label>
+          )}
           {target === 'equipment' && map.path && (() => {
             const ex = rows.map((r) => (r[map.path] || '').trim()).find((v) => v.split('/').length > 2) || rows.find((r) => r[map.path])?.[map.path] || '';
             const segs = ex.split(/\s*[/>›]\s*/).filter(Boolean);

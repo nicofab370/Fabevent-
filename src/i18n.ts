@@ -5,7 +5,7 @@ import type { Doc, DocType, Lang, VatRegime } from './types';
 
 const fr = {
   no: 'N°', date: 'Date', project: 'Projet', validUntil: "Valable jusqu'au", due: 'Échéance', ref: 'Réf.', refInvoice: 'facture', refQuote: 'devis',
-  vat: 'TVA', attention: "À l'attention de", yourRef: 'Votre référence', companyNo: "N° d'entreprise",
+  vat: 'TVA', attention: "À l'attention de", service: 'Service', yourRef: 'Votre référence', companyNo: "N° d'entreprise",
   schedule: 'Horaires', equipment: 'Matériel', rental: 'Location de matériel', lines: 'lignes', out: 'Sortie', back: 'Retour', qty: 'Qté',
   item: 'Désignation', unitPrice: 'P.U.', factor: 'Coef.', discount: 'Remise', totalExcl: 'Total HT', option: 'en option', sale: 'vente', days: 'j',
   crew: 'Personnel', function: 'Fonction', name: 'Nom', phone: 'Tél.', hours: 'Horaires', quantity: 'Quantité', rate: 'Tarif', overtime: 'h sup.', of: 'dont',
@@ -20,7 +20,7 @@ type Dict = typeof fr;
 
 const nl: Dict = {
   no: 'Nr.', date: 'Datum', project: 'Project', validUntil: 'Geldig tot', due: 'Vervaldatum', ref: 'Ref.', refInvoice: 'factuur', refQuote: 'offerte',
-  vat: 'Btw', attention: 'Ter attentie van', yourRef: 'Uw referentie', companyNo: 'Ondernemingsnr.',
+  vat: 'Btw', attention: 'Ter attentie van', service: 'Dienst', yourRef: 'Uw referentie', companyNo: 'Ondernemingsnr.',
   schedule: 'Planning', equipment: 'Materiaal', rental: 'Verhuur van materiaal', lines: 'lijnen', out: 'Uit', back: 'Terug', qty: 'Aant.',
   item: 'Omschrijving', unitPrice: 'E.P.', factor: 'Coëf.', discount: 'Korting', totalExcl: 'Totaal excl. btw', option: 'optioneel', sale: 'verkoop', days: 'd',
   crew: 'Personeel', function: 'Functie', name: 'Naam', phone: 'Tel.', hours: 'Uren', quantity: 'Hoeveelheid', rate: 'Tarief', overtime: 'u overuren', of: 'waarvan',
@@ -34,7 +34,7 @@ const nl: Dict = {
 
 const en: Dict = {
   no: 'No.', date: 'Date', project: 'Project', validUntil: 'Valid until', due: 'Due date', ref: 'Ref.', refInvoice: 'invoice', refQuote: 'quote',
-  vat: 'VAT', attention: 'For the attention of', yourRef: 'Your reference', companyNo: 'Company no.',
+  vat: 'VAT', attention: 'For the attention of', service: 'Department', yourRef: 'Your reference', companyNo: 'Company no.',
   schedule: 'Schedule', equipment: 'Equipment', rental: 'Equipment rental', lines: 'lines', out: 'Out', back: 'Back', qty: 'Qty',
   item: 'Description', unitPrice: 'Unit price', factor: 'Factor', discount: 'Discount', totalExcl: 'Total excl. VAT', option: 'optional', sale: 'sale', days: 'd',
   crew: 'Crew', function: 'Role', name: 'Name', phone: 'Phone', hours: 'Hours', quantity: 'Quantity', rate: 'Rate', overtime: 'h overtime', of: 'incl.',

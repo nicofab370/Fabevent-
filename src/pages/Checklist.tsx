@@ -235,7 +235,7 @@ export function ChecklistView({ src }: { src: ChecklistSource }) {
         if (ph === 'retour') { say({ ok: false, msg: `${eq.name} : tout ce qui est sorti est déjà rentré.` }); return false; }
         beep(false);
         setAsk({
-          title: `${eq.name} : les ${line.qty} prévus sont déjà sortis. Ajouter ${unitLabel(eq.id, unit.serial)} en plus ?`, okLabel: 'Oui, +1',
+          title: `${eq.name} : le nombre d'éléments prévus (${line.qty}) est déjà complet. Êtes-vous sûr d'avoir scanné une seule fois chaque élément ? Si oui, ajouter ${unitLabel(eq.id, unit.serial)} en plus.`, okLabel: 'Oui, ajouter',
           // en plus que prévu : le nombre prévu (t) ne change pas, seuls les sortis augmentent (6/5)
           onOk: async () => { await src.setSerials(line.key, ph, [...serials, unit.serial]); say({ ok: true, msg: `Sortie : ${name} en plus (${cur + 1}/${t})` }); },
         });
@@ -250,7 +250,7 @@ export function ChecklistView({ src }: { src: ChecklistSource }) {
       if (ph === 'retour') { say({ ok: false, msg: `${eq.name} : tout ce qui est sorti est déjà rentré (${cur}).` }); return false; }
       beep(false);
       setAsk({
-        title: `${eq.name} : les ${line.qty} prévus sont déjà sortis. Combien en plus ?`, qty: { def: 1 }, okLabel: 'Ajouter en plus',
+        title: `${eq.name} : le nombre d'éléments prévus (${line.qty}) est déjà complet. Êtes-vous sûr d'avoir scanné une seule fois chaque élément ? Si oui, combien en ajouter ?`, qty: { def: 1 }, okLabel: 'Oui, ajouter',
         onOk: async (n) => { await src.setCount(line.key, ph, cur + n); say({ ok: true, msg: `Sortie : ${eq.name} +${n} en plus (${cur + n}/${t})` }); },
       });
       return false;

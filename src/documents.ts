@@ -212,8 +212,17 @@ export async function buildSnapshot(projectId: string, type: DocType, only?: { i
     dueDate: INVOICE_TYPES.includes(type) ? new Date(issued.getTime() + (client?.paymentDays ?? s.paymentDays) * 86400000).toISOString() : undefined,
     venueNotes: isPacking ? await venueNotesFor(project.venueId, [project.spotId, ...subs.map((x) => x.spotId)].filter((x): x is string => !!x)) : undefined,
     contacts: isPacking ? await contactsFor(client, project) : undefined,
-    department: deptOf(client, project.departmentId),
-    contactEmail: projectPerson(client, project)?.email || deptOf(client, project.departmentId)?.email,
+    // factures, acomptes, avoirs, rappels : adressés au service et au contact de facturation de la société s'ils sont définis
+    ...(() => {
+      const billing = INVOICE_TYPES.includes(type) || type === 'rappel';
+      const dept = billing && client?.billingDepartmentId ? deptOf(client, client.billingDepartmentId) : deptOf(client, project.departmentId);
+      const bp = billing && client?.billingPersonId ? client.persons?.find((x) => x.id === client.billingPersonId) : undefined;
+      return {
+        department: dept,
+        billingPerson: bp ? [bp.name, bp.role].filter(Boolean).join(', ') : undefined,
+        contactEmail: bp?.email || (billing && client?.billingDepartmentId ? dept?.email : undefined) || projectPerson(client, project)?.email || deptOf(client, project.departmentId)?.email,
+      };
+    })(),
     notes: (() => { const n = (project.noteList || []).filter((x) => x.on.includes(type) && x.text.trim()).map(({ title, text }) => ({ title, text })); return n.length ? n : undefined; })(),
     deposit: project.deposit?.amount && project.deposit.status !== 'aucune' && (isQuote || type === 'facture' || type === 'bon_sortie') ? project.deposit : undefined,
     terms: s.terms?.trim() && (isQuote || (s.termsOnInvoices && (type === 'facture' || type === 'acompte'))) ? s.terms : undefined,
@@ -315,7 +324,7 @@ export async function createDocument(projectId: string, type: DocType, opts: Doc
   // un devis émis fait passer le projet « en attente » de la réponse du client
   if (type === 'devis' && project && (project.status === 'demande' || project.status === 'brouillon')) await setStatusDeep(projectId, 'option');
   return save(db.docs, {
-    projectId, type, number, version, status: 'brouillon', note: opts.note, contactPerson: project?.contactPerson, snapshot,
+    projectId, type, number, version, status: 'brouillon', note: opts.note, contactPerson: snapshot.billingPerson || project?.contactPerson, snapshot,
     subprojectIds: type === 'facture' && only?.include ? only.include : undefined,
     // devis : lien public pour que le client accepte / refuse en ligne (public.php?d=…)
     publicToken: type === 'devis' ? newToken(24) : undefined,

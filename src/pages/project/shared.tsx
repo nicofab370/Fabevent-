@@ -35,7 +35,8 @@ export function useProjectData(id: string) {
   const projectVas = vas.filter((v) => v.projectId === id);
   const finance = project
     ? computeFinance(project, subs, lines, projectCrew, projectVas, costs, people, eqMap, settings,
-      subrentals.filter((s) => s.status !== 'annule').reduce((a, s) => a + s.lines.reduce((b, l) => b + l.cost, 0), 0))
+      subrentals.filter((s) => s.status !== 'annule').reduce((a, s) => a + s.lines.reduce((b, l) => b + l.cost, 0), 0),
+      appointments.filter((a) => a.projectId === id).reduce((a, x) => a + (x.cost || 0), 0))
     : null;
   const depotId = project ? av.projectDepots.get(project.id) : undefined;
   /** dépôt du projet pour les disponibilités (undefined si un seul dépôt) */
@@ -43,6 +44,7 @@ export function useProjectData(id: string) {
   return {
     settings, av, project, client, depot, subs, crew, projectCrew, people, unav, vehicles, vas, projectVas, docs, costs, contacts,
     eqMap, lines, conflicts, subrentals, finance,
+    projectAppts: appointments.filter((a) => a.projectId === id).sort((a, b) => a.start.localeCompare(b.start)),
   };
 }
 
@@ -71,6 +73,8 @@ export interface Finance {
 export function computeFinance(
   project: Project, subs: Subproject[], lines: EquipmentLine[], crew: CrewAssignment[], vas: VehicleAssignment[], costs: ProjectCost[],
   people: Person[], eqMap: Map<string, Equipment>, s: Settings, subrentCost: number,
+  /** coûts internes des rendez-vous reliés au projet (non facturés) */
+  apptCost = 0,
 ): Finance {
   const active = new Map(subs.filter((x) => x.status !== 'annule').map((x) => [x.id, x]));
   const pMap = new Map(people.map((p) => [p.id, p]));
@@ -100,6 +104,7 @@ export function computeFinance(
     { label: 'Transport', revenue: round2(vehRev), cost: 0 },
     { label: 'Frais supplémentaires', revenue: round2(extraRev), cost: round2(extraCost) },
     ...(insurance ? [{ label: 'Assurance', revenue: insurance, cost: 0 }] : []),
+    ...(apptCost ? [{ label: 'Rendez-vous', revenue: 0, cost: round2(apptCost) }] : []),
   ];
   const gross = round2(rows.reduce((a, r) => a + r.revenue, 0));
   const discount = round2(gross * (project.discount || 0) / 100);

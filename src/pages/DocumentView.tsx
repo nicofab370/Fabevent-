@@ -119,7 +119,7 @@ export default function DocumentView() {
       <style>{DOC_CSS}</style>
       <div className="no-print">
         <PageHead title={title}>
-          <Link to={'/projets/' + doc.projectId}><button className="secondary"><Icon name="arrow-left" />Projet</button></Link>
+          <Link to={'/projets/' + doc.projectId + '?onglet=finances'} state={{ restore: true }}><button className="secondary" title="Revenir au projet, à l'endroit où tu étais dans Finances & documents"><Icon name="arrow-left" />Projet</button></Link>
           <select value={doc.status} style={{ width: 'auto' }} onChange={async (e) => {
             const status = e.target.value as DocStatus;
             await save(db.docs, { ...doc, status });

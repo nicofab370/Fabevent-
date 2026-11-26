@@ -39,6 +39,10 @@ export interface Appointment extends Base {
   location?: string;
   personIds?: ID[];
   notes?: string;
+  /** projet auquel le rendez-vous se rapporte (repérage, réunion de production…) */
+  projectId?: ID;
+  /** coût interne HT (pour moi, pas facturé au client) : compté dans les coûts et la marge du projet relié */
+  cost?: number;
 }
 
 export type ContactType = 'client' | 'fournisseur' | 'soustraitant' | 'lieu' | 'autre';
@@ -109,6 +113,10 @@ export interface Contact extends Base {
   spots?: VenueSpot[];
   /** client : services (communication, RH, événementiel…) avec leurs interlocuteurs */
   departments?: Department[];
+  /** factures (et acomptes, avoirs, rappels) adressées à ce service, quel que soit le service du projet */
+  billingDepartmentId?: ID;
+  /** personne à l'attention de qui les factures sont envoyées */
+  billingPersonId?: ID;
 }
 
 /** Endroit d'un lieu : bâtiment, scène, salle, entrée… (adresse propre ou celle du lieu). */
@@ -850,6 +858,8 @@ export interface DocSnapshot {
   client?: Contact;
   /** service du client (ses coordonnées priment sur celles de la société) */
   department?: Department;
+  /** factures : personne de contact pour la facturation (nom, fonction) */
+  billingPerson?: string;
   /** email de l'interlocuteur ou du service, pour l'envoi */
   contactEmail?: string;
   project: Pick<Project, 'number' | 'name' | 'venue' | 'start' | 'end' | 'notes' | 'discount' | 'externalRef'>;
@@ -944,6 +954,8 @@ export interface CompanyInfo {
   street?: string;
   /** identifiant Peppol, ex. 0208:0123456789 (BE) ou 0009:SIRET (FR) */
   peppolId?: string;
+  /** forme juridique et registre (obligatoire en Belgique) : ex. « SRL · RPM Liège, division Liège » */
+  rpm?: string;
 }
 
 export interface Settings {

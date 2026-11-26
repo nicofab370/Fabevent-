@@ -197,7 +197,13 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
                       {ordered.map((l) => {
                         const eq = l.equipmentId ? eqMap.get(l.equipmentId) : undefined;
                         const [b0, b1] = lineBlock(l, sp);
-                        const avail = eq && !eq.accessoryOnly ? availableQty(eq, av.equipment, av.res, b0, b1, l.id, d.depot) : null;
+                        // élément du contenu d'un kit : sa réservation est portée par la ligne du kit, c'est elle qu'on retire du calcul
+                        const parentKit = l.parentLineId ? lines.find((x) => x.id === l.parentLineId && !!x.equipmentId && !!eqMap.get(x.equipmentId)?.isKit) : undefined;
+                        const avail = eq && !eq.accessoryOnly ? availableQty(eq, av.equipment, av.res, b0, b1, parentKit ? parentKit.id : l.id, d.depot) : null;
+                        // kit : ce qui manque dans son contenu (le kit n'est pas « manquant » en entier pour autant)
+                        const kitShort = eq?.isKit && eq.kitItems?.length && !l.optional
+                          ? eq.kitItems.map((k) => { const c = eqMap.get(k.equipmentId); const need = k.qty * l.qty; const left = c ? availableQty(c, av.equipment, av.res, b0, b1, l.id, d.depot) - need : -need; return { name: c?.name || '?', miss: -left }; }).filter((x) => x.miss > 0)
+                          : [];
                         const perPiece = isPerPiece(l, eqMap);
                         return (
                           <tr key={l.id} className={l.parentLineId ? 'kid' : ''} style={l.optional ? { opacity: 0.6 } : undefined} draggable={!l.parentLineId}
@@ -231,7 +237,11 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
                               ) : null;
                             })}
                             </td>
-                            <td className="n eq-avail">{avail === null || !eq ? '—' : (() => {
+                            <td className="n eq-avail">{avail === null || !eq ? '—' : kitShort.length ? (
+                              <span className="avail warn kit-incomplete" title={`Kit incomplet : il manque ${kitShort.map((x) => `${x.miss} × ${x.name}`).join(', ')}. Le reste du kit est disponible.`}>
+                                incomplet<span className="muted" style={{ display: 'block', fontSize: 11, whiteSpace: 'normal' }}>{kitShort.map((x) => `−${x.miss} ${x.name}`).join(', ')}</span>
+                              </span>
+                            ) : (() => {
                               const left = l.optional ? avail : avail - l.qty;
                               const uses = projectUses(eq, av.equipment, av.res, b0, b1, { projectId: sp.projectId, subprojectId: sp.id, lineId: l.id, depot: d.depot });
                               return (

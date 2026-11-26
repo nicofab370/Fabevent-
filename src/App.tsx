@@ -40,6 +40,7 @@ import CrewAssignmentPage from './pages/crewAssign';
 import QrCard from './pages/QrCard';
 import { Icon, type IconName } from './components/Icon';
 import { OpenTabs } from './components/OpenTabs';
+import { useScrollMemory } from './scrollMemory';
 import { UndoButton } from './components/UndoButton';
 
 const NAV: [string, string, IconName][] = [
@@ -68,6 +69,7 @@ export default function App() {
   const [online, setOnline] = useState(navigator.onLine);
   const [menu, setMenu] = useState(false);
   const loc = useLocation();
+  useScrollMemory();
   const alerts = useAlerts();
   // comptes utilisateurs : verrouillage de la base + menu restreint par rôle
   const me = useUser();

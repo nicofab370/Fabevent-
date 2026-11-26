@@ -227,6 +227,23 @@ function PeopleEditor({ c, setC }: { c: Draft; setC: (c: Draft) => void }) {
         <button type="button" className="secondary small" onClick={() => addPerson()}>+ Interlocuteur</button>
         <button type="button" className="secondary small" onClick={() => setC({ ...c, departments: [...depts, { id: uid(), name: '' }] })}>+ Service</button>
       </div>
+      {(depts.length > 0 || persons.length > 0) && (
+        <div className="billing-to" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginTop: 10 }}>
+          <strong style={{ fontSize: 13 }}>Factures adressées à</strong>
+          {depts.length > 0 && (
+            <select aria-label="Service de facturation" title="Les factures, acomptes, avoirs et rappels sont adressés à ce service (adresse et email), quel que soit le service du projet"
+              value={c.billingDepartmentId || ''} onChange={(e) => setC({ ...c, billingDepartmentId: e.target.value || undefined, billingPersonId: undefined })} style={{ width: 'auto' }}>
+              <option value="">Le service du projet</option>
+              {depts.map((d) => <option key={d.id} value={d.id}>{d.name || 'Service'}</option>)}
+            </select>
+          )}
+          <select aria-label="Contact de facturation" title="Imprimé « À l'attention de » sur les factures ; son email est proposé en premier à l'envoi"
+            value={c.billingPersonId || ''} onChange={(e) => setC({ ...c, billingPersonId: e.target.value || undefined })} style={{ width: 'auto' }}>
+            <option value="">L'interlocuteur du projet</option>
+            {persons.filter((x) => x.id && x.name && (!c.billingDepartmentId || x.departmentId === c.billingDepartmentId)).map((x) => <option key={x.id} value={x.id}>{x.name}{x.role ? ` (${x.role})` : ''}</option>)}
+          </select>
+        </div>
+      )}
     </div>
   );
 }

@@ -13,6 +13,7 @@ import { installUndo } from './undo';
 import { ensureUnitNumbers } from './unitNumbers';
 import { ensureSerialCodes } from './autoCodes';
 import { applyDoneTransfers } from './transferApply';
+import { startAutoTooltips } from './tooltips';
 
 installUndo();
 
@@ -36,6 +37,7 @@ document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: 
 // synchronisation automatique entre appareils (si un serveur est configuré)
 setNumberProvider(serverNumber);
 startSync();
+startAutoTooltips();
 (window.requestIdleCallback || ((f: () => void) => setTimeout(f, 1500)))(() => warmUpScanner());
 
 // Téléphone : tous les tableaux « list » deviennent des fiches (cards-sm) ; chaque case reçoit le titre de sa colonne
