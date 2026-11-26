@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createUser, hasUsers, sessionUserId, setSession, verifyUser } from '../auth';
 import { db } from '../db';
-import { clearLoginRequest, loginRequested, serverLogin, serverRecover, serverOn, serverSetup, serverStatus, type AuthError, type ServerStatus } from '../serverAuth';
+import { clearLoginRequest, serverLogin, serverRecover, serverResume, serverOn, serverSetup, serverStatus, type AuthError, type ServerStatus } from '../serverAuth';
 import { Field } from './ui';
 import { oauthAvailable, oauthLogin, OAUTH_PROVIDERS } from '../oauth';
 import { verifyTotp } from '../totp';
@@ -41,7 +41,8 @@ export function Login() {
   const [fBusy, setFBusy] = useState(false);
 
   useEffect(() => {
-    if (serverOn()) serverStatus().then((s) => setSrv(s));
+    // déjà connecté au serveur dans ce navigateur (ex. base ouverte depuis le sélecteur) : on entre directement
+    if (serverOn()) serverStatus().then(async (s) => { const u = await serverResume(s).catch(() => null); if (u?.active) open(u); else setSrv(s); });
     // reconnexion : l'email du compte ouvert sur cet appareil est déjà rempli
     const id = sessionUserId();
     if (id) db.users.get(id).then((u) => { if (u) setEmail((e) => e || u.email); });
@@ -188,7 +189,6 @@ export function Login() {
           <div className="form-actions">
             <button type="submit" disabled={busy || srv === undefined}>{busy ? '…' : mfa ? 'Vérifier le code' : any ? 'Se connecter' : 'Créer le compte administrateur'}</button>
             {mfa && <button type="button" className="secondary" onClick={() => { setMfa(null); setCode(''); setErr(''); }}>Retour</button>}
-            {!mfa && loginRequested() && <button type="button" className="secondary" onClick={() => { clearLoginRequest(); location.reload(); }} title="Revenir à FabEvent sans te reconnecter : tes modifications restent sur cet appareil">Plus tard</button>}
           </div>
           {any && !mfa && !forgot && (
             <p style={{ textAlign: 'center', margin: '12px 0 0' }}>

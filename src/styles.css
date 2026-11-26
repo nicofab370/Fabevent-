@@ -387,6 +387,8 @@ button, a, input, select, textarea, label { touch-action: manipulation; }
 .pick-row:hover { background: var(--soft); }
 .pick-row.on { background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .pick-row .thumb { width: 32px; height: 32px; margin: 0; border-radius: 6px; }
+/* client / lieu : pas de photo, le nom prend toute la largeur */
+.pick-row.contact-row { grid-template-columns: minmax(0, 1fr) auto; padding: 8px 10px; }
 .pick-name { min-width: 0; } .pick-name > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pick-price { font-size: 12px; white-space: nowrap; }
 .stepper { display: flex; align-items: center; gap: 2px; }
@@ -888,12 +890,16 @@ table.list tr.limiting td:first-child, table.list tr.kit-child.limiting td:nth-c
 @media screen and (max-width: 640px) {
   .cards-sm tr.kid { border-left: 4px solid var(--accent); }
 }
-
-/* connexion au serveur FabEvent expirée */
-.auth-banner { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; background: #fef3c7; color: #78350f; border: 1px solid #fcd34d; border-radius: 10px; padding: 10px 14px; margin: 0 0 12px; font-size: 14px; }
-.auth-banner button { flex: none; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .auth-banner { background: #422006; color: #fde68a; border-color: #92400e; } }
-:root[data-theme="dark"] .auth-banner { background: #422006; color: #fde68a; border-color: #92400e; }
 .ws-switch { display: flex; align-items: center; gap: 4px; }
 .ws-switch select { flex: 1; min-width: 0; min-height: 0; padding: 2px 6px; font-size: 12px; background: transparent; color: inherit; border: 1px solid color-mix(in srgb, currentColor 30%, transparent); border-radius: 6px; }
 .ws-switch select option { color: #111827; }
+
+/* remplissage automatique (n° TVA, carte, article semblable) */
+.lookup-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.lookup-search { display: flex; gap: 6px; margin-top: 6px; }
+.lookup-search input { flex: 1; min-width: 0; }
+.lookup-hits { list-style: none; margin: 6px 0 0; padding: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.lookup-hits li + li { border-top: 1px solid var(--border); }
+.lookup-hits button { display: grid; gap: 2px; width: 100%; text-align: left; background: var(--panel); color: inherit; border: 0; border-radius: 0; padding: 8px 10px; font-weight: 400; cursor: pointer; }
+.lookup-hits button:hover { background: var(--soft); }
+.lookup-hits .muted { font-size: 12px; }

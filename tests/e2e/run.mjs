@@ -2331,11 +2331,9 @@ if (hasPhp) {
   const syncOn = async (p) => { await p.goto(SU + '#/parametres'); await p.click('button:text-is("Synchroniser maintenant")'); await p.waitForTimeout(1500); };
   const A = await device();
   const B = await device();
-  await step('Serveur autonome : sans connexion, FabEvent le signale ; le premier compte administrateur se crée depuis l’application', async () => {
+  await step('Serveur autonome : jamais connecté = écran de connexion d’office ; le premier compte administrateur se crée depuis l’application', async () => {
     await A.p.goto(SU + '#/'); await A.p.waitForTimeout(2500);
-    expect(await A.p.locator('.auth-banner').count() === 1, 'bandeau « connexion expirée »');
-    expect((await A.p.locator('.net').innerText()).includes('se reconnecter'), 'badge de synchro : se reconnecter');
-    await A.p.click('.auth-banner button:text-is("Se reconnecter")');
+    expect(await A.p.locator('.login-card').count() === 1 && await A.p.locator('.layout').count() === 0, 'jamais connecté : écran de connexion d’office, rien d’autre');
     await A.p.waitForSelector('.login-card');
     await A.p.waitForSelector('.login-card button[type=submit]:not([disabled])');
     expect((await A.p.locator('.login-card').innerText()).includes('Première utilisation'), 'serveur vierge : création du premier compte');
@@ -2345,12 +2343,11 @@ if (hasPhp) {
     await A.p.fill('.login-card input[aria-label="Répéter le mot de passe"]', 'motdepasse');
     await A.p.click('.login-card button[type=submit]');
     await A.p.waitForSelector('.layout'); await A.p.waitForTimeout(2500);
-    expect(await A.p.locator('.auth-banner').count() === 0, 'plus de bandeau après connexion');
+    expect(await A.p.locator('.login-card').count() === 0, 'application ouverte après connexion');
     expect((await A.p.locator('.net').innerText()).includes('synchronisé'), `synchronisé (${await A.p.locator('.net').innerText()})`);
   });
   await step('Serveur autonome : un 2e appareil se connecte avec le compte FabEvent (aucune page interne)', async () => {
     await B.p.goto(SU + '#/'); await B.p.waitForTimeout(2000);
-    await B.p.click('.auth-banner button:text-is("Se reconnecter")');
     await B.p.waitForSelector('.login-card button[type=submit]:not([disabled])');
     expect((await B.p.locator('.login-card').innerText()).includes('Connecte-toi avec ton compte FabEvent'), 'le serveur a des comptes : écran de connexion');
     await B.p.fill('.login-card input[aria-label="Email"]', 'nico@exemple.org');
@@ -2494,7 +2491,6 @@ if (hasPhp) {
     // une 2e base (autre société) : son premier administrateur = le même email et le même mot de passe
     await A.p.evaluate(() => { localStorage.setItem('fabevent.workspace', 'societe2'); localStorage.setItem('fabevent.workspaces', JSON.stringify(['societe2'])); });
     await A.p.goto(SU + '#/'); await A.p.reload(); await A.p.waitForTimeout(2000);
-    await A.p.click('.auth-banner button:text-is("Se reconnecter")');
     await A.p.waitForSelector('.login-card button[type=submit]:not([disabled])');
     expect((await A.p.locator('.login-card').innerText()).includes('Première utilisation'), 'nouvelle base : création de son administrateur');
     await A.p.fill('.login-card input[aria-label="Nom"]', 'Nico');
@@ -2514,7 +2510,7 @@ if (hasPhp) {
     expect(await A.p.locator('table.list tr', { hasText: 'Client synchronisé SA' }).count() === 1, 'contacts de la base principale');
     await A.p.locator('select[aria-label="Changer de base"]').selectOption('societe2');
     await A.p.waitForSelector('.layout'); await A.p.waitForTimeout(1500);
-    expect(await A.p.locator('.login-card').count() === 0 && await A.p.locator('.auth-banner').count() === 0, 'retour dans societe2 sans se reconnecter');
+    expect(await A.p.locator('.login-card').count() === 0, 'retour dans societe2 sans se reconnecter');
     await A.p.locator('select[aria-label="Changer de base"]').selectOption('principal');
     await A.p.waitForSelector('.layout'); await A.p.waitForTimeout(800);
   });
@@ -2527,7 +2523,6 @@ if (hasPhp) {
   };
   const openLogin = async (C) => {
     await C.p.goto(SU + '#/'); await C.p.waitForTimeout(1500);
-    await C.p.click('.auth-banner button:text-is("Se reconnecter")');
     await C.p.waitForSelector('.login-card button[type=submit]:not([disabled])');
   };
   await step('Mot de passe oublié : lien reçu par email, nouveau mot de passe, connexion', async () => {
@@ -3161,6 +3156,12 @@ await step('Mot de passe oublié : demande de lien depuis l’écran de connexio
   await page.evaluate(() => { try { localStorage.removeItem('fab.sync.url'); } catch {} });
 });
 
+/** Serveur FabEvent simulé où l'on est déjà connecté (auth.php) : sinon l'écran de connexion s'affiche d'office. */
+const stubSignedIn = (c) => c.route('**/api/auth.php**', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(
+  route.request().url().includes('action=status')
+    ? { ok: true, session: true, users: true, setup: null, user: { id: 'connecte-test', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', name: 'Test', email: 'test@exemple.org', salt: 's', passHash: 'h', role: 'admin', active: true } }
+    : { ok: true, bases: [] }) }));
+
 await step('Diagnostic : API qui renvoie la page HTML de l’app → message explicite', async () => {
   // reconnexion admin (MFA actif sur nico@fab.be), puis base non-démo (la démo ne se synchronise jamais)
   await page.waitForSelector('.login-card');
@@ -3178,6 +3179,7 @@ await step('Diagnostic : API qui renvoie la page HTML de l’app → message exp
   await page.waitForSelector('.sidebar nav');
   const ws0 = await page.evaluate(() => localStorage.getItem('fabevent.workspace') || 'demo');
   await page.evaluate(() => { try { localStorage.setItem('fabevent.workspace', 'principal'); localStorage.setItem('fab.sync.url', 'http://localhost:9999/api/sync.php'); } catch {} });
+  await stubSignedIn(ctx);
   await page.goto(U);
   await page.waitForSelector('.sidebar nav');
   // API stubbée en HTML (cas réécriture SPA : api/ absent) → diagnostic attendu
@@ -3188,6 +3190,7 @@ await step('Diagnostic : API qui renvoie la page HTML de l’app → message exp
   const msg = await page.locator('.avail.ko').first().innerText();
   expect(msg.includes('api/'), `diagnostic affiché (${msg.slice(0, 140)})`);
   await ctx.unroute('**/api/sync.php**');
+  await ctx.unroute('**/api/auth.php**');
   await page.evaluate((w) => { try { localStorage.setItem('fabevent.workspace', w); localStorage.removeItem('fab.sync.url'); } catch {} }, ws0);
 });
 
@@ -3207,6 +3210,7 @@ await step('Bases : créer une base « autre société » isolée (données, com
     if (u.includes('action=pull')) pullWs = new URL(u).searchParams.get('ws') || '';
     route.fulfill({ contentType: 'application/json', body: u.includes('action=pull') ? '{"ok":true,"changes":[],"seq":0,"more":false}' : u.includes('action=ping') ? '{"ok":true,"user":"t","space":"u-t"}' : '{"ok":true,"applied":0,"skipped":0,"n":1}' });
   });
+  await stubSignedIn(ctx);
   await go('parametres');
   await page.click('button:has-text("Nouvelle base pour une autre société")');
   await page.waitForSelector('.modal');
@@ -3233,6 +3237,39 @@ await step('Bases : créer une base « autre société » isolée (données, com
   const nBack = await page.locator('table.list tbody tr').count();
   expect(nBack === nA, `base de départ intacte (${nBack} = ${nA} projets)`);
   await ctx.unroute('**/api/sync.php**');
+  await ctx.unroute('**/api/auth.php**');
+});
+
+await step('Remplissage automatique : adresse d’un lieu trouvée sur la carte, article complété depuis un article semblable', async () => {
+  await resetDemo();
+  // carte simulée (OpenStreetMap)
+  await ctx.route('**/nominatim.openstreetmap.org/search**', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify([
+    { display_name: 'La Boverie, Parc de la Boverie 3, 4020 Liège, Belgique', name: 'La Boverie',
+      address: { road: 'Parc de la Boverie', house_number: '3', postcode: '4020', city: 'Liège', country_code: 'be' }, extratags: { phone: '+32 4 238 55 01' } }]) }));
+  await go('lieux');
+  await page.click('button:has-text("Nouveau lieu")');
+  await page.waitForSelector('.modal');
+  await page.locator('.modal label.field', { has: page.locator('span:text-is("Société / Nom *")') }).locator('input').fill('Boverie');
+  await page.click('.modal button:has-text("Chercher l’adresse")');
+  await page.waitForSelector('.lookup-hits button');
+  await page.click('.lookup-hits button');
+  const val = (label) => page.locator('.modal label.field', { has: page.locator(`span:text-is("${label}")`) }).locator('input').inputValue();
+  expect((await val('Adresse')) === 'Parc de la Boverie 3' && (await val('Code postal')) === '4020' && (await val('Ville')) === 'Liège', 'adresse remplie');
+  expect((await val('Téléphone')) === '+32 4 238 55 01' && (await val('Société / Nom *')) === 'Boverie', 'téléphone ajouté, nom saisi conservé');
+  await page.keyboard.press('Escape');
+  await ctx.unroute('**/nominatim.openstreetmap.org/search**');
+  // article : même marque et modèle qu'un article de la démo
+  await go('materiel');
+  await page.click('button:has-text("Nouvel article")');
+  await page.waitForSelector('.modal');
+  await page.fill('.modal input[aria-label="Marque"]', 'L-Acoustics');
+  await page.fill('.modal input[aria-label="Modèle"]', 'X12');
+  const btn = page.locator('.modal button:has-text("Reprendre de")');
+  await btn.waitFor({ timeout: 5000 });
+  await btn.click();
+  expect((await page.locator('.modal .lookup .avail.ok').innerText()).includes('poids'), 'poids repris de l’article semblable');
+  expect(await page.locator('.modal a:has-text("Chercher la fiche technique")').getAttribute('href').then((h) => h.includes('X12')), 'lien vers la fiche technique');
+  await page.keyboard.press('Escape');
 });
 
 console.log('\n  — vérification de la liste (v51) —');

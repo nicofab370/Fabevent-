@@ -48,6 +48,11 @@ async function call(action: string, body?: Record<string, unknown>): Promise<Rec
   throw fail('server', String(j.detail || e || `Erreur du serveur (${r.status})`));
 }
 
+/** Session du serveur encore valide pour cette base (cookie) : le compte, gardé sur l'appareil ; sinon null. */
+export async function serverResume(st: ServerStatus | null): Promise<User | null> {
+  return st?.session && st.user?.id ? keep(st.user) : null;
+}
+
 export async function serverStatus(): Promise<ServerStatus | null> {
   if (!serverOn()) return null;
   try { return (await call('status')) as unknown as ServerStatus; } catch { return null; }
