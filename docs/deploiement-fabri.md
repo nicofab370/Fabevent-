@@ -81,16 +81,19 @@ Une fois réglé, tu mets en ligne **quand tu le décides**, d'un bouton : GitHu
 1. GitHub → dépôt → **Settings** → **Secrets and variables** → **Actions** → onglet **Secrets** → « New repository secret » :
    - `FTP_SERVER` : l'adresse FTP de l'hébergement (ex. `ftp.fabri.live`) ;
    - `FTP_USERNAME` et `FTP_PASSWORD` : les identifiants FTP.
-2. Onglet **Variables** (facultatif) :
-   - `FTP_DIR` : dossier de FabEvent vu depuis la racine du FTP, terminé par `/` (défaut : `www/fabevent/`) ;
-   - `FTP_PROTOCOL` : `ftps` (défaut, chiffré) ou `ftp` si l'hébergement ne propose pas FTPS.
+2. Onglet **Variables** (facultatif — reprends ce qu'utilise FileZilla) :
+   - `FTP_PROTOCOL` : `ftps` (défaut, chiffré), `sftp` (si FileZilla se connecte en SFTP, port 22) ou `ftp` ;
+   - `FTP_PORT` : seulement s'il n'est pas standard (21 en FTP/FTPS, 22 en SFTP) ;
+   - `FTP_DIR` : dossier de FabEvent **tel que FileZilla l'affiche après connexion** (défaut : `www/fabevent`).
+     En général un chemin court comme `www/fabevent`, pas `/home/…` ;
+   - `FTP_VERIFY_CERT` : `no` seulement si FTPS refuse le certificat de l'hébergeur (nom d'hôte différent).
 3. **Mettre en ligne** : onglet **Actions** → « Mettre en ligne (FTP) » → **Run workflow** → branche `main`
    (case « Lancer les tests avant l'envoi » cochée par défaut) → **Run workflow**. Quelques minutes plus tard, c'est en ligne.
    Sur téléphone : appli GitHub → dépôt → Actions → même workflow → Run workflow.
 
 Ne sont jamais envoyés ni supprimés : `api/mail-config.php`, `api/fabevent-config.php` et les données
-(`fabevent-prive/` est hors du dossier). Le premier envoi dépose tout le paquet, les suivants seulement les différences
-(un petit fichier `.ftp-deploy-sync-state.json` le mémorise dans `fabevent/`).
+(`fabevent-prive/` est hors du dossier). Les fichiers de l'application sont remplacés à chaque envoi
+(dans `assets/`, les anciens fichiers de build sont retirés).
 Les appareils reçoivent la nouvelle version à leur prochaine ouverture de FabEvent.
 
 ## Envoi des mails depuis FabEvent

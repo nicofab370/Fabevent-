@@ -2,6 +2,6 @@
  * Version de FabEvent = n° de la pull request GitHub qui la porte.
  * À incrémenter à chaque PR fusionnée (le n° de la PR devient le n° de version affiché).
  */
-export const APP_VERSION = 60;
-export const APP_PR = 60;
+export const APP_VERSION = 61;
+export const APP_PR = 61;
 export const APP_PR_URL = `https://github.com/nicofab370/Fabevent-/pull/${APP_PR}`;
