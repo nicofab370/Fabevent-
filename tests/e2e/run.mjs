@@ -2311,19 +2311,16 @@ if (hasPhp) {
   const root = mkdtempSync(join(tmpdir(), 'fabweb-'));
   cpSync('dist', root, { recursive: true });
   mkdirSync(join(root, 'api'));
-  cpSync('server/sync.php', join(root, 'api/sync.php'));
-  cpSync('server/mail.php', join(root, 'api/mail.php'));
-  cpSync('server/public.php', join(root, 'api/public.php'));
+  for (const f of ['_fabevent.php', 'auth.php', 'sync.php', 'mail.php', 'public.php']) cpSync(join('server', f), join(root, 'api', f));
   const OUTBOX = mkdtempSync(join(tmpdir(), 'fabmail-'));
   const SPORT = PORT + 700;
   const php = spawn('php', ['-S', `127.0.0.1:${SPORT}`, '-t', root], {
-    env: { ...process.env, FABEVENT_AUTH: resolve('tests/server/auth-stub.php'), FABEVENT_DATA: mkdtempSync(join(tmpdir(), 'fabdata-')), FABEVENT_MAIL_OUTBOX: OUTBOX }, stdio: 'ignore',
+    env: { ...process.env, FABEVENT_DATA: mkdtempSync(join(tmpdir(), 'fabdata-')), FABEVENT_MAIL_OUTBOX: OUTBOX }, stdio: 'ignore',
   });
   await new Promise((r) => setTimeout(r, 1200));
   const SU = `http://127.0.0.1:${SPORT}/`;
-  const device = async (user) => {
+  const device = async () => {
     const c = await browser.newContext({ viewport: { width: 1300, height: 900 } });
-    await c.addCookies([{ name: 'testuser', value: user, url: SU }]);
     await c.addInitScript(() => { try { if (!localStorage.getItem('fab.sync.url')) localStorage.setItem('fab.sync.url', 'api/sync.php'); } catch {} });
     const p = await c.newPage();
     p.on('pageerror', (e) => consoleErrors.push(e.message));
@@ -2331,8 +2328,41 @@ if (hasPhp) {
     return { c, p };
   };
   const syncOn = async (p) => { await p.goto(SU + '#/parametres'); await p.click('button:text-is("Synchroniser maintenant")'); await p.waitForTimeout(1500); };
-  const A = await device('nico');
-  const B = await device('collegue');
+  const A = await device();
+  const B = await device();
+  await step('Serveur autonome : sans connexion, FabEvent le signale ; le premier compte administrateur se crée depuis l’application', async () => {
+    await A.p.goto(SU + '#/'); await A.p.waitForTimeout(2500);
+    expect(await A.p.locator('.auth-banner').count() === 1, 'bandeau « connexion expirée »');
+    expect((await A.p.locator('.net').innerText()).includes('se reconnecter'), 'badge de synchro : se reconnecter');
+    await A.p.click('.auth-banner button:text-is("Se reconnecter")');
+    await A.p.waitForSelector('.login-card');
+    await A.p.waitForSelector('.login-card button[type=submit]:not([disabled])');
+    expect((await A.p.locator('.login-card').innerText()).includes('Première utilisation'), 'serveur vierge : création du premier compte');
+    await A.p.fill('.login-card input[aria-label="Nom"]', 'Nico');
+    await A.p.fill('.login-card input[aria-label="Email"]', 'nico@exemple.org');
+    await A.p.fill('.login-card input[aria-label="Mot de passe"]', 'motdepasse');
+    await A.p.fill('.login-card input[aria-label="Répéter le mot de passe"]', 'motdepasse');
+    await A.p.click('.login-card button[type=submit]');
+    await A.p.waitForSelector('.layout'); await A.p.waitForTimeout(2500);
+    expect(await A.p.locator('.auth-banner').count() === 0, 'plus de bandeau après connexion');
+    expect((await A.p.locator('.net').innerText()).includes('synchronisé'), `synchronisé (${await A.p.locator('.net').innerText()})`);
+  });
+  await step('Serveur autonome : un 2e appareil se connecte avec le compte FabEvent (aucune page interne)', async () => {
+    await B.p.goto(SU + '#/'); await B.p.waitForTimeout(2000);
+    await B.p.click('.auth-banner button:text-is("Se reconnecter")');
+    await B.p.waitForSelector('.login-card button[type=submit]:not([disabled])');
+    expect((await B.p.locator('.login-card').innerText()).includes('Connecte-toi avec ton compte FabEvent'), 'le serveur a des comptes : écran de connexion');
+    await B.p.fill('.login-card input[aria-label="Email"]', 'nico@exemple.org');
+    await B.p.fill('.login-card input[aria-label="Mot de passe"]', 'mauvais');
+    await B.p.click('.login-card button[type=submit]');
+    await B.p.waitForSelector('.login-card .avail.ko');
+    expect((await B.p.locator('.login-card .avail.ko').innerText()).includes('incorrect'), 'mauvais mot de passe refusé par le serveur');
+    await B.p.fill('.login-card input[aria-label="Mot de passe"]', 'motdepasse');
+    await B.p.click('.login-card button[type=submit]');
+    await B.p.waitForSelector('.layout'); await B.p.waitForTimeout(2500);
+    expect((await B.p.locator('.net').innerText()).includes('synchronisé'), 'synchronisé sur le 2e appareil');
+    expect((await B.p.locator('.side-user').innerText()).includes('Nico'), 'connecté avec le compte du serveur');
+  });
   await step('Synchro : un contact créé sur un appareil apparaît sur l’autre', async () => {
     await A.p.goto(SU + '#/contacts'); await A.p.waitForTimeout(500);
     await A.p.click('button:text-is("+ Nouveau contact")');

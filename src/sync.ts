@@ -82,12 +82,14 @@ export const syncState = () => state;
 async function call(action: string, body?: unknown, params: Record<string, string> = {}) {
   const u = new URL(syncUrl(), location.href);
   u.searchParams.set('action', action);
+  u.searchParams.set('ws', ws());
   for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
   const r = await fetch(u.href, {
     method: body ? 'POST' : 'GET', credentials: 'include', cache: 'no-store',
     headers: body ? { 'Content-Type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined,
   });
   if (r.status === 401) throw Object.assign(new Error('Connexion requise'), { auth: true });
+  if (r.status === 403) throw new Error('ce compte (sous-traitant) ne synchronise pas toute la base');
   // le serveur renvoie la page de l'app (réécriture SPA) : l'API n'est pas au bon endroit
   if ((r.headers.get('content-type') || '').includes('text/html'))
     throw Object.assign(new Error('API non atteinte (la page de l’application est renvoyée) : déposer le dossier api/ à côté de l’application (ex. /fabevent/api/) — voir docs/deploiement-fabri.md'), { api: true });
@@ -188,7 +190,7 @@ export async function syncNow(): Promise<SyncState> {
     emit({ status: 'idle', message: undefined });
   } catch (e) {
     const err = e as Error & { auth?: boolean };
-    emit(err.auth ? { status: 'auth', message: 'Connecte-toi aux pages internes pour synchroniser.' } : { status: navigator.onLine ? 'error' : 'offline', message: err.message });
+    emit(err.auth ? { status: 'auth', message: 'Connexion au serveur FabEvent expirée sur cet appareil : reconnecte-toi (tes modifications restent ici en attendant).' } : { status: navigator.onLine ? 'error' : 'offline', message: err.message });
   } finally {
     running = false;
   }

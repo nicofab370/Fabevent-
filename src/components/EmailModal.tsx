@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { db } from '../db';
 import { buildEml, canShareFiles, mailtoUrl, shareFiles, type Attachment, type MailDraft } from '../email';
 import { fillVars, mailServer, MAIL_KINDS, newTemplate, sendMail, splitAddrs, templatesFor, toTemplate, type MailServer } from '../mailer';
+import { requestLogin } from '../serverAuth';
 import { safeFileName } from '../pdf';
 import type { MailKind } from '../types';
 import { download } from '../utils';
@@ -214,7 +215,8 @@ export function EmailModal({ initial, prepare, onSent, onClose, kind, vars, hint
           {me && <label className="check-row"><input type="checkbox" checked={copyMe} onChange={(e) => setCopyMe(e.target.checked)} /> Copie cachée à moi ({me}) — les réponses arrivent à cette adresse</label>}
         </div>
       )}
-      {server && !server.ok && <p className="muted send-why">Envoi direct indisponible : {server.error} Utilise l'une des façons ci-dessous.</p>}
+      {server && !server.ok && <p className="muted send-why">Envoi direct indisponible : {server.error}{' '}
+        {server.login ? <><button type="button" className="small secondary" onClick={requestLogin}>Se reconnecter</button> (rien n'est perdu), ou utilise l'une des façons ci-dessous.</> : 'Utilise l\'une des façons ci-dessous.'}</p>}
 
       <details className="send-others" open={!!server && !server.ok}>
         <summary>{server?.ok ? 'Autres façons d\'envoyer (ma messagerie)' : 'Envoyer avec ma messagerie'}</summary>

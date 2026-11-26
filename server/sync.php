@@ -2,9 +2,9 @@
 /**
  * FabEvent — serveur de synchronisation (à déposer sur l'hébergement, ex. /fabevent/api/sync.php).
  *
- * - Accès : il faut être connecté aux pages internes FABRI.live (interne/login.php), comme la Checklist.
- * - Les comptes qui ont accès au Rentman commun partagent le même espace ; les autres ont chacun le leur.
- * - Stockage : une base SQLite dans le dossier privé des pages internes (hors du web quand c'est possible).
+ * - Accès : session FabEvent (auth.php, comptes de l'application) sur la base demandée ; rôles admin / entrepôt.
+ * - FabEvent est autonome : aucune dépendance aux pages internes du site (voir _fabevent.php).
+ * - Stockage : une base SQLite dans un dossier privé (hors du web quand c'est possible).
  * - Chaque enregistrement garde sa dernière version ; en cas de conflit, la plus récente l'emporte.
  *
  * Actions :
@@ -14,56 +14,44 @@
  *   GET  ?action=ping                                       → vérifie la connexion
  */
 ini_set('display_errors', '0');
-
-// bibliothèque de connexion des pages internes (chemin à adapter si FabEvent n'est pas dans /fabevent/)
-$auth = getenv('FABEVENT_AUTH') ?: __DIR__ . '/../../interne/_lib/auth.php';
-if (!is_file($auth)) { http_response_code(503); header('Content-Type: application/json'); echo '{"error":"auth_lib"}'; exit; }
-require $auth;
+require __DIR__ . '/_fabevent.php';   // connexion avec les comptes FabEvent (aucune dépendance aux pages internes)
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 header('X-Content-Type-Options: nosniff');
 header('X-Robots-Tag: noindex, nofollow');
 
-function out(int $status, array $data): void {
-    http_response_code($status);
-    echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    exit;
-}
-
-$U = api_user();                 // 401 si personne n'est connecté
-session_write_close();
-$space = can_use_shared($U) ? 'commun' : 'u-' . preg_replace('/[^a-z0-9_-]/i', '', (string)($U['login'] ?? 'x'));
+function out(int $status, array $data): void { fe_json($status, $data); }
 
 const TABLES = ['contacts', 'categories', 'equipment', 'projects', 'subprojects', 'lines', 'people', 'crew', 'vehicles',
     'vehicleAssignments', 'docs', 'settings', 'units', 'repairs', 'inspections', 'subrentals', 'costs', 'unavailability',
     'files', 'transfers', 'appointments', 'checklists', 'crewRequests', 'users'];
 
 function ws_of($v): string {
-    $w = (string)$v;
-    if (!preg_match('/^[a-z0-9_-]{1,40}$/i', $w)) out(400, ['error' => 'bad_ws']);
+    $w = fe_ws($v);
+    if (!$w) out(400, ['error' => 'bad_ws']);
     return $w;
 }
 
-$dir = data_dir();
 try {
-    $db = new PDO('sqlite:' . $dir . '/fabevent-sync.sqlite', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-    $db->exec('PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;');
-    $db->exec('CREATE TABLE IF NOT EXISTS changes (seq INTEGER PRIMARY KEY AUTOINCREMENT, space TEXT NOT NULL, tbl TEXT NOT NULL, id TEXT NOT NULL,
-        data TEXT, u TEXT NOT NULL, who TEXT, UNIQUE(space, tbl, id))');
-    $db->exec('CREATE INDEX IF NOT EXISTS changes_space_seq ON changes(space, seq)');
-    $db->exec('CREATE TABLE IF NOT EXISTS counters (space TEXT NOT NULL, k TEXT NOT NULL, n INTEGER NOT NULL, PRIMARY KEY(space, k))');
+    $db = fe_db();
 } catch (Throwable $e) {
     out(500, ['error' => 'storage', 'detail' => 'SQLite indisponible sur l\'hébergement']);
 }
-@chmod($dir . '/fabevent-sync.sqlite', 0600);
+
+// la base demandée (paramètre ws, ou dans le corps JSON) : il faut une session FabEvent sur CETTE base
+$rawBody = ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' ? (string)file_get_contents('php://input') : '';
+$wsReq = $_GET['ws'] ?? ((json_decode($rawBody, true) ?: [])['ws'] ?? '');
+$U = fe_require(ws_of($wsReq));
+$space = FE_SPACE;
 
 $action = $_GET['action'] ?? '';
 
-if ($action === 'ping') out(200, ['ok' => true, 'user' => (string)($U['login'] ?? ''), 'space' => $space]);
+if ($action === 'ping') out(200, ['ok' => true, 'user' => (string)($U['email'] ?? ''), 'ws' => (string)$U['ws']]);
 
 function body(): array {
-    $raw = (string)file_get_contents('php://input');
+    global $rawBody;
+    $raw = $rawBody;
     if (strlen($raw) > 40 * 1024 * 1024) out(413, ['error' => 'too_big']);
     $j = json_decode($raw, true);
     if (!is_array($j)) out(400, ['error' => 'bad_request']);
@@ -87,7 +75,7 @@ if ($action === 'push' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             // la version la plus récente l'emporte
             if ($old !== false && strcmp((string)$old, $u) > 0) { $skipped++; continue; }
             $data = array_key_exists('d', $c) && $c['d'] !== null ? json_encode($c['d'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : null;
-            $put->execute([$key, $t, $id, $data, $u, (string)($U['login'] ?? '')]);
+            $put->execute([$key, $t, $id, $data, $u, (string)($U['email'] ?? '')]);
             $applied++;
         }
         $db->exec('COMMIT');

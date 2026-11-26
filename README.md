@@ -25,9 +25,9 @@ npm run test:parcours  # nouveautés en contexte : import Rentman, catégories, 
 
 Les comptes sont synchronisés avec la base (`users` dans la synchro) : mêmes identifiants sur tous les appareils de la société.
 
-**Plusieurs sociétés sur le même serveur** : chaque société = **son propre espace de synchronisation**, isolé côté serveur :
-- option recommandée : un compte interne FABRI.live par société → espace `u-<login>` dédié, invisible des autres sociétés ;
-- ou une install PHP séparée par société (répertoire `data` distinct, ex. via la variable d'environnement `FABEVENT_DATA`).
+**Connexion au serveur** : le serveur (`api/auth.php`) vérifie les **comptes FabEvent** eux-mêmes (mot de passe, code MFA si activé) et ouvre une session de 60 jours par appareil. FabEvent ne dépend d'aucune autre partie du site (pas de pages internes) : le dossier `fabevent/` fonctionne seul.
+
+**Plusieurs sociétés sur le même serveur** : chaque base (Paramètres → « Nouvelle base pour une autre société ») a ses propres comptes et ses propres données côté serveur ; une session ouverte sur une base ne donne pas accès aux autres. Pour séparer complètement, une install par société (dossier de données distinct : `data_dir` dans `api/fabevent-config.php`).
 
 **Connexion externe (Google / Microsoft / Apple)** : si un serveur `oauth.php` est déployé à côté de `sync.php`, l'écran de connexion propose les boutons des fournisseurs configurés. Déroulement : popup → fournisseur (state + PKCE) → retour serveur → code à usage unique → profil vérifié renvoyé à l'application, qui rattache le compte local **par email** (un email inconnu crée un compte désactivé, à valider par un admin). Config serveur (variables d'environnement, HTTPS obligatoire) :
 - Google : `FABEVENT_OAUTH_GOOGLE_CLIENT_ID` / `FABEVENT_OAUTH_GOOGLE_CLIENT_SECRET` (redirect autorisé : `https://<hôte>/fabevent/api/oauth.php?action=callback&provider=google`)
@@ -279,8 +279,8 @@ S son, V vidéo, L lumière, IT informatique, R rigging, K kit… —, numéro u
 reçoit `F-S-0010-03` (au-delà de 99 unités : 0A, 0B… FF). La lettre est demandée à la création d'un dépôt ; les lettres des
 catégories et la génération des codes manquants sont dans Paramètres.
 
-**Synchronisation automatique** entre appareils via `server/sync.php` sur l'hébergement (connexion des pages internes
-FABRI.live), hors ligne d'abord, numéros de facture sans doublon : voir [docs/deploiement-fabri.md](docs/deploiement-fabri.md).
+**Synchronisation automatique** entre appareils via `server/sync.php` sur l'hébergement (connexion avec les comptes
+FabEvent, autonome), hors ligne d'abord, numéros de facture sans doublon : voir [docs/deploiement-fabri.md](docs/deploiement-fabri.md).
 
 **Démo** : Paramètres → « Ouvrir la base de démo » crée une base séparée avec des clients, du matériel, une équipe et 8 projets fictifs (réinitialisable).
 

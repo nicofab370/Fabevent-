@@ -362,7 +362,7 @@ export default function SettingsPage() {
           <p className="muted">
             La base créée est <strong>100 % isolée</strong> : ses données (IndexedDB séparée sur chaque appareil), ses comptes
             utilisateurs et son espace de synchronisation côté serveur (préfixé du nom de la base) n’ont <strong>aucun lien</strong> avec
-            les autres bases. Tu peux en plus lui donner sa propre adresse de synchro (autre serveur ou autre connexion interne).
+            les autres bases. Tu peux en plus lui donner sa propre adresse de synchro (autre serveur).
           </p>
           <Field label="Nom de la société" full>
             <input autoFocus value={socName} onChange={(e) => setSocName(e.target.value)} aria-label="Nom de la société" placeholder="Ex. : Beta SPRL" />

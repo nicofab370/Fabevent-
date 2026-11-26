@@ -34,7 +34,8 @@ import Projects from './pages/Projects';
 import SettingsPage from './pages/Settings';
 import Vehicles from './pages/Vehicles';
 import Shortages from './pages/Shortages';
-import { SyncBadge } from './components/SyncPanel';
+import { SyncBadge, useSyncState } from './components/SyncPanel';
+import { loginRequested, requestLogin, serverLogout } from './serverAuth';
 import Venues, { VenueDetail } from './pages/Venues';
 import CrewAssignmentPage from './pages/crewAssign';
 import QrCard from './pages/QrCard';
@@ -74,7 +75,9 @@ export default function App() {
   // comptes utilisateurs : verrouillage de la base + menu restreint par rôle
   const me = useUser();
   const anyUsers = hasUsers();
-  const locked = anyUsers === true && !me;
+  // verrouillée sans session, ou reconnexion au serveur demandée (badge « se reconnecter »)
+  const locked = (anyUsers === true && !me) || loginRequested();
+  const sync = useSyncState();
   const role = me?.role;
   /** badge d'alerte par entrée du menu */
   const badge: Record<string, [number, string]> = {
@@ -118,7 +121,7 @@ export default function App() {
         </nav>
         <UndoButton />
         <SyncBadge online={online} />
-        {me && anyUsers === true && <button className="side-user" onClick={() => { logout(); location.reload(); }} title="Se déconnecter">{me.name} · {ROLE_LABELS[me.role].split(' (')[0]} — se déconnecter</button>}
+        {me && anyUsers === true && <button className="side-user" onClick={async () => { await serverLogout(); logout(); location.reload(); }} title="Se déconnecter">{me.name} · {ROLE_LABELS[me.role].split(' (')[0]} — se déconnecter</button>}
         <div className="side-version">v{APP_VERSION} · <a href={APP_PR_URL} target="_blank" rel="noreferrer">PR #{APP_PR}</a></div>
       </aside>
       <GlobalSearch role={role} />
@@ -128,6 +131,12 @@ export default function App() {
         <UndoButton compact />
       </div>
       <main className="main">
+        {sync.status === 'auth' && (
+          <div className="auth-banner" role="alert">
+            <span><b>Connexion au serveur FabEvent expirée sur cet appareil.</b> Tes modifications restent ici et partiront dès que tu te reconnectes ; en attendant, les mails avec liens (disponibilités, devis…) ne partent pas.</span>
+            <button type="button" onClick={requestLogin}>Se reconnecter</button>
+          </div>
+        )}
         <OpenTabs />
         {role && role !== 'admin' && !pathAllowed(loc.pathname, role) ? <Navigate to={ROLE_DEFAULT[role]} replace /> : null}
         <Routes>

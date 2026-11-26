@@ -2,7 +2,7 @@
 /**
  * FabEvent — envoi des emails depuis la plateforme (à déposer à côté de sync.php, ex. /fabevent/api/mail.php).
  *
- * - Accès : connecté aux pages internes FABRI.live, comme sync.php.
+ * - Accès : session FabEvent (auth.php), comme sync.php — aucune dépendance aux pages internes du site.
  * - Réglages : fichier mail-config.php à côté de ce fichier (jamais dans le dépôt Git), voir mail-config.example.php.
  *   Avec un serveur SMTP (recommandé : les mails arrivent mieux), sinon la fonction mail() de l'hébergement.
  *
@@ -12,9 +12,7 @@
  */
 ini_set('display_errors', '0');
 
-$auth = getenv('FABEVENT_AUTH') ?: __DIR__ . '/../../interne/_lib/auth.php';
-if (!is_file($auth)) { http_response_code(503); header('Content-Type: application/json'); echo '{"error":"auth_lib"}'; exit; }
-require $auth;
+require __DIR__ . '/_fabevent.php';   // connexion avec les comptes FabEvent (aucune dépendance aux pages internes)
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
@@ -27,8 +25,7 @@ function out(int $status, array $data): void {
     exit;
 }
 
-$U = api_user();
-session_write_close();
+$U = fe_require(fe_ws($_GET['ws'] ?? '') ?: null);   // session FabEvent (sur la base indiquée, sinon n'importe laquelle)
 
 /* ---------- réglages ---------- */
 $cfgFile = getenv('FABEVENT_MAIL_CONFIG') ?: __DIR__ . '/mail-config.php';
@@ -41,7 +38,7 @@ $fromName = (string)($cfg['fromName'] ?? 'FabEvent');
 $mode = $outbox ? 'outbox' : (!empty($cfg['smtp']['host']) ? 'smtp' : 'mail');
 
 $action = $_GET['action'] ?? '';
-if ($action === 'status') out(200, ['ok' => true, 'mode' => $mode, 'from' => $from, 'user' => (string)($U['login'] ?? '')]);
+if ($action === 'status') out(200, ['ok' => true, 'mode' => $mode, 'from' => $from, 'user' => (string)($U['email'] ?? '')]);
 if ($action !== 'send' || $_SERVER['REQUEST_METHOD'] !== 'POST') out(400, ['error' => 'unknown_action']);
 
 $raw = (string)file_get_contents('php://input');
