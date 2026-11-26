@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Field, Modal, NumInput, PageHead, useSettings } from '../components/ui';
-import { currentWorkspace, db, DEFAULT_PROJECT_TYPES, deleteWorkspace, listWorkspaces, switchWorkspace, TABLES } from '../db';
+import { currentWorkspace, db, DEFAULT_PROJECT_TYPES, deleteWorkspace, listWorkspaces, setWsMeta, switchWorkspace, TABLES, wsMeta } from '../db';
+import { setSyncUrlFor } from '../sync';
 import { DEMO_WORKSPACE, seedDemo } from '../demo';
 import type { InvoiceMoment, Settings } from '../types';
 import { MOMENT_TRIGGERS, VAT_REGIME_LABELS } from '../types';
@@ -27,6 +28,9 @@ export default function SettingsPage() {
   const [persisted, setPersisted] = useState<boolean | null>(null);
   const [newWs, setNewWs] = useState('');
   const [wsList, setWsList] = useState(listWorkspaces);
+  const [socOpen, setSocOpen] = useState(false);
+  const [socName, setSocName] = useState('');
+  const [socUrl, setSocUrl] = useState('');
 
   useEffect(() => {
     db.settings.get('main').then((x) => { if (x) setS({ ...current, ...x, company: { ...current.company, ...x.company } }); setLoaded(true); });
@@ -318,11 +322,14 @@ export default function SettingsPage() {
 
       <div className="card">
         <h2>Bases de données</h2>
-        <p className="muted">Une base séparée par activité ou par collègue. Base active : <strong>{currentWorkspace()}</strong></p>
+        <p className="muted">Une base séparée par activité, par collègue ou par société. Base active : <strong>{currentWorkspace()}</strong>{wsMeta(currentWorkspace()).society && <> — <span className="avail ok">société isolée (aucun lien avec les autres bases)</span></>}</p>
         <ul className="ws-list">
-          {wsList.map((w) => (
+          {wsList.map((w) => {
+            const m = wsMeta(w);
+            return (
             <li key={w}>
-              <button className={w === currentWorkspace() ? '' : 'secondary'} disabled={w === currentWorkspace()} onClick={() => switchWorkspace(w)}>{w}</button>
+              <button className={w === currentWorkspace() ? '' : 'secondary'} disabled={w === currentWorkspace()} onClick={() => switchWorkspace(w)}>{m.label || w}</button>
+              {m.society && <span className="avail ok">société isolée</span>}
               {w === currentWorkspace() && <span className="muted">ouverte</span>}
               {w !== 'principal' && (
                 <button className="danger ws-del" aria-label={`Supprimer la base ${w}`} onClick={async () => {
@@ -334,14 +341,43 @@ export default function SettingsPage() {
                 }}>Supprimer</button>
               )}
             </li>
-          ))}
+            );
+          })}
         </ul>
         <p className="muted">La suppression efface la base de cet appareil seulement. La base principale ne peut pas être supprimée.</p>
         <div className="toolbar">
-          <input placeholder="Nom de la nouvelle base" value={newWs} onChange={(e) => setNewWs(e.target.value)} />
+          <input placeholder="Nom de la nouvelle base" value={newWs} onChange={(e) => setNewWs(e.target.value)} aria-label="Nom de la nouvelle base" />
           <button className="secondary" disabled={!newWs.trim()} onClick={() => switchWorkspace(newWs.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-'))}>Créer et ouvrir</button>
+          <button className="secondary" onClick={() => { setSocName(''); setSocUrl(''); setSocOpen(true); }}>Nouvelle base pour une autre société…</button>
         </div>
       </div>
+      {socOpen && (
+        <Modal title="Nouvelle base pour une autre société" onClose={() => setSocOpen(false)}>
+          <p className="muted">
+            La base créée est <strong>100 % isolée</strong> : ses données (IndexedDB séparée sur chaque appareil), ses comptes
+            utilisateurs et son espace de synchronisation côté serveur (préfixé du nom de la base) n’ont <strong>aucun lien</strong> avec
+            les autres bases. Tu peux en plus lui donner sa propre adresse de synchro (autre serveur ou autre connexion interne).
+          </p>
+          <Field label="Nom de la société" full>
+            <input autoFocus value={socName} onChange={(e) => setSocName(e.target.value)} aria-label="Nom de la société" placeholder="Ex. : Beta SPRL" />
+          </Field>
+          <Field label="Adresse de synchro propre à cette base (optionnel)" full>
+            <input value={socUrl} onChange={(e) => setSocUrl(e.target.value)} aria-label="Adresse de synchro de la nouvelle base" placeholder="https://…/api/sync.php — vide = api/sync.php à côté de l’app" />
+          </Field>
+          <div className="form-actions">
+            <button type="button" disabled={!socName.trim()} onClick={() => {
+              const slug = socName.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
+              if (!slug) return;
+              if (listWorkspaces().includes(slug)) { alert('Une base porte déjà ce nom.'); return; }
+              setWsMeta(slug, { label: socName.trim(), society: true });
+              if (socUrl.trim()) setSyncUrlFor(slug, socUrl.trim());
+              setSocOpen(false);
+              switchWorkspace(slug);
+            }}>Créer et ouvrir</button>
+            <button type="button" className="secondary" onClick={() => setSocOpen(false)}>Annuler</button>
+          </div>
+        </Modal>
+      )}
       <UsersCard />
       <div className="card">
         <h2>Version</h2>

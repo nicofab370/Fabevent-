@@ -33,11 +33,12 @@ export function SyncPanel() {
         Avec le serveur de synchronisation (fichier <code>sync.php</code> sur ton hébergement), tous les appareils connectés partagent les mêmes
         données, automatiquement : toutes les 20 secondes, dès qu'une modification est faite et au retour du réseau. Sans réseau, tout continue
         de fonctionner et part plus tard. Les numéros de facture sont attribués par le serveur pour éviter les doublons.
+        Chaque base a sa propre adresse de serveur : une base « société isolée » peut viser un autre serveur ou une autre connexion interne.
       </p>
       {demo ? <p className="muted">La base de démonstration n'est jamais synchronisée.</p> : (
         <>
           <div className="toolbar">
-            <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://fabri.live/fabevent/api/sync.php" style={{ maxWidth: 420 }} aria-label="Adresse du serveur de synchronisation" />
+            <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://fabri.live/fabevent/api/sync.php" style={{ maxWidth: 420 }} aria-label="Adresse du serveur de synchronisation (propre à cette base)" />
             <button className="secondary" onClick={() => setSyncUrl(url)}>Enregistrer</button>
             <button disabled={!syncUrl()} onClick={() => syncNow()}>Synchroniser maintenant</button>
           </div>

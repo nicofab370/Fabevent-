@@ -39,7 +39,7 @@ Les comptes sont synchronisés avec la base (`users` dans la synchro) : mêmes i
 
 **Mot de passe oublié** : sur l'écran de connexion, « Mot de passe oublié ? » envoie à l'email du compte un lien de réinitialisation via `public.php` (`POST ?action=reset_request {email}` → lien `?pw=<jeton>`, jeton à usage unique valable 2 h en SQLite, même config mail que `mail.php`). Le nouveau mot de passe est haché comme dans l'app (SHA-256 `sel:motdepasse`) et écrit dans la table `users` synchronisée : il arrive sur tous les appareils à la prochaine synchro (l'écran de connexion se resynchronise tout seul). Sans serveur configuré, un administrateur redéfinit le mot de passe d'un compte dans Paramètres → Utilisateurs (« Mot de passe… »).
 
-Côté client, une « base » = un espace de travail local (Paramètres → Bases : créer/ouvrir/supprimer) ; chaque base a sa société (Paramètres → Ma société) et éventuellement sa propre synchro. Les sous-traitants d'une société n'ont un compte que dans l'espace de cette société.
+Côté client, une « base » = un espace de travail local (Paramètres → Bases : créer/ouvrir/supprimer) ; chaque base a sa société (Paramètres → Ma société) et éventuellement sa propre synchro. **« Nouvelle base pour une autre société… »** crée une base 100 % isolée : IndexedDB séparée, comptes utilisateurs séparés, adresse de synchro propre par base, et côté serveur un espace dédié (`<espace-login>/<nom-de-base>` — les deux bases ne se voient jamais, même sur la même install). Les sous-traitants d'une société n'ont un compte que dans l'espace de cette société.
 
 ## Fonctionnalités
 
