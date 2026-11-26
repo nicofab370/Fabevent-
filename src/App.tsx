@@ -36,7 +36,7 @@ import Vehicles from './pages/Vehicles';
 import Shortages from './pages/Shortages';
 import { SyncBadge, useSyncState } from './components/SyncPanel';
 import { BaseSwitcher } from './components/BaseSwitcher';
-import { loginRequested, requestLogin, serverLogout } from './serverAuth';
+import { loginRequested, serverLogout, serverOn } from './serverAuth';
 import Venues, { VenueDetail } from './pages/Venues';
 import CrewAssignmentPage from './pages/crewAssign';
 import QrCard from './pages/QrCard';
@@ -76,9 +76,13 @@ export default function App() {
   // comptes utilisateurs : verrouillage de la base + menu restreint par rôle
   const me = useUser();
   const anyUsers = hasUsers();
-  // verrouillée sans session, ou reconnexion au serveur demandée (badge « se reconnecter »)
-  const locked = (anyUsers === true && !me) || loginRequested();
   const sync = useSyncState();
+  // Avec le serveur FabEvent : écran de connexion d'office tant qu'on n'est pas connecté
+  // (jamais connecté sur cet appareil, déconnecté, ou session du serveur expirée).
+  // Sans serveur (base locale, démo) : verrouillée seulement si la base a des comptes.
+  const locked = anyUsers !== undefined && (serverOn()
+    ? !me || !me.id || sync.status === 'auth'
+    : (anyUsers && !me) || loginRequested());
   const role = me?.role;
   /** badge d'alerte par entrée du menu */
   const badge: Record<string, [number, string]> = {
@@ -132,12 +136,6 @@ export default function App() {
         <UndoButton compact />
       </div>
       <main className="main">
-        {sync.status === 'auth' && (
-          <div className="auth-banner" role="alert">
-            <span><b>Connexion au serveur FabEvent expirée sur cet appareil.</b> Tes modifications restent ici et partiront dès que tu te reconnectes ; en attendant, les mails avec liens (disponibilités, devis…) ne partent pas.</span>
-            <button type="button" onClick={requestLogin}>Se reconnecter</button>
-          </div>
-        )}
         <OpenTabs />
         {role && role !== 'admin' && !pathAllowed(loc.pathname, role) ? <Navigate to={ROLE_DEFAULT[role]} replace /> : null}
         <Routes>

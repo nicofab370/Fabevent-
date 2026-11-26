@@ -888,12 +888,6 @@ table.list tr.limiting td:first-child, table.list tr.kit-child.limiting td:nth-c
 @media screen and (max-width: 640px) {
   .cards-sm tr.kid { border-left: 4px solid var(--accent); }
 }
-
-/* connexion au serveur FabEvent expirée */
-.auth-banner { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; background: #fef3c7; color: #78350f; border: 1px solid #fcd34d; border-radius: 10px; padding: 10px 14px; margin: 0 0 12px; font-size: 14px; }
-.auth-banner button { flex: none; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .auth-banner { background: #422006; color: #fde68a; border-color: #92400e; } }
-:root[data-theme="dark"] .auth-banner { background: #422006; color: #fde68a; border-color: #92400e; }
 .ws-switch { display: flex; align-items: center; gap: 4px; }
 .ws-switch select { flex: 1; min-width: 0; min-height: 0; padding: 2px 6px; font-size: 12px; background: transparent; color: inherit; border: 1px solid color-mix(in srgb, currentColor 30%, transparent); border-radius: 6px; }
 .ws-switch select option { color: #111827; }
