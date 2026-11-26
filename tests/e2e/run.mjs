@@ -2490,6 +2490,34 @@ if (hasPhp) {
     expect(ics.startsWith('BEGIN:VCALENDAR') && ics.includes('Sam Lien'), 'flux iCal servi');
     await T.close();
   });
+  await step('Plusieurs bases avec le même compte : sélecteur de base, sans se reconnecter', async () => {
+    // une 2e base (autre société) : son premier administrateur = le même email et le même mot de passe
+    await A.p.evaluate(() => { localStorage.setItem('fabevent.workspace', 'societe2'); localStorage.setItem('fabevent.workspaces', JSON.stringify(['societe2'])); });
+    await A.p.goto(SU + '#/'); await A.p.reload(); await A.p.waitForTimeout(2000);
+    await A.p.click('.auth-banner button:text-is("Se reconnecter")');
+    await A.p.waitForSelector('.login-card button[type=submit]:not([disabled])');
+    expect((await A.p.locator('.login-card').innerText()).includes('Première utilisation'), 'nouvelle base : création de son administrateur');
+    await A.p.fill('.login-card input[aria-label="Nom"]', 'Nico');
+    await A.p.fill('.login-card input[aria-label="Email"]', 'nico@exemple.org');
+    await A.p.fill('.login-card input[aria-label="Mot de passe"]', 'motdepasse');
+    await A.p.fill('.login-card input[aria-label="Répéter le mot de passe"]', 'motdepasse');
+    await A.p.click('.login-card button[type=submit]');
+    await A.p.waitForSelector('.layout'); await A.p.waitForTimeout(1500);
+    const sel = A.p.locator('select[aria-label="Changer de base"]');
+    await sel.waitFor({ timeout: 10000 });
+    const opts = await sel.locator('option').evaluateAll((os) => os.map((o) => o.value));
+    expect(opts.includes('principal') && opts.includes('societe2'), `les deux bases proposées (${opts})`);
+    await sel.selectOption('principal');
+    await A.p.waitForSelector('.layout'); await A.p.waitForTimeout(1500);
+    expect(await A.p.locator('.login-card').count() === 0, 'principal ouverte sans se reconnecter');
+    await A.p.goto(SU + '#/contacts'); await A.p.waitForTimeout(600);
+    expect(await A.p.locator('table.list tr', { hasText: 'Client synchronisé SA' }).count() === 1, 'contacts de la base principale');
+    await A.p.locator('select[aria-label="Changer de base"]').selectOption('societe2');
+    await A.p.waitForSelector('.layout'); await A.p.waitForTimeout(1500);
+    expect(await A.p.locator('.login-card').count() === 0 && await A.p.locator('.auth-banner').count() === 0, 'retour dans societe2 sans se reconnecter');
+    await A.p.locator('select[aria-label="Changer de base"]').selectOption('principal');
+    await A.p.waitForSelector('.layout'); await A.p.waitForTimeout(800);
+  });
   // à la fin : changer le mot de passe ferme les sessions des autres appareils
   const loginWith = async (p, pass) => {
     await p.fill('.login-card input[aria-label="Email"]', 'nico@exemple.org');

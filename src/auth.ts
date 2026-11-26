@@ -1,9 +1,11 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from './db';
+import { currentWorkspace, db } from './db';
 import type { OAuthProvider, Role, User } from './types';
 import { uid } from './utils';
 
+/** compte ouvert sur l'appareil, propre à chaque base (on passe d'une base à l'autre sans se reconnecter) */
 const SESS = 'fab.session';
+const sessKey = (ws = currentWorkspace()) => `${SESS}.${ws}`;
 
 /** Hachage SHA-256 salé (WebCrypto, dispo partout en HTTPS/localhost). */
 export async function hashPass(pass: string, salt: string): Promise<string> {
@@ -27,9 +29,18 @@ export async function verifyUser(email: string, pass: string): Promise<User | nu
   return (await hashPass(pass, u.salt)) === u.passHash ? u : null;
 }
 
-export const sessionUserId = (): string | null => { try { return localStorage.getItem(SESS); } catch { return null; } };
-export function setSession(id: string | null) { try { id ? localStorage.setItem(SESS, id) : localStorage.removeItem(SESS); } catch { /* sans stockage */ } }
-export const logout = () => setSession(null);
+// (ancienne clé commune à toutes les bases : encore lue, le temps d'une reconnexion)
+export const sessionUserId = (): string | null => { try { return localStorage.getItem(sessKey()) ?? localStorage.getItem(SESS); } catch { return null; } };
+export function setSession(id: string | null, ws?: string) {
+  try {
+    if (id) localStorage.setItem(sessKey(ws), id); else localStorage.removeItem(sessKey(ws));
+    localStorage.removeItem(SESS);
+  } catch { /* sans stockage */ }
+}
+/** se déconnecter : de toutes les bases de l'appareil */
+export function logout() {
+  try { for (const k of Object.keys(localStorage)) if (k === SESS || k.startsWith(SESS + '.')) localStorage.removeItem(k); } catch { /* sans stockage */ }
+}
 
 /** Base sans aucun compte = accès administrateur implicite (démo, première ouverture). */
 const OPEN_ADMIN: User = { id: '', createdAt: '', updatedAt: '', name: 'Base ouverte', email: '', salt: '', passHash: '', role: 'admin', active: true };

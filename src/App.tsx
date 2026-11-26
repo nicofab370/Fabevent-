@@ -35,6 +35,7 @@ import SettingsPage from './pages/Settings';
 import Vehicles from './pages/Vehicles';
 import Shortages from './pages/Shortages';
 import { SyncBadge, useSyncState } from './components/SyncPanel';
+import { BaseSwitcher } from './components/BaseSwitcher';
 import { loginRequested, requestLogin, serverLogout } from './serverAuth';
 import Venues, { VenueDetail } from './pages/Venues';
 import CrewAssignmentPage from './pages/crewAssign';
@@ -109,7 +110,7 @@ export default function App() {
     <div className="layout">
       <aside className={'sidebar' + (menu ? ' open' : '')}>
         <div className="brand">Fab<span>Event</span></div>
-        <div className="ws">Base : {currentWorkspace()}</div>
+        <BaseSwitcher />
         {currentWorkspace() === DEMO_WORKSPACE && <NavLink to="/parametres" className="demo-badge">Données fictives de démo</NavLink>}
         <nav>
           {NAV.filter(([to]) => !role || role === 'admin' || pathAllowed(to, role)).map(([to, label, icon]) => (
