@@ -6,3 +6,5 @@ server/mail-config.php
 tsconfig.tsbuildinfo
 tests/e2e/plan-test.pdf
 tests/e2e/ux-shots/
+server/fabevent-config.php
+server/_donnees/

@@ -31,15 +31,7 @@ header('Cache-Control: no-store');
 header('X-Content-Type-Options: nosniff');
 header('X-Robots-Tag: noindex, nofollow');
 
-$auth = getenv('FABEVENT_AUTH') ?: __DIR__ . '/../../interne/_lib/auth.php';
-if (is_file($auth)) require $auth; // fournit data_dir() (même dossier de données que sync.php)
-if (!function_exists('data_dir')) {
-    function data_dir(): string {
-        $d = getenv('FABEVENT_DATA') ?: __DIR__ . '/data';
-        if (!is_dir($d)) @mkdir($d, 0700, true);
-        return $d;
-    }
-}
+require __DIR__ . '/_fabevent.php'; // data_dir() et sessions FabEvent (aucune dépendance aux pages internes)
 
 function out(int $status, array $data): void {
     http_response_code($status);
@@ -113,13 +105,10 @@ function providers(): array {
 function db(): PDO {
     static $db = null;
     if ($db) return $db;
-    $dir = data_dir();
-    $db = new PDO('sqlite:' . $dir . '/fabevent-sync.sqlite', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-    $db->exec('PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;');
+    $db = fe_db(); // même base que sync.php (reprise de l'ancienne base comprise)
     $db->exec('CREATE TABLE IF NOT EXISTS oauth_states (state TEXT PRIMARY KEY, provider TEXT NOT NULL, verifier TEXT NOT NULL, app TEXT NOT NULL, nonce TEXT NOT NULL, exp INTEGER NOT NULL)');
     $db->exec('CREATE TABLE IF NOT EXISTS oauth_codes (code TEXT PRIMARY KEY, provider TEXT NOT NULL, sub TEXT NOT NULL, email TEXT NOT NULL, name TEXT, exp INTEGER NOT NULL)');
     $db->exec('CREATE TABLE IF NOT EXISTS oauth_users (provider TEXT NOT NULL, sub TEXT NOT NULL, email TEXT NOT NULL, name TEXT, PRIMARY KEY(provider, sub))');
-    @chmod($dir . '/fabevent-sync.sqlite', 0600);
     return $db;
 }
 
@@ -283,7 +272,14 @@ if ($action === 'login' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $row = $q->fetch(PDO::FETCH_ASSOC);
     if (!$row || (int)$row['exp'] < time()) out(401, ['error' => 'code_expired']);
     $db->prepare('DELETE FROM oauth_codes WHERE code = ?')->execute([$code]); // usage unique
-    out(200, ['ok' => true, 'profile' => ['email' => $row['email'], 'name' => $row['name'], 'provider' => $row['provider'], 'sub' => $row['sub']]]);
+    // session FabEvent sur la base indiquée si l'email vérifié correspond à un compte actif
+    // (compte avec MFA : pas de session ici, la connexion au serveur se fera par mot de passe + code)
+    $session = false;
+    $ws = fe_ws($_REQUEST['ws'] ?? '');
+    if ($ws) foreach (fe_users($ws) as $u) {
+        if (!empty($u['active']) && strtolower((string)($u['email'] ?? '')) === strtolower((string)$row['email']) && empty($u['totpOn'])) { fe_open_session($ws, $u); $session = true; break; }
+    }
+    out(200, ['ok' => true, 'session' => $session, 'profile' => ['email' => $row['email'], 'name' => $row['name'], 'provider' => $row['provider'], 'sub' => $row['sub']]]);
 }
 
 out(400, ['error' => 'unknown_action']);

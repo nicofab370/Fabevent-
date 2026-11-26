@@ -1,27 +1,33 @@
 import { useEffect, useState } from 'react';
-import { createUser, hasUsers, setSession, verifyUser } from '../auth';
+import { createUser, hasUsers, sessionUserId, setSession, verifyUser } from '../auth';
+import { db } from '../db';
+import { clearLoginRequest, loginRequested, serverLogin, serverOn, serverSetup, serverStatus, type AuthError, type ServerStatus } from '../serverAuth';
 import { Field } from './ui';
 import { oauthAvailable, oauthLogin, OAUTH_PROVIDERS } from '../oauth';
 import { verifyTotp } from '../totp';
 import { serverScript } from '../mailer';
-import { syncEnabled, syncNow } from '../sync';
 import type { User } from '../types';
 
 /**
- * Écran de verrouillage : si la base a des comptes, il faut se connecter ;
+ * Écran de verrouillage : si la base a des comptes (sur l'appareil ou sur le serveur FabEvent), il faut se connecter ;
  * sinon (premier lancement), on crée le compte administrateur.
+ * Avec un serveur, la connexion passe par lui (api/auth.php : session de 60 jours) ; hors ligne, par les comptes gardés sur l'appareil.
  * Avec MFA activé, un code TOTP (application d'authentification) est demandé après le mot de passe.
  * Les boutons Google / Microsoft / Apple n'apparaissent que si un serveur oauth.php est configuré.
  */
 export function Login() {
-  const any = hasUsers();
+  const anyLocal = hasUsers();
+  /** état du serveur FabEvent pour cette base (undefined = vérification, null = pas de serveur / injoignable) */
+  const [srv, setSrv] = useState<ServerStatus | null | undefined>(serverOn() ? undefined : null);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [pass, setPass] = useState('');
   const [pass2, setPass2] = useState('');
+  const [setupCode, setSetupCode] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
-  const [mfaUser, setMfaUser] = useState<User | null>(null);
+  /** étape MFA : par le serveur (email + mot de passe renvoyés avec le code) ou sur l'appareil (compte local) */
+  const [mfa, setMfa] = useState<{ server: boolean; email: string; pass: string; local?: User; setup?: boolean } | null>(null);
   const [code, setCode] = useState('');
   const [forgot, setForgot] = useState(false);
   const [fEmail, setFEmail] = useState('');
@@ -29,11 +35,19 @@ export function Login() {
   const [fErr, setFErr] = useState('');
   const [fBusy, setFBusy] = useState(false);
 
-  // à l'ouverture de l'écran de connexion : récupère d'abord les derniers comptes (ex. mot de passe
-  // réinitialisé depuis un autre appareil via le lien envoyé par le serveur)
-  useEffect(() => { if (syncEnabled()) syncNow().catch(() => {}); }, []);
+  useEffect(() => {
+    if (serverOn()) serverStatus().then((s) => setSrv(s));
+    // reconnexion : l'email du compte ouvert sur cet appareil est déjà rempli
+    const id = sessionUserId();
+    if (id) db.users.get(id).then((u) => { if (u) setEmail((e) => e || u.email); });
+  }, []);
 
-  const open = (u: User) => { setSession(u.id); location.reload(); };
+  /** la base a des comptes (sur l'appareil ou sur le serveur) : on se connecte ; sinon on crée l'administrateur */
+  const any = anyLocal === true || !!srv?.users;
+  const needCode = srv?.setup === 'code';
+  const reachable = !!srv;
+
+  const open = (u: User) => { setSession(u.id); clearLoginRequest(); location.reload(); };
 
   /** Demande un lien de réinitialisation par email (serveur public.php à côté de sync.php). */
   const requestReset = async () => {
@@ -58,34 +72,62 @@ export function Login() {
     } finally { setFBusy(false); }
   };
 
+  /** Compte vérifié sur l'appareil : s'il n'existe pas encore sur le serveur, il y devient le premier administrateur. */
+  const finishLocal = async (u: User, setup: boolean) => {
+    if (setup) {
+      if (u.role !== 'admin') throw new Error('Cette base n’a pas encore de compte sur le serveur : un administrateur doit se connecter en premier sur cet appareil.');
+      await serverSetup(u, setupCode);
+    }
+    open(u);
+  };
+
+  /** Connexion avec le mot de passe sur l'appareil seulement (hors ligne, ou base sans serveur). */
+  const loginLocal = async (setup: boolean) => {
+    const u = await verifyUser(email, pass);
+    if (!u) return setErr('Email ou mot de passe incorrect.');
+    if (u.totpOn && u.totpSecret) { setMfa({ server: false, email, pass, local: u, setup }); setCode(''); return; }
+    await finishLocal(u, setup);
+  };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErr('');
     setBusy(true);
     try {
       if (any) {
-        const u = await verifyUser(email, pass);
-        if (!u) setErr('Email ou mot de passe incorrect.');
-        else if (u.totpOn && u.totpSecret) { setMfaUser(u); setCode(''); }
-        else open(u);
+        if (!reachable) return await loginLocal(false);
+        if (!srv?.users) { // comptes sur l'appareil, pas encore sur le serveur : ce compte y devient le premier
+          if (needCode && !setupCode.trim()) return setErr('Indique le code d’installation (voir ci-dessous).');
+          return await loginLocal(true);
+        }
+        try { open(await serverLogin(email, pass)); }
+        catch (e2) {
+          const k = (e2 as AuthError).kind;
+          if (k === 'mfa') { setMfa({ server: true, email, pass }); setCode(''); }
+          else if (k === 'offline') await loginLocal(false);
+          else setErr((e2 as Error).message);
+        }
       } else {
         if (!name.trim()) return setErr('Indique ton nom.');
         if (pass.length < 6) return setErr('Mot de passe : 6 caractères minimum.');
         if (pass !== pass2) return setErr('Les deux mots de passe ne correspondent pas.');
-        open(await createUser(name, email, pass, 'admin'));
+        if (reachable && needCode && !setupCode.trim()) return setErr('Indique le code d’installation (voir ci-dessous).');
+        const u = await createUser(name, email, pass, 'admin');
+        await finishLocal(u, reachable);
       }
     } catch (e2) { setErr((e2 as Error).message); } finally { setBusy(false); }
   };
 
   const submitMfa = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!mfaUser?.totpSecret) return;
+    if (!mfa) return;
     setErr('');
     setBusy(true);
     try {
-      if (await verifyTotp(mfaUser.totpSecret, code)) open(mfaUser);
+      if (mfa.server) open(await serverLogin(mfa.email, mfa.pass, code));
+      else if (mfa.local?.totpSecret && await verifyTotp(mfa.local.totpSecret, code)) await finishLocal(mfa.local, !!mfa.setup);
       else setErr('Code incorrect : vérifie l’heure de ton téléphone.');
-    } finally { setBusy(false); }
+    } catch (e2) { setErr((e2 as Error).message); } finally { setBusy(false); }
   };
 
   const withProvider = async (provider: typeof OAUTH_PROVIDERS[number]['id']) => {
@@ -93,18 +135,20 @@ export function Login() {
     setBusy(true);
     try {
       const u = await oauthLogin(provider);
-      if (u.totpOn && u.totpSecret) { setMfaUser(u); setCode(''); setBusy(false); } // MFA aussi après OAuth
+      if (u.totpOn && u.totpSecret) { setMfa({ server: false, email: u.email, pass: '', local: u }); setCode(''); setBusy(false); } // MFA aussi après OAuth
       else open(u);
     } catch (e2) { setErr((e2 as Error).message); setBusy(false); }
   };
 
+  const mfaUser = mfa;
   return (
     <div className="login-bg">
       <form className="card login-card" onSubmit={mfaUser ? submitMfa : submit}>
         <h1 style={{ margin: '0 0 4px' }}>Fab<span style={{ color: 'var(--accent, #d97706)' }}>Event</span></h1>
         <p className="muted" style={{ marginTop: 0 }}>
-          {mfaUser ? `Saisis le code à 6 chiffres de ton application d’authentification (${mfaUser.email}).`
-            : any ? 'Connecte-toi pour ouvrir cette base.'
+          {srv === undefined ? 'Vérification du serveur FabEvent…'
+            : mfaUser ? `Saisis le code à 6 chiffres de ton application d’authentification (${mfaUser.email}).`
+            : any ? 'Connecte-toi avec ton compte FabEvent.'
             : 'Première utilisation : crée le compte administrateur de cette base.'}
         </p>
         <div className="form">
@@ -113,10 +157,18 @@ export function Login() {
           {!mfaUser && <Field label="Mot de passe" full><input type="password" required value={pass} onChange={(e) => setPass(e.target.value)} aria-label="Mot de passe" /></Field>}
           {!any && !mfaUser && <Field label="Répéter le mot de passe" full><input type="password" required value={pass2} onChange={(e) => setPass2(e.target.value)} aria-label="Répéter le mot de passe" /></Field>}
           {mfaUser && <Field label="Code à 6 chiffres" full><input inputMode="numeric" autoFocus pattern="[0-9]{6}" maxLength={6} required value={code} onChange={(e) => setCode(e.target.value)} aria-label="Code MFA à 6 chiffres" style={{ fontSize: 22, letterSpacing: 4, textAlign: 'center' }} /></Field>}
+          {!mfaUser && reachable && needCode && !srv?.users && (
+            <Field label="Code d’installation" full>
+              <input value={setupCode} onChange={(e) => setSetupCode(e.target.value.toUpperCase())} aria-label="Code d’installation" placeholder="10 lettres et chiffres" autoComplete="off" />
+            </Field>
+          )}
+          {!mfaUser && reachable && needCode && !srv?.users && <p className="muted field full" style={{ margin: 0, fontSize: 12 }}>Le serveur contient déjà des données : pour créer le premier compte, il faut le code d’installation. Soit celui du fichier <code>code-installation.txt</code> (dossier de données de FabEvent, voir <code>api/diag.php</code>), soit celui que tu choisis dans <code>api/fabevent-config.php</code> (<code>'setup_code' =&gt; '…'</code>, déposé par FTP).</p>}
+          {serverOn() && srv === null && <p className="muted field full" style={{ margin: 0, fontSize: 12 }}>Serveur FabEvent injoignable : connexion sur cet appareil uniquement ; la synchronisation reprendra après une connexion en ligne.</p>}
           {err && <p className="avail ko field full" style={{ margin: 0 }}>{err}</p>}
           <div className="form-actions">
-            <button type="submit" disabled={busy}>{busy ? '…' : mfaUser ? 'Vérifier le code' : any ? 'Se connecter' : 'Créer le compte administrateur'}</button>
-            {mfaUser && <button type="button" className="secondary" onClick={() => { setMfaUser(null); setCode(''); setErr(''); }}>Retour</button>}
+            <button type="submit" disabled={busy || srv === undefined}>{busy ? '…' : mfaUser ? 'Vérifier le code' : any ? 'Se connecter' : 'Créer le compte administrateur'}</button>
+            {mfaUser && <button type="button" className="secondary" onClick={() => { setMfa(null); setCode(''); setErr(''); }}>Retour</button>}
+            {!mfaUser && loginRequested() && <button type="button" className="secondary" onClick={() => { clearLoginRequest(); location.reload(); }} title="Revenir à FabEvent sans te reconnecter : tes modifications restent sur cet appareil">Plus tard</button>}
           </div>
           {any && !mfaUser && !forgot && (
             <p style={{ textAlign: 'center', margin: '12px 0 0' }}>

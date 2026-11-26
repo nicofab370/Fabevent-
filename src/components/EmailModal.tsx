@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { db } from '../db';
 import { buildEml, canShareFiles, mailtoUrl, shareFiles, type Attachment, type MailDraft } from '../email';
-import { fillVars, internalLoginUrl, mailServer, MAIL_KINDS, newTemplate, sendMail, splitAddrs, templatesFor, toTemplate, type MailServer } from '../mailer';
+import { fillVars, mailServer, MAIL_KINDS, newTemplate, sendMail, splitAddrs, templatesFor, toTemplate, type MailServer } from '../mailer';
+import { requestLogin } from '../serverAuth';
 import { safeFileName } from '../pdf';
 import type { MailKind } from '../types';
 import { download } from '../utils';
@@ -215,7 +216,7 @@ export function EmailModal({ initial, prepare, onSent, onClose, kind, vars, hint
         </div>
       )}
       {server && !server.ok && <p className="muted send-why">Envoi direct indisponible : {server.error}{' '}
-        {server.login ? <><a href={internalLoginUrl()}>Se connecter aux pages internes</a>, puis revenir ici ; ou utilise l'une des façons ci-dessous.</> : 'Utilise l\'une des façons ci-dessous.'}</p>}
+        {server.login ? <><button type="button" className="small secondary" onClick={requestLogin}>Se reconnecter</button> (rien n'est perdu), ou utilise l'une des façons ci-dessous.</> : 'Utilise l\'une des façons ci-dessous.'}</p>}
 
       <details className="send-others" open={!!server && !server.ok}>
         <summary>{server?.ok ? 'Autres façons d\'envoyer (ma messagerie)' : 'Envoyer avec ma messagerie'}</summary>

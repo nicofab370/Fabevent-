@@ -1,5 +1,6 @@
 import type { Attachment, MailDraft } from './email';
 import type { MailKind, MailTemplate, Settings } from './types';
+import { currentWorkspace } from './db';
 import { syncEnabled, syncNow, syncUrl } from './sync';
 import { uid } from './utils';
 
@@ -11,16 +12,13 @@ import { uid } from './utils';
  */
 
 /** Adresse d'un script serveur à côté de sync.php (vide sans serveur). */
-export function serverScript(name: 'mail.php' | 'public.php' | 'oauth.php'): string {
+export function serverScript(name: 'mail.php' | 'public.php' | 'oauth.php' | 'auth.php'): string {
   const s = syncUrl();
   if (!s) return '';
   try { const u = new URL(s, location.href); u.pathname = u.pathname.replace(/[^/]*$/, name); u.search = ''; return u.href; } catch { return ''; }
 }
 
-export interface MailServer { ok: boolean; mode?: string; from?: string; error?: string; /** il faut se connecter aux pages internes */ login?: boolean }
-
-/** Page de connexion des pages internes (même site), avec retour sur FabEvent. */
-export const internalLoginUrl = () => new URL('/interne/login.php?r=' + encodeURIComponent(location.pathname), location.href).href;
+export interface MailServer { ok: boolean; mode?: string; from?: string; error?: string; /** il faut se reconnecter au serveur FabEvent */ login?: boolean }
 let cached: { at: number; v: MailServer } | null = null;
 
 /** Le serveur peut-il envoyer les mails ? (réponse gardée 5 minutes) */
@@ -30,13 +28,13 @@ export async function mailServer(force = false): Promise<MailServer> {
   if (!force && cached && Date.now() - cached.at < 300000) return cached.v;
   let v: MailServer;
   try {
-    const r = await fetch(url + '?action=status', { credentials: 'include', cache: 'no-store' });
+    const r = await fetch(url + '?action=status&ws=' + encodeURIComponent(currentWorkspace()), { credentials: 'include', cache: 'no-store' });
     if ((r.headers.get('content-type') || '').includes('text/html')) {
       v = { ok: false, error: 'API mail non atteinte (la page de l’application est renvoyée) : déposer le dossier api/ à côté de l’application (ex. /fabevent/api/mail.php) — voir docs/deploiement-fabri.md' };
     } else {
       const j = await r.json().catch(() => ({}));
       v = r.ok && j.ok ? { ok: true, mode: j.mode, from: j.from }
-        : r.status === 401 ? { ok: false, login: true, error: 'tu n’es pas connecté aux pages internes (FABRI.live) sur cet appareil.' }
+        : r.status === 401 ? { ok: false, login: true, error: 'connexion au serveur FabEvent expirée sur cet appareil.' }
         : { ok: false, error: j.detail || 'Envoi indisponible sur le serveur.' };
     }
   } catch {
@@ -62,11 +60,14 @@ export const splitAddrs = (s: string) => s.split(/[,;\n]+/).map((x) => x.trim())
  */
 async function syncFirst() {
   if (!syncEnabled()) return;
-  for (let i = 0; i < 20; i++) {
-    const st = await syncNow();
-    if (st.status !== 'busy') return;
+  let st = await syncNow();
+  for (let i = 0; i < 40 && st.status === 'busy'; i++) {
     await new Promise((res) => setTimeout(res, 250)); // une synchro était déjà en cours : on attend la suivante
+    st = await syncNow();
   }
+  // le mail ne part pas si ses liens ne marcheraient pas encore chez le destinataire
+  if (st.status === 'auth') throw new Error('Connexion au serveur FabEvent expirée : reconnecte-toi, puis renvoie (rien n’est perdu).');
+  if (st.status === 'error' || st.status === 'offline') throw new Error('Synchronisation impossible pour l’instant (' + (st.message || 'hors ligne') + ') : réessaie dans un moment.');
 }
 
 /** Envoie le mail par le serveur. Lève une erreur lisible si l'envoi échoue. */
@@ -74,7 +75,7 @@ export async function sendMail(m: MailDraft & { cc?: string; bcc?: string; reply
   const url = serverScript('mail.php');
   if (!url) throw new Error('Pas de serveur FabEvent configuré.');
   await syncFirst();
-  const r = await fetch(url + '?action=send', {
+  const r = await fetch(url + '?action=send&ws=' + encodeURIComponent(currentWorkspace()), {
     method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       to: splitAddrs(m.to), cc: splitAddrs(m.cc || ''), bcc: splitAddrs(m.bcc || ''), replyTo: m.replyTo || '', subject: m.subject, text: m.body,
@@ -82,7 +83,7 @@ export async function sendMail(m: MailDraft & { cc?: string; bcc?: string; reply
     }),
   });
   const j = await r.json().catch(() => ({}));
-  if (!r.ok || !j.ok) throw new Error(j.detail || (r.status === 401 ? 'Connecte-toi aux pages internes (FABRI.live) pour envoyer.' : `Envoi refusé (${r.status}).`));
+  if (!r.ok || !j.ok) throw new Error(j.detail || (r.status === 401 ? 'Connexion au serveur FabEvent expirée : reconnecte-toi pour envoyer.' : `Envoi refusé (${r.status}).`));
   return { to: j.to || [] };
 }
 

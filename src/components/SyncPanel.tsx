@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { currentWorkspace } from '../db';
 import { onSync, pushEverything, setSyncUrl, syncNow, syncUrl, type SyncState } from '../sync';
 import { fmtDate } from '../utils';
-import { internalLoginUrl } from '../mailer';
+import { requestLogin } from '../serverAuth';
 import { Icon } from './Icon';
 
 export function useSyncState() {
@@ -19,8 +19,8 @@ export function SyncBadge({ online }: { online: boolean }) {
       : s.status === 'auth' ? 'synchro : connexion requise'
         : s.status === 'error' ? 'synchro en erreur'
           : s.pending ? `${s.pending} modification(s) à envoyer` : 'synchronisé';
-  // connexion requise : le badge devient un lien vers la page de connexion des pages internes
-  if (s.status === 'auth') return <a className="net off" href={internalLoginUrl()} title="Se connecter aux pages internes pour synchroniser et envoyer les mails"><Icon name="dot" size="0.7em" />{label} — se connecter</a>;
+  // connexion au serveur expirée : le badge ouvre l'écran de connexion FabEvent
+  if (s.status === 'auth') return <button type="button" className="net off net-login" onClick={requestLogin} title="Se reconnecter au serveur FabEvent pour synchroniser et envoyer les mails"><Icon name="dot" size="0.7em" />{label} — se reconnecter</button>;
   return <div className={'net ' + (online ? 'on' : 'off')} title={s.message || ''}><Icon name="dot" size="0.7em" />{online ? 'En ligne' : 'Hors ligne'} · {label}</div>;
 }
 
@@ -51,7 +51,7 @@ export function SyncPanel() {
             {s.last && ` · dernière synchro ${fmtDate(s.last)}`}
             {s.message && <span className="avail ko"> — {s.message}</span>}
           </p>
-          {s.status === 'auth' && <p><a href={internalLoginUrl()}>Se connecter aux pages internes</a> puis revenir ici.</p>}
+          {s.status === 'auth' && <p><button type="button" className="small" onClick={requestLogin}>Se reconnecter au serveur FabEvent</button></p>}
           <button className="secondary small" disabled={!syncUrl()} onClick={() => { if (confirm('Envoyer toutes les données de cet appareil au serveur ? (à faire une fois, depuis l\'appareil qui a les bonnes données)')) pushEverything(); }}>
             Envoyer toutes les données de cet appareil
           </button>

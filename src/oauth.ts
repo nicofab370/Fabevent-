@@ -10,6 +10,7 @@
  * Sans serveur configuré (GitHub Pages, poste isolé), les boutons ne sont pas proposés.
  */
 import { linkOAuth } from './auth';
+import { currentWorkspace } from './db';
 import { serverScript } from './mailer';
 import type { OAuthProvider, User } from './types';
 
@@ -41,7 +42,7 @@ export function oauthLogin(provider: OAuthProvider): Promise<User> {
       if (!d || d.source !== 'fabevent-oauth' || typeof d.code !== 'string' || !d.code) return;
       finish(() => {});
       try {
-        const r = await fetch(`${base}?action=login&code=${encodeURIComponent(d.code)}`, { method: 'POST' });
+        const r = await fetch(`${base}?action=login&code=${encodeURIComponent(d.code)}&ws=${encodeURIComponent(currentWorkspace())}`, { method: 'POST', credentials: 'include' });
         const j = await r.json().catch(() => ({}));
         if (!r.ok || !j.ok) throw new Error(j.error || 'Échec de la connexion externe.');
         const p = j.profile as OAuthProfile;
