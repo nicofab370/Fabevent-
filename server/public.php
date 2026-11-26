@@ -32,7 +32,7 @@ header("Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; 
 
 $db = fe_db();
 
-if (!function_exists('h')) { function h($v): string { return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'); } }
+function h($v): string { return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'); }
 function now_u(): string { $t = microtime(true); return gmdate('Y-m-d\TH:i:s', (int)$t) . sprintf('.%03dZ', (int)(($t - floor($t)) * 1000)); }
 function rid(): string { return bin2hex(random_bytes(10)); }
 const ICO_CHECK = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px;margin-right:6px"><path d="M5 12.5l4.5 4.5L19 7"/></svg>';

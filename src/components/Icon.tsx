@@ -83,10 +83,3 @@ export function Icon({ name, title, className, size }: { name: IconName; title?:
     </svg>
   );
 }
-
-/** Même dessin en texte SVG (pour les pages générées en HTML). */
-export function iconSvg(name: IconName, size = 18): string {
-  const d = P[name] ? `<path d="${P[name]}"/>` : '';
-  const c = (DOTS[name] || []).map(([cx, cy, r]) => `<circle cx="${cx}" cy="${cy}" r="${r}" fill="currentColor" stroke="none"/>`).join('');
-  return `<svg class="ico" viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${d}${c}</svg>`;
-}

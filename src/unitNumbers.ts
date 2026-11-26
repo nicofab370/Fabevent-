@@ -11,7 +11,6 @@ import { nowIso } from './utils';
 export const unitNo = (u: Pick<SerialUnit, 'number'>): string => (u.number ? `#${u.number}` : '');
 
 /** « #3 · F-S-0010-03 » : numéro puis code (ou n° de série) */
-export const unitTitle = (u: Pick<SerialUnit, 'number' | 'barcode' | 'serial'>): string => [unitNo(u), u.barcode || u.serial].filter(Boolean).join(' · ');
 
 /** numéro suivant pour un article, parmi ses unités */
 export const nextNumber = (units: Pick<SerialUnit, 'number'>[]): number => units.reduce((m, u) => Math.max(m, u.number || 0), 0) + 1;

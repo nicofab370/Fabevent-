@@ -16,7 +16,7 @@ const EQ_MIME = 'application/x-fabevent-equipment';
 const LINE_MIME = 'application/x-fabevent-line';
 
 /** Cible du glisser-déposer (ou du bouton « + » du catalogue sur tablette) : un groupe d'un sous-projet. */
-export interface DropTarget { subId: string; groupId?: string }
+interface DropTarget { subId: string; groupId?: string }
 
 /**
  * Onglet Équipement : le matériel de chaque sous-projet, organisé en groupes rattachés à des créneaux.
@@ -498,6 +498,15 @@ function EquipmentPicker({ sp, groupId, initialQ = '', depot, depots = [], disco
     setQty({});
   };
 
+  /** ligne d'infos sous le nom : code, catégorie, déjà dans le projet, contenu du kit, éléments fournis */
+  const details = (e: Equipment) => [
+    e.code,
+    e.categoryId && catName.get(e.categoryId),
+    inProject.get(e.id) ? `déjà ${inProject.get(e.id)} dans le projet` : '',
+    e.isKit && e.kitItems?.length ? `kit : ${e.kitItems.map((k) => `${k.qty} × ${equipment.find((x) => x.id === k.equipmentId)?.name || '?'}`).join(', ')}` : '',
+    e.contents?.length ? `avec ${e.contents.map((c) => c.name).join(', ')}` : '',
+  ].filter(Boolean).join(' · ');
+
   return (
     <Modal title={`Ajouter du matériel — ${sp.name}`} onClose={onClose} wide>
       <div className="picker">
@@ -568,7 +577,7 @@ function EquipmentPicker({ sp, groupId, initialQ = '', depot, depots = [], disco
                 {e.photo ? <img src={e.photo} alt="" className="thumb" /> : <span className="thumb" />}
                 <div className="pick-name">
                   <div><strong>{e.name}</strong> {e.isKit && <span className="badge">Kit</span>} {e.kind === 'vente' && <span className="badge">vente</span>}</div>
-                  <div className="muted" style={{ fontSize: 11 }}>{[e.code, e.categoryId && catName.get(e.categoryId), inProject.get(e.id) ? `déjà ${inProject.get(e.id)} dans le projet` : '', e.isKit && e.kitItems?.length ? `kit : ${e.kitItems.map((k) => `${k.qty} × ${equipment.find((x) => x.id === k.equipmentId)?.name || '?'}`).join(', ')}` : '', e.contents?.length ? `avec ${e.contents.map((c) => c.name).join(', ')}` : ''].filter(Boolean).join(' · ')}</div>
+                  <div className="muted" style={{ fontSize: 11 }}>{details(e)}</div>
                 </div>
                 <div className="pick-stock">
                   <span className={'avail ' + (a - n >= 0 ? 'ok' : 'ko')} title={n ? `Disponible ${a}, reste ${a - n} après cet ajout` : 'Disponible sur la période'}>
@@ -632,7 +641,7 @@ function EquipmentPicker({ sp, groupId, initialQ = '', depot, depots = [], disco
  * « 12 sm58 » + Entrée ajoute directement 12 micros ; un code-barres scanné ajoute l'article.
  * Les flèches choisissent un autre résultat ; la quantité peut aussi se mettre dans la petite case.
  */
-export function QuickAdd({ equipment, units, availOf, onAdd, onBrowse }: {
+function QuickAdd({ equipment, units, availOf, onAdd, onBrowse }: {
   /** ouvre la fenêtre de choix avec filtres (avec le texte déjà tapé) */
   onBrowse?: (q: string) => void;
   equipment: Equipment[]; units: { equipmentId: string; barcode?: string; serial: string; extraCodes?: string[] }[];

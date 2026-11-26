@@ -8,8 +8,8 @@ import { EmailModal } from '../../components/EmailModal';
 import { appBaseUrl, db } from '../../db';
 import type { CrewAssignment, CrewPreset, Person, Subproject, VehicleAssignment } from '../../types';
 import { RESERVING } from '../../types';
-import { blockPeriod, buildIcs, crewAmount, crewCostProfile, fmtHours, crewWindow, functionRate, daysBetween, download, fmtRange, money, overlaps, round2, save, sortPeriods, patch, uid } from '../../utils';
-import { personIssue, type ProjectData } from './shared';
+import { blockPeriod, buildIcs, crewAmount, crewCostProfile, fmtHours, crewWindow, functionRate, download, fmtRange, money, overlaps, round2, save, sortPeriods, patch, uid } from '../../utils';
+import type { ProjectData } from './shared';
 import { PostRequests, useCrewDialogs } from '../crewRequests';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { perKmFor, tripKm, vehiclePrice } from '../../geo';
@@ -66,7 +66,14 @@ export default function CrewTab({ d }: { d: ProjectData }) {
     const wasSent = items.some((i) => i.c.sent);
     const changed = items.some((i) => changeOf(i.c)) || (wasSent && items.some((i) => !i.c.sent));
     const prov = items.some((i) => i.c.final === false);
-    const body = `Bonjour ${p.name.split(' ')[0]},\n\n${changed ? 'Ton planning a changé' : 'Voici ton planning'}${prov ? ' (encore provisoire en partie)' : ''} pour « ${project.name} »${project.venue ? ` (${project.venue})` : ''} :\n\n${items.map((i) => lineOf(i, wasSent)).join('\n')}\n\nLe fichier agenda joint (.ics) ajoute ces horaires à ton calendrier.\n\n${project.notes ? project.notes + '\n\n' : ''}Merci de me confirmer ta disponibilité.\n${settings.company.name}`;
+    const intro = `${changed ? 'Ton planning a changé' : 'Voici ton planning'}${prov ? ' (encore provisoire en partie)' : ''} pour « ${project.name} »${project.venue ? ` (${project.venue})` : ''} :`;
+    const body = [
+      `Bonjour ${p.name.split(' ')[0]},`, '', intro, '',
+      ...items.map((i) => lineOf(i, wasSent)), '',
+      'Le fichier agenda joint (.ics) ajoute ces horaires à ton calendrier.', '',
+      ...(project.notes ? [project.notes, ''] : []),
+      'Merci de me confirmer ta disponibilité.', settings.company.name,
+    ].join('\n');
     return { to: p.email || '', subject: `${changed ? 'Planning modifié' : prov ? 'Planning provisoire' : 'Planning'} — ${project.name}`, body };
   };
   /** retient les horaires envoyés, pour signaler ensuite les changements */
@@ -419,7 +426,7 @@ function RoomCrew({ d, sp, pMap, mode, ctx, actionsFor }: { d: ProjectData; sp: 
 const hhmm = (s: string) => s.slice(11, 16);
 const dayOf = (s: string) => s.slice(0, 10);
 /** Ce qui a changé dans les horaires d'un poste depuis l'envoi du planning (vide si rien). */
-export function changeOf(c: CrewAssignment): string {
+function changeOf(c: CrewAssignment): string {
   if (!c.sent) return '';
   const parts: string[] = [];
   const fmt = (o: string, n: string) => (dayOf(o) === dayOf(n) ? `${hhmm(o)} → ${hhmm(n)}` : `${fmtRange(o, o).split(' → ')[0]} → ${fmtRange(n, n).split(' → ')[0]}`);

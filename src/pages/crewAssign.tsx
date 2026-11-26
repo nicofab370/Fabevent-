@@ -24,7 +24,7 @@ export interface CrewContext {
 }
 
 /** Candidats d'un poste : ceux qui ont répondu « dispo », puis les disponibles, du moins cher au plus cher ; les « pas dispo » à la fin. */
-export function candidates(c: CrewAssignment, ctx: CrewContext) {
+function candidates(c: CrewAssignment, ctx: CrewContext) {
   const answers = new Map(requestsFor(c.id, ctx.requests || []).map((x) => [x.r.personId, x.state]));
   const rank = (id: string) => (answers.get(id) === 'oui' ? 0 : answers.get(id) === 'non' ? 2 : 1);
   return ctx.people
@@ -71,7 +71,7 @@ export function CostCell({ c, person }: { c: CrewAssignment; person?: Person }) 
 }
 
 /** Indisponibilités + rendez-vous hors projet (qui rendent leurs participants indisponibles). */
-export function useCrewContext(): CrewContext {
+function useCrewContext(): CrewContext {
   const settings = useSettings();
   const people = useLiveQuery(() => db.people.orderBy('name').toArray(), []) || [];
   const allCrew = useLiveQuery(() => db.crew.toArray(), []) || [];

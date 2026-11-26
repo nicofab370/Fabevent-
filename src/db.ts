@@ -36,7 +36,7 @@ export function switchWorkspace(name: string) {
 }
 
 /* ---------- métadonnées des bases (ex. « société isolée ») ---------- */
-export interface WsMeta { label?: string; /** base d'une autre société : aucun lien avec les autres bases */ society?: boolean }
+interface WsMeta { label?: string; /** base d'une autre société : aucun lien avec les autres bases */ society?: boolean }
 const WS_META_KEY = 'fabevent.wsmeta';
 
 export function wsMeta(name: string): WsMeta {
@@ -69,7 +69,7 @@ export async function deleteWorkspace(name: string) {
   if (active) switchWorkspace('principal');
 }
 
-export class FabDB extends Dexie {
+class FabDB extends Dexie {
   contacts!: Table<Contact, string>;
   categories!: Table<Category, string>;
   equipment!: Table<Equipment, string>;
@@ -161,10 +161,6 @@ export const TABLES = [
 /** Identifiant du dépôt principal (ou 'main' s'il n'y a pas de dépôts déclarés). */
 export function mainDepotId(s: Pick<Settings, 'depots'>): string {
   return s.depots?.[0]?.id || 'main';
-}
-/** Plusieurs dépôts déclarés ? Sinon tout fonctionne comme avec un dépôt unique. */
-export function multiDepot(s: Pick<Settings, 'depots'>): boolean {
-  return (s.depots?.length || 0) > 1;
 }
 
 export const DEFAULT_DOC_STYLE: DocStyle = {

@@ -12,9 +12,6 @@ try { mem = JSON.parse(sessionStorage.getItem(KEY) || '{}'); } catch { /* sans s
 const persist = () => { try { sessionStorage.setItem(KEY, JSON.stringify(mem)); } catch { /* sans stockage */ } };
 const here = () => window.location.hash.replace(/^#/, '') || '/';
 
-/** position retenue pour une page (utile aux tests) */
-export const scrollOf = (path: string) => mem[path] || 0;
-
 export function useScrollMemory() {
   const loc = useLocation();
   const navType = useNavigationType();

@@ -46,7 +46,7 @@ function loadZxing(): Promise<ZxModule> {
 }
 
 /** Décode un code dans un canvas (texte ou ''). */
-export async function decodeCanvas(c: HTMLCanvasElement, g: CanvasRenderingContext2D): Promise<string> {
+async function decodeCanvas(c: HTMLCanvasElement, g: CanvasRenderingContext2D): Promise<string> {
   const det = await nativeDetector();
   if (det) {
     const r = await det.detect(c);
@@ -81,7 +81,7 @@ const jGet = <T,>(k: string, d: T): T => { try { const v = localStorage.getItem(
 const jSet = (k: string, v: unknown) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* sans stockage */ } };
 
 /** Retour d'un scan : vibration + grand ✓ vert ou ✕ rouge. */
-export function scanFeedback(ok: boolean) {
+function scanFeedback(ok: boolean) {
   if (navigator.vibrate) navigator.vibrate(ok ? 60 : [80, 60, 80]);
 }
 

@@ -5,7 +5,7 @@ import { db } from '../../db';
 import type { Appointment, Period, PeriodKind, Project, ProjectStatus, Subproject } from '../../types';
 import { FIRM, PERIOD_LABELS, STATUS_LABELS } from '../../types';
 import { shiftBetween, shiftDate, shiftProject, type Shift } from '../../projectOps';
-import { blockPeriod, confirmDeleteSubproject, deleteSubproject, fmtDate, fmtRange, nowIso, patch, save, sortPeriods, syncPeriods, toLocalInput, uid, usageDays } from '../../utils';
+import { blockPeriod, confirmDeleteSubproject, fmtDate, fmtRange, nowIso, patch, save, sortPeriods, syncPeriods, toLocalInput, uid, usageDays } from '../../utils';
 import type { ProjectData } from './shared';
 import { ownAddress, placeAddress, placeName, spotOf } from '../../places';
 import { Icon } from '../../components/Icon';
@@ -96,7 +96,7 @@ export default function PlanningTab({ d, onEditSub }: { d: ProjectData; onEditSu
   );
 }
 
-export function newSubDraft(d: ProjectData): Partial<Subproject> {
+function newSubDraft(d: ProjectData): Partial<Subproject> {
   const { project, subs } = d;
   return {
     projectId: project.id, name: `Sous-projet ${subs.length + 1}`, status: project.status, start: project.start, end: project.end, venue: project.venue, order: subs.length,
@@ -106,7 +106,7 @@ export function newSubDraft(d: ProjectData): Partial<Subproject> {
 }
 
 /** Copie une salle avec ses horaires, groupes, matériel, postes et véhicules. */
-export async function duplicateSub(d: ProjectData, sp: Subproject, onEdit: (sp: Subproject) => void) {
+async function duplicateSub(d: ProjectData, sp: Subproject, onEdit: (sp: Subproject) => void) {
   const idMap = new Map<string, string>();
   const periods = sp.periods?.map((p) => { const id = uid(); idMap.set(p.id, id); return { ...p, id }; });
   const groups = sp.groups?.map((g) => { const id = uid(); idMap.set(g.id, id); return { ...g, id, periodIds: g.periodIds.map((x) => idMap.get(x) || x) }; });

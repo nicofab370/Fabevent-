@@ -7,7 +7,7 @@ import { fillVars, mailServer, replyAddress, MAIL_KINDS, newTemplate, sendMail, 
 import { requestLogin } from '../serverAuth';
 import { safeFileName } from '../pdf';
 import type { MailKind } from '../types';
-import { download } from '../utils';
+import { download, fold as norm } from '../utils';
 import { Field, Modal, useSettings } from './ui';
 import { FileViewer } from './FileViewer';
 import { Icon } from './Icon';
@@ -18,7 +18,7 @@ const size = (b: Blob) => (b.size > 1024 * 1024 ? `${(b.size / 1024 / 1024).toFi
 interface BookEntry { email: string; name: string; sub: string }
 
 /** Toutes les adresses connues : clients, lieux, fournisseurs, leurs interlocuteurs et services, techniciens. */
-export function useAddressBook(): BookEntry[] {
+function useAddressBook(): BookEntry[] {
   const contacts = useLiveQuery(() => db.contacts.toArray(), []) || [];
   const people = useLiveQuery(() => db.people.toArray(), []) || [];
   const out: BookEntry[] = [];
@@ -33,10 +33,9 @@ export function useAddressBook(): BookEntry[] {
     .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
 }
 
-const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 /** Champ de destinataires : étiquettes, suggestions du carnet d'adresses au fil de la frappe, et carnet complet. */
-export function Recipients({ label, value, onChange, book, hints }: { label: string; value: string; onChange: (v: string) => void; book: BookEntry[]; /** adresses liées au contexte (projet…) : proposées en premier, même champ vide */ hints?: string[] }) {
+function Recipients({ label, value, onChange, book, hints }: { label: string; value: string; onChange: (v: string) => void; book: BookEntry[]; /** adresses liées au contexte (projet…) : proposées en premier, même champ vide */ hints?: string[] }) {
   const list = splitAddrs(value);
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);

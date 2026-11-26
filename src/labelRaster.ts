@@ -9,7 +9,7 @@ import { DOTS_PER_MM, tapeDots, type Bitmap } from './ptouch';
  */
 
 /** résolution (points par mm) de chaque machine */
-export const deviceDotsPerMm = (t: Pick<LabelTemplate, 'device'>) => (t.device === 'ptouch' || t.device === 'dymo-lm' ? DOTS_PER_MM : 300 / 25.4);
+const deviceDotsPerMm = (t: Pick<LabelTemplate, 'device'>) => (t.device === 'ptouch' || t.device === 'dymo-lm' ? DOTS_PER_MM : 300 / 25.4);
 
 /** HTML → XHTML (le SVG n'accepte que du XML bien formé : <img …/>, entités…) */
 function xhtml(html: string): string {

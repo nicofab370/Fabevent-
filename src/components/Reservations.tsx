@@ -16,9 +16,9 @@ import { fmtDate, fmtRange, overlaps, type Reservation } from '../utils';
  * option = projet pas encore confirmé ; reserve = projet confirmé (ou réservé à la main) ;
  * autre = réparation, transfert sortant.
  */
-export type UseKind = 'ici' | 'sousprojet' | 'option' | 'reserve' | 'autre';
-export const USE_KINDS: UseKind[] = ['ici', 'sousprojet', 'option', 'reserve', 'autre'];
-export const USE_LABEL: Record<UseKind, string> = {
+type UseKind = 'ici' | 'sousprojet' | 'option' | 'reserve' | 'autre';
+const USE_KINDS: UseKind[] = ['ici', 'sousprojet', 'option', 'reserve', 'autre'];
+const USE_LABEL: Record<UseKind, string> = {
   ici: 'Ailleurs dans ce sous-projet',
   sousprojet: 'Dans un autre sous-projet de ce projet',
   option: 'En option dans un autre projet',
@@ -26,7 +26,7 @@ export const USE_LABEL: Record<UseKind, string> = {
   autre: 'Réparation, transfert',
 };
 /** libellé court d'une pastille : « 3 en option ailleurs » */
-export const USE_SHORT: Record<UseKind, string> = { ici: 'autre ligne', sousprojet: 'autre sous-projet', option: 'en option ailleurs', reserve: 'réservé ailleurs', autre: 'réparation / transfert' };
+const USE_SHORT: Record<UseKind, string> = { ici: 'autre ligne', sousprojet: 'autre sous-projet', option: 'en option ailleurs', reserve: 'réservé ailleurs', autre: 'réparation / transfert' };
 
 export interface OtherUse extends Reservation { equipmentName: string; kind: UseKind }
 
@@ -47,13 +47,6 @@ export function projectUses(eq: Equipment, equipment: Equipment[], res: Reservat
     .sort((a, b) => a.start.localeCompare(b.start));
 }
 
-/** utilisations dans d'autres projets (et réparations, transferts) */
-export function otherUses(eq: Equipment, equipment: Equipment[], res: Reservation[], start: string, end: string, projectId?: string): OtherUse[] {
-  return projectUses(eq, equipment, res, start, end, { projectId }).filter((u) => u.kind !== 'ici' && u.kind !== 'sousprojet');
-}
-
-/** quantité utilisée ailleurs (pour l'article lui-même ; pour un kit, le total des composants) */
-export const usedElsewhere = (uses: OtherUse[]) => uses.reduce((a, r) => a + r.qty, 0);
 /** quantités par type d'utilisation */
 export function usesByKind(uses: OtherUse[]): Record<UseKind, number> {
   const out = { ici: 0, sousprojet: 0, option: 0, reserve: 0, autre: 0 };
@@ -104,7 +97,7 @@ export function UsageBreakdown({ eq, uses, stock, here, avail, hereLabel = 'cett
 const SOURCE: Record<Reservation['source'], string> = { projet: '', reparation: 'En réparation', souslocation: 'Sous-location', transfert: 'Transfert' };
 
 /** liste des autres utilisations, avec un lien vers chaque projet */
-export function OtherUsesList({ uses, kit }: { uses: OtherUse[]; kit?: boolean }) {
+function OtherUsesList({ uses, kit }: { uses: OtherUse[]; kit?: boolean }) {
   const ids = Array.from(new Set(uses.map((u) => u.projectId).filter(Boolean)));
   const projects = useLiveQuery(() => db.projects.bulkGet(ids), [ids.join('|')]);
   const byId = new Map((projects || []).filter(Boolean).map((p) => [p!.id, p!]));

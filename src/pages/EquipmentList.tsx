@@ -71,7 +71,11 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <input required value={e.name} onChange={(x) => { set('name', x.target.value); setNameAuto(x.target.value === composeName(e.brand, e.model, e.summary)); }} aria-label="Désignation" />
           {!nameAuto && (e.brand || e.model || e.summary) && <button type="button" className="ghost small" style={{ whiteSpace: 'nowrap' }} onClick={() => { set('name', composeName(e.brand, e.model, e.summary)); setNameAuto(true); }} title="Marque modèle (description)">Recomposer</button>}
-          {!e.brand && !e.model && !e.summary && e.name.trim() && <button type="button" className="ghost small" style={{ whiteSpace: 'nowrap' }} title="Remplit marque, modèle et description à partir de la désignation (à vérifier)" onClick={() => { const p = splitName(e.name, all.map((a) => a.brand || '')); setE({ ...e, brand: p.brand || undefined, model: p.model || undefined, summary: p.summary || undefined, name: composeName(p.brand, p.model, p.summary) || e.name }); setNameAuto(true); }}>Découper</button>}
+          {!e.brand && !e.model && !e.summary && e.name.trim() && <button type="button" className="ghost small" style={{ whiteSpace: 'nowrap' }} title="Remplit marque, modèle et description à partir de la désignation (à vérifier)" onClick={() => {
+            const p = splitName(e.name, all.map((a) => a.brand || ''));
+            setE({ ...e, brand: p.brand || undefined, model: p.model || undefined, summary: p.summary || undefined, name: composeName(p.brand, p.model, p.summary) || e.name });
+            setNameAuto(true);
+          }}>Découper</button>}
         </div>
       </Field>
       <Field label="Code (automatique : dépôt-catégorie-numéro)">

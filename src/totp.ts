@@ -53,8 +53,6 @@ export async function hotp(secretB32: string, counter: number, digits = 6): Prom
 export const totpAt = (secretB32: string, timeMs: number, digits = 6): Promise<string> =>
   hotp(secretB32, Math.floor(timeMs / 1000 / 30), digits);
 
-export const totpNow = (secretB32: string): Promise<string> => totpAt(secretB32, Date.now());
-
 /** Vérifie un code saisi (fenêtre ±1 pas de 30 s pour la latence). */
 export async function verifyTotp(secretB32: string, code: string, timeMs = Date.now(), window = 1): Promise<boolean> {
   const c = code.replace(/\s/g, '');

@@ -140,42 +140,41 @@ export function Login() {
     } catch (e2) { setErr((e2 as Error).message); setBusy(false); }
   };
 
-  const mfaUser = mfa;
   return (
     <div className="login-bg">
-      <form className="card login-card" onSubmit={mfaUser ? submitMfa : submit}>
+      <form className="card login-card" onSubmit={mfa ? submitMfa : submit}>
         <h1 style={{ margin: '0 0 4px' }}>Fab<span style={{ color: 'var(--accent, #d97706)' }}>Event</span></h1>
         <p className="muted" style={{ marginTop: 0 }}>
           {srv === undefined ? 'Vérification du serveur FabEvent…'
-            : mfaUser ? `Saisis le code à 6 chiffres de ton application d’authentification (${mfaUser.email}).`
+            : mfa ? `Saisis le code à 6 chiffres de ton application d’authentification (${mfa.email}).`
             : any ? 'Connecte-toi avec ton compte FabEvent.'
             : 'Première utilisation : crée le compte administrateur de cette base.'}
         </p>
         <div className="form">
-          {!any && !mfaUser && <Field label="Nom" full><input autoFocus value={name} onChange={(e) => setName(e.target.value)} aria-label="Nom" /></Field>}
-          {!mfaUser && <Field label="Email" full><input type="email" required autoFocus={!!any} value={email} onChange={(e) => setEmail(e.target.value)} aria-label="Email" readOnly={busy && !!mfaUser} /></Field>}
-          {!mfaUser && <Field label="Mot de passe" full><input type="password" required value={pass} onChange={(e) => setPass(e.target.value)} aria-label="Mot de passe" /></Field>}
-          {!any && !mfaUser && <Field label="Répéter le mot de passe" full><input type="password" required value={pass2} onChange={(e) => setPass2(e.target.value)} aria-label="Répéter le mot de passe" /></Field>}
-          {mfaUser && <Field label="Code à 6 chiffres" full><input inputMode="numeric" autoFocus pattern="[0-9]{6}" maxLength={6} required value={code} onChange={(e) => setCode(e.target.value)} aria-label="Code MFA à 6 chiffres" style={{ fontSize: 22, letterSpacing: 4, textAlign: 'center' }} /></Field>}
-          {!mfaUser && reachable && needCode && !srv?.users && (
+          {!any && !mfa && <Field label="Nom" full><input autoFocus value={name} onChange={(e) => setName(e.target.value)} aria-label="Nom" /></Field>}
+          {!mfa && <Field label="Email" full><input type="email" required autoFocus={!!any} value={email} onChange={(e) => setEmail(e.target.value)} aria-label="Email" readOnly={busy && !!mfa} /></Field>}
+          {!mfa && <Field label="Mot de passe" full><input type="password" required value={pass} onChange={(e) => setPass(e.target.value)} aria-label="Mot de passe" /></Field>}
+          {!any && !mfa && <Field label="Répéter le mot de passe" full><input type="password" required value={pass2} onChange={(e) => setPass2(e.target.value)} aria-label="Répéter le mot de passe" /></Field>}
+          {mfa && <Field label="Code à 6 chiffres" full><input inputMode="numeric" autoFocus pattern="[0-9]{6}" maxLength={6} required value={code} onChange={(e) => setCode(e.target.value)} aria-label="Code MFA à 6 chiffres" style={{ fontSize: 22, letterSpacing: 4, textAlign: 'center' }} /></Field>}
+          {!mfa && reachable && needCode && !srv?.users && (
             <Field label="Code d’installation" full>
               <input value={setupCode} onChange={(e) => setSetupCode(e.target.value.toUpperCase())} aria-label="Code d’installation" placeholder="10 lettres et chiffres" autoComplete="off" />
             </Field>
           )}
-          {!mfaUser && reachable && needCode && !srv?.users && <p className="muted field full" style={{ margin: 0, fontSize: 12 }}>Le serveur contient déjà des données : pour créer le premier compte, il faut le code d’installation. Soit celui du fichier <code>code-installation.txt</code> (dossier de données de FabEvent, voir <code>api/diag.php</code>), soit celui que tu choisis dans <code>api/fabevent-config.php</code> (<code>'setup_code' =&gt; '…'</code>, déposé par FTP).</p>}
+          {!mfa && reachable && needCode && !srv?.users && <p className="muted field full" style={{ margin: 0, fontSize: 12 }}>Le serveur contient déjà des données : pour créer le premier compte, il faut le code d’installation. Soit celui du fichier <code>code-installation.txt</code> (dossier de données de FabEvent, voir <code>api/diag.php</code>), soit celui que tu choisis dans <code>api/fabevent-config.php</code> (<code>'setup_code' =&gt; '…'</code>, déposé par FTP).</p>}
           {serverOn() && srv === null && <p className="muted field full" style={{ margin: 0, fontSize: 12 }}>Serveur FabEvent injoignable : connexion sur cet appareil uniquement ; la synchronisation reprendra après une connexion en ligne.</p>}
           {err && <p className="avail ko field full" style={{ margin: 0 }}>{err}</p>}
           <div className="form-actions">
-            <button type="submit" disabled={busy || srv === undefined}>{busy ? '…' : mfaUser ? 'Vérifier le code' : any ? 'Se connecter' : 'Créer le compte administrateur'}</button>
-            {mfaUser && <button type="button" className="secondary" onClick={() => { setMfa(null); setCode(''); setErr(''); }}>Retour</button>}
-            {!mfaUser && loginRequested() && <button type="button" className="secondary" onClick={() => { clearLoginRequest(); location.reload(); }} title="Revenir à FabEvent sans te reconnecter : tes modifications restent sur cet appareil">Plus tard</button>}
+            <button type="submit" disabled={busy || srv === undefined}>{busy ? '…' : mfa ? 'Vérifier le code' : any ? 'Se connecter' : 'Créer le compte administrateur'}</button>
+            {mfa && <button type="button" className="secondary" onClick={() => { setMfa(null); setCode(''); setErr(''); }}>Retour</button>}
+            {!mfa && loginRequested() && <button type="button" className="secondary" onClick={() => { clearLoginRequest(); location.reload(); }} title="Revenir à FabEvent sans te reconnecter : tes modifications restent sur cet appareil">Plus tard</button>}
           </div>
-          {any && !mfaUser && !forgot && (
+          {any && !mfa && !forgot && (
             <p style={{ textAlign: 'center', margin: '12px 0 0' }}>
               <button type="button" className="secondary small" title="Un lien de réinitialisation (valable 2 h) est envoyé par email si un serveur FabEvent est configuré" onClick={() => { setForgot(true); setFEmail(email); setFMsg(''); setFErr(''); }}>Mot de passe oublié ?</button>
             </p>
           )}
-          {any && !mfaUser && forgot && (
+          {any && !mfa && forgot && (
             <div className="info" style={{ marginTop: 12 }}>
               <p className="muted" style={{ margin: '0 0 8px' }}>Indique l’email de ton compte : un lien de réinitialisation (valable 2 h, une seule fois) est envoyé par le serveur FabEvent, s’il est configuré.</p>
               <Field label="Email du compte" full><input type="email" required value={fEmail} onChange={(e) => setFEmail(e.target.value)} aria-label="Email du compte pour la réinitialisation" /></Field>
@@ -187,7 +186,7 @@ export function Login() {
               </div>
             </div>
           )}
-          {any && !mfaUser && oauthAvailable() && (
+          {any && !mfa && oauthAvailable() && (
             <>
               <div className="muted" style={{ textAlign: 'center', margin: '10px 0 4px', fontSize: 11 }}>ou</div>
               <div className="oauth-btns">

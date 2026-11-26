@@ -22,7 +22,7 @@ export function projectMoments(p: Pick<Project, 'moments' | 'typeName'>, client:
   return picked.length ? picked : [{ id: 'm_unique', name: 'Facture après la prestation', percent: 100, trigger: 'fin' }];
 }
 
-export type MomentState = 'facture' | 'en_retard' | 'a_facturer' | 'a_venir';
+type MomentState = 'facture' | 'en_retard' | 'a_facturer' | 'a_venir';
 export const MOMENT_STATE_LABELS: Record<MomentState, string> = {
   facture: 'Facturé', en_retard: 'En retard', a_facturer: 'À facturer', a_venir: 'À venir',
 };
@@ -82,7 +82,7 @@ export function invoicedTotal(docs: Pick<Doc, 'type' | 'number' | 'snapshot'>[])
     .reduce((a, d) => a + d.snapshot.totalHT, 0));
 }
 
-export interface BillingRow {
+interface BillingRow {
   project: Project;
   client?: Contact;
   total: number;

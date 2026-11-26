@@ -3,11 +3,10 @@ import { DOC_CSS } from '../../components/DocRender';
 import { Empty, NumInput } from '../../components/ui';
 import { db } from '../../db';
 import type { ProjectCost } from '../../types';
-import { fmtDate, money, round2, save } from '../../utils';
+import { escHtml as esc, fmtDate, money, round2, save } from '../../utils';
 import { printHtml, type ProjectData } from './shared';
 import { Icon } from '../../components/Icon';
 
-const esc = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const CATEGORIES = ['Déplacement', 'Hébergement', 'Restauration', 'Location externe', 'Logistique', 'Autre'];
 
 /** Onglet Coûts supplémentaires : frais internes, refacturés ou non, avec bon de commande fournisseur. */

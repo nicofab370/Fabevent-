@@ -47,7 +47,7 @@ const en: Dict = {
 };
 
 export const DICT: Record<Lang, Dict> = { fr, nl, en };
-export type TKey = keyof Dict;
+type TKey = keyof Dict;
 
 export function docLang(doc: Doc): Lang {
   return doc.snapshot.lang || 'fr';

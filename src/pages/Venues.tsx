@@ -11,7 +11,7 @@ import { ContactForm } from './Contacts';
 import { Icon } from '../components/Icon';
 
 /** Projets tenus dans un lieu (lieu enregistré, ou même nom affiché). */
-export function venueProjects(venue: Contact, projects: Project[]): Project[] {
+function venueProjects(venue: Contact, projects: Project[]): Project[] {
   const name = venue.company.trim().toLowerCase();
   return projects
     .filter((p) => !p.isTemplate && (p.venueId === venue.id || (!p.venueId && p.venue?.trim().toLowerCase() === name)))
@@ -23,7 +23,7 @@ export function venueAddress(v: Contact) {
 }
 
 /** Ajoute un commentaire au lieu (le plus récent en premier). */
-export async function addVenueComment(venueId: string, c: Omit<VenueComment, 'id' | 'at'>) {
+async function addVenueComment(venueId: string, c: Omit<VenueComment, 'id' | 'at'>) {
   const v = await db.contacts.get(venueId);
   if (!v) return;
   await patch(db.contacts, venueId, { comments: [{ id: uid(), at: nowIso(), ...c }, ...(v.comments || [])] });

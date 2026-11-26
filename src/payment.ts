@@ -12,13 +12,6 @@ export function structuredCommunication(seed: string): string {
   return `+++${s.slice(0, 3)}/${s.slice(3, 7)}/${s.slice(7)}+++`;
 }
 
-export function isValidStructured(comm: string): boolean {
-  const d = comm.replace(/\D/g, '');
-  if (d.length !== 12) return false;
-  const check = Number(d.slice(0, 10)) % 97 || 97;
-  return check === Number(d.slice(10));
-}
-
 /** Contenu d'un QR code de virement SEPA (norme EPC069-12, version 002). */
 export function epcPayload(p: { name: string; iban: string; bic?: string; amount: number; communication: string }): string {
   const iban = p.iban.replace(/\s/g, '').toUpperCase();

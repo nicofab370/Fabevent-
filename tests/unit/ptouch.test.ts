@@ -1,5 +1,27 @@
 import { describe, expect, it } from 'vitest';
-import { type Bitmap, TAPES, compressLine, encodeJob, packBits, parseStatus, rasterLine, tapeDots, unpackBits } from '../../src/ptouch';
+import { type Bitmap, type JobOptions, TAPES, compressLine, encodePage, jobStart, packBits, parseStatus, rasterLine, tapeDots } from '../../src/ptouch';
+
+/** Décodeur PackBits (contrôle de l'encodage). */
+function unpackBits(src: Uint8Array): Uint8Array {
+  const out: number[] = [];
+  let i = 0;
+  while (i < src.length) {
+    const n = src[i++];
+    if (n < 128) { out.push(...src.subarray(i, i + n + 1)); i += n + 1; }
+    else if (n > 128) { const v = src[i++]; for (let k = 0; k < 257 - n; k++) out.push(v); }
+  }
+  return Uint8Array.from(out);
+}
+
+/** Travail complet : début + une page par étiquette (comme l'envoi USB, page par page). */
+function encodeJob(pages: Bitmap[], o: JobOptions): Uint8Array {
+  const parts = [jobStart(), ...pages.map((p, i) => encodePage(p, i, i === pages.length - 1, o))];
+  const out = new Uint8Array(parts.reduce((a, b) => a + b.length, 0));
+  let k = 0;
+  for (const part of parts) { out.set(part, k); k += part.length; }
+  return out;
+}
+
 
 const hex = (a: ArrayLike<number>) => Array.from(a, (v) => v.toString(16).padStart(2, '0')).join(' ');
 const indexOf = (hay: Uint8Array, needle: number[], from = 0) => {
