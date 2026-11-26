@@ -1,12 +1,8 @@
-name: Paquet pour l'hébergement FABRI.live (et envoi FTP)
+name: Paquet pour l'hébergement FABRI.live
 
-# À chaque mise à jour de main :
-# - un zip prêt à déposer sur l'hébergement (dossier fabevent/ = l'application + api/ : _fabevent.php, auth.php,
-#   sync.php, mail.php, public.php…) : onglet Actions → dernière exécution → Artifacts ;
-# - si les secrets FTP sont enregistrés (Settings → Secrets and variables → Actions : FTP_SERVER, FTP_USERNAME,
-#   FTP_PASSWORD ; facultatif : variables FTP_DIR, défaut « www/fabevent/ », et FTP_PROTOCOL, défaut « ftps »),
-#   les fichiers modifiés sont envoyés directement sur l'hébergement.
-#   Seuls les fichiers du paquet sont écrits : mail-config.php, fabevent-config.php et les données ne sont jamais touchés.
+# À chaque mise à jour de main : un zip prêt à déposer sur l'hébergement (dossier fabevent/ = l'application + api/ :
+# _fabevent.php, auth.php, sync.php, mail.php, public.php…) : onglet Actions → dernière exécution → Artifacts.
+# Mise en ligne directe par FTP, quand tu le décides : workflow « Mettre en ligne (FTP) » (deploy-ftp.yml).
 on:
   push:
     branches: [main]
@@ -18,8 +14,6 @@ permissions:
 jobs:
   package:
     runs-on: ubuntu-latest
-    env:
-      FTP_SERVER: ${{ secrets.FTP_SERVER }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -39,20 +33,3 @@ jobs:
         with:
           name: fabevent-fabri
           path: paquet
-      - name: Envoi sur l'hébergement (FTP)
-        if: env.FTP_SERVER != ''
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          protocol: ${{ vars.FTP_PROTOCOL || 'ftps' }}
-          local-dir: paquet/fabevent/
-          server-dir: ${{ vars.FTP_DIR || 'www/fabevent/' }}
-          # réglages et données propres à l'hébergement : jamais envoyés ni supprimés
-          exclude: |
-            **/.git*
-            **/.git*/**
-            api/mail-config.php
-            api/fabevent-config.php
-            api/_donnees/**

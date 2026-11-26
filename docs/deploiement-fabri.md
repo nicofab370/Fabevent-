@@ -75,8 +75,8 @@ l'ancien emplacement ensuite. `diag.php` indique si cette reprise a eu lieu (`re
 
 ## Mises à jour automatiques par FTP
 
-Une fois réglé, chaque PR fusionnée est mise en ligne toute seule (quelques minutes) : GitHub construit le paquet
-et envoie **uniquement les fichiers modifiés** dans `fabevent/` sur l'hébergement.
+Une fois réglé, tu mets en ligne **quand tu le décides**, d'un bouton : GitHub construit le paquet et envoie
+**uniquement les fichiers modifiés** dans `fabevent/` sur l'hébergement. Rien ne part tout seul.
 
 1. GitHub → dépôt → **Settings** → **Secrets and variables** → **Actions** → onglet **Secrets** → « New repository secret » :
    - `FTP_SERVER` : l'adresse FTP de l'hébergement (ex. `ftp.fabri.live`) ;
@@ -84,8 +84,9 @@ et envoie **uniquement les fichiers modifiés** dans `fabevent/` sur l'hébergem
 2. Onglet **Variables** (facultatif) :
    - `FTP_DIR` : dossier de FabEvent vu depuis la racine du FTP, terminé par `/` (défaut : `www/fabevent/`) ;
    - `FTP_PROTOCOL` : `ftps` (défaut, chiffré) ou `ftp` si l'hébergement ne propose pas FTPS.
-3. Pour tester sans attendre : onglet **Actions** → « Paquet pour l'hébergement… » → **Run workflow**.
-   L'étape « Envoi sur l'hébergement (FTP) » doit être verte.
+3. **Mettre en ligne** : onglet **Actions** → « Mettre en ligne (FTP) » → **Run workflow** → branche `main`
+   (case « Lancer les tests avant l'envoi » cochée par défaut) → **Run workflow**. Quelques minutes plus tard, c'est en ligne.
+   Sur téléphone : appli GitHub → dépôt → Actions → même workflow → Run workflow.
 
 Ne sont jamais envoyés ni supprimés : `api/mail-config.php`, `api/fabevent-config.php` et les données
 (`fabevent-prive/` est hors du dossier). Le premier envoi dépose tout le paquet, les suivants seulement les différences
