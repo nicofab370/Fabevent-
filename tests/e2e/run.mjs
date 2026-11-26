@@ -3232,8 +3232,8 @@ await step('Rendez-vous : relié à un projet, avec un coût interne compté dan
   await resetDemo();
   await openProject('Festival des Lumières');
   await tab('Finances & documents');
-  const cost0 = await page.locator('.stat', { hasText: 'coûts' }).locator('b').innerText();
-  const ht0 = await page.locator('.stat', { hasText: 'total HT' }).locator('b').innerText();
+  const cost0 = await page.locator('.stat', { hasText: 'coûts' }).first().locator('b').innerText();
+  const ht0 = await page.locator('.stat', { hasText: 'total HT' }).first().locator('b').innerText();
   await tab('Planning');
   await page.click('.project-appts button:has-text("+ Rendez-vous")');
   await page.fill('.modal input[required]', 'Réunion de production');
@@ -3244,9 +3244,9 @@ await step('Rendez-vous : relié à un projet, avec un coût interne compté dan
   expect(await page.locator('.project-appts tr', { hasText: 'Réunion de production' }).count(), 'rendez-vous listé dans le projet');
   await tab('Finances & documents');
   const num = (t) => parseFloat(t.replace(/[^\d,]/g, '').replace(',', '.'));
-  const cost1 = await page.locator('.stat', { hasText: 'coûts' }).locator('b').innerText();
+  const cost1 = await page.locator('.stat', { hasText: 'coûts' }).first().locator('b').innerText();
   expect(Math.abs(num(cost1) - num(cost0) - 150) < 0.01, `coût +150 € (${cost0} → ${cost1})`);
-  expect((await page.locator('.stat', { hasText: 'total HT' }).locator('b').innerText()) === ht0, 'rien de facturé au client');
+  expect((await page.locator('.stat', { hasText: 'total HT' }).first().locator('b').innerText()) === ht0, 'rien de facturé au client');
   expect(await page.locator('table.list tr', { hasText: 'Rendez-vous' }).count(), 'ligne « Rendez-vous » dans le détail des coûts');
   await go('planning');
   expect(((await page.locator('a.ev.appt', { hasText: 'Réunion de production' }).first().getAttribute('title')) || '').includes('Festival des Lumières'), 'projet indiqué au planning');
