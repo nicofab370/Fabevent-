@@ -336,10 +336,12 @@ export default function EquipmentList() {
           <label className="check-row"><input type="checkbox" checked={showArchived} onChange={(x) => setShowArchived(x.target.checked)} /> Archivés</label>
           <label className="check-row" title="Les éléments de chaque kit, avec leur quantité, sous le kit"><input type="checkbox" checked={kitContents} onChange={(x) => toggleKitContents(x.target.checked)} /> Contenu des kits</label>
           <label className="check-row" title="Chargeurs, docks… qui n'existent que comme accessoires d'autres articles"><input type="checkbox" checked={showAcc} onChange={(x) => setShowAcc(x.target.checked)} /> Éléments hors inventaire</label>
-          <span className="muted" style={{ alignSelf: 'center' }}>Dispo du</span>
-          <input type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} />
-          <span className="muted" style={{ alignSelf: 'center' }}>au</span>
-          <input type="datetime-local" value={to} onChange={(e) => setTo(e.target.value)} />
+          <span style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+            <span className="muted">Dispo du</span>
+            <input type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} />
+            <span className="muted">au</span>
+            <input type="datetime-local" value={to} onChange={(e) => setTo(e.target.value)} />
+          </span>
         </div>
         {selected.size > 0 && (
           <div className="info bulk-bar">
