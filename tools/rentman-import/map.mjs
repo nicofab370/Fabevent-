@@ -174,8 +174,22 @@ export function mapRentman(rm, now = new Date().toISOString()) {
   })).map(({ _i, ...u }) => u);
 
   /* ---------- équipe, véhicules ---------- */
+  // équipe non lue (clé API sans accès au personnel) : techniciens repris des postes, rendez-vous et disponibilités, avec leur nom seulement
+  if (!(rm.crewmembers || []).length) {
+    const seen = new Map();
+    for (const c of [...(rm.projectcrew || []), ...(rm.appointmentcrew || []), ...(rm.crewavailability || [])]) {
+      const pid = refId(pick(c, 'crewmember', 'crew', 'member'));
+      if (!pid) continue;
+      const name = str(pick(c, 'crewmember_name', 'crew_name', 'name_crewmember', 'displayname'));
+      if (!seen.has(pid) || (name && !seen.get(pid).displayname)) seen.set(pid, { id: pid, displayname: name, remark: "Repris d'un poste Rentman : la clé API n'a pas accès à la fiche de l'équipe (coordonnées à compléter)." });
+    }
+    if (seen.size) {
+      rm = { ...rm, crewmembers: [...seen.values()] };
+      warn(`${seen.size} technicien(s) repris des postes, avec leur nom seulement : la clé API n'a pas accès à l'équipe`);
+    }
+  }
   const people = (rm.crewmembers || []).map((p) => ({
-    id: id('p', p.id), ...base(p), name: str(pick(p, 'displayname')) || [p.firstname, p.lastname].filter(Boolean).join(' ') || `Personne ${p.id}`,
+    id: id('p', p.id), ...base(p), name: str(pick(p, 'displayname')) || [p.firstname, p.lastname].filter(Boolean).join(' ') || `Technicien Rentman ${p.id}`,
     email: str(pick(p, 'email', 'email_1')), phone: str(pick(p, 'phone', 'mobilephone', 'phone_1')), city: str(pick(p, 'city', 'visit_city', 'street_city')),
     role: str(pick(p, 'function', 'job_title', 'jobtitle')), vatNumber: str(pick(p, 'vat_code', 'vat_number')),
     notes: str([pick(p, 'remark', 'notes'), [pick(p, 'street'), pick(p, 'number', 'housenumber')].filter(Boolean).join(' '), pick(p, 'postalcode', 'zipcode')].filter(Boolean).join(' · ')),

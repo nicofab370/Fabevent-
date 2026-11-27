@@ -87,6 +87,13 @@ describe('import Rentman → FabEvent', () => {
       [950, 'rm-p-300', undefined, undefined], [951, undefined, undefined, 'rm-e-504'], [952, '', 'rm-p-70', undefined],
     ]);
   });
+  it('équipe refusée à la clé (403) : techniciens repris des postes avec leur nom, toujours placés', () => {
+    const rm = { ...RENTMAN, crewmembers: [], projectcrew: [{ id: 710, function: '/projectfunctions/700', crewmember: '/crew/70', displayname: 'Karim B.' }] };
+    const r = mapRentman(rm, '2026-01-01T00:00:00.000Z');
+    expect(r.data.people).toEqual([expect.objectContaining({ id: 'rm-p-70', name: 'Karim B.' })]);
+    expect(r.data.crew.find((c: { personId?: string }) => c.personId)?.personId).toBe('rm-p-70');
+    expect(r.report.warnings.some((w: string) => w.includes('nom seulement'))).toBe(true);
+  });
   it('rapport : comptes, rien d’inventé', () => {
     expect(report.counts).toMatchObject({ projects: 1, subprojects: 2, lines: 4, crew: 2, costs: 1, docs: 2, files: 2, photos: 1 });
     expect(report.warnings).toEqual(['1 article(s) : stock calculé à partir des mouvements de stock', '1 article(s) sans aucune quantité dans Rentman (stock à 0)']);

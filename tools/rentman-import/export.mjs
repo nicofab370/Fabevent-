@@ -100,10 +100,15 @@ console.log(`Lecture de Rentman (${API})…`);
 for (const [name, paths] of Object.entries(COLLECTIONS)) {
   try {
     let res;
-    for (const path of [paths].flat()) { res = { path, ...(await all(path)) }; if (!res.skipped) break; }
-    const { path, rows, skipped: why } = res;
-    rm[name] = rows;
-    if (why) { skipped.push(`${path} (${why})`); console.log(`  ${[paths].flat().join(' / ')} : non accessible (${why}), ignoré`); }
+    const tried = [];
+    for (const path of [paths].flat()) { res = await all(path); if (!res.skipped) break; tried.push(`${path} (${res.skipped})`); }
+    rm[name] = res.rows;
+    if (res.skipped) {
+      // 404 sur une adresse de repli : on ne garde que les refus utiles (403 = droits de la clé)
+      const why = tried.filter((t) => !t.endsWith('(404)')).join(', ') || tried.join(', ');
+      skipped.push(why);
+      console.log(`  ${why} : non accessible, ignoré`);
+    }
   } catch (e) {
     console.error(`\n${e.message}`);
     process.exit(1);
@@ -166,5 +171,9 @@ console.log(`\nFichier écrit : ${OUT}`);
 for (const p of parts) console.log(`Fichiers joints : ${p}`);
 for (const [k, n] of Object.entries(report.counts)) console.log(`  ${k.padEnd(20)} ${n}`);
 if (skipped.length) console.log(`Collections non accessibles avec cette clé : ${skipped.join(', ')}`);
+if (skipped.some((x) => /crew.*\(403\)/.test(x))) console.log(
+  "\nL'équipe est refusée à cette clé (403) : dans Rentman, la clé API a les droits de l'utilisateur qui l'a créée.\n"
+  + "Crée la clé avec un compte administrateur (ou donne à ce compte le droit de voir le personnel), puis relance l'export.\n"
+  + 'En attendant, les techniciens des postes sont repris avec leur nom seulement (sans coordonnées).');
 for (const w of report.warnings) console.log(`  ! ${w}`);
 console.log(`\nDans FabEvent : Paramètres → « Importer depuis Rentman » → choisir ${parts.length ? 'ces fichiers ensemble' : 'ce fichier'}.`);
