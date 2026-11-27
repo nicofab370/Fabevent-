@@ -38,6 +38,7 @@ const COLLECTIONS = {
   equipment: '/equipment',
   equipmentsetscontent: '/equipmentsetscontent',
   serialnumbers: '/serialnumbers',
+  stockmovements: '/stockmovements',
   crewmembers: '/crewmembers',
   vehicles: '/vehicles',
   accessories: '/accessories',
@@ -104,6 +105,16 @@ for (const [name, path] of Object.entries(COLLECTIONS)) {
     console.error(`\n${e.message}`);
     process.exit(1);
   }
+}
+
+/* diagnostic (noms de champs seulement, aucune donnée) : quels champs de quantité Rentman renvoie, et combien ne sont pas à 0 */
+for (const [name, list] of [['equipment', rm.equipment], ['projectequipment', rm.projectequipment]]) {
+  const seen = {};
+  for (const row of list || []) for (const [k, v] of Object.entries(row)) if (/quant|stock|amount/i.test(k) && (typeof v === 'number' || /^-?\d+([.,]\d+)?$/.test(String(v)))) {
+    seen[k] ??= [0, 0]; seen[k][0]++; if (Number(String(v).replace(',', '.')) !== 0) seen[k][1]++;
+  }
+  const txt = Object.entries(seen).map(([k, [n, nz]]) => `${k} (${nz}/${n} non nuls)`).join(', ');
+  console.log(`Champs de quantité de /${name} : ${txt || 'aucun'}`);
 }
 
 const { data, files, report } = mapRentman(rm);

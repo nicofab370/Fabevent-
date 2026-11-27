@@ -22,6 +22,11 @@ describe('import Rentman → FabEvent', () => {
     expect(one('categories', 'rm-f-2').parentId).toBe('rm-f-1');
     expect(one('categories', 'rm-f-3').parentId).toBe('rm-f-1'); // Son › Micros › Sans fil → Son › Sans fil
   });
+  it('stock : un champ « quantity » à 0 ne masque pas le stock actuel ; sinon mouvements de stock', () => {
+    expect(one('equipment', 'rm-e-500').quantity).toBe(12);
+    expect(one('equipment', 'rm-e-503').quantity).toBe(42);
+    expect(one('lines', 'rm-l-600').qty).toBe(4);
+  });
   it('matériel : kit, vente, unités numérotées (quantité = unités)', () => {
     expect(one('equipment', 'rm-e-502')).toMatchObject({ isKit: true, kitItems: [{ equipmentId: 'rm-e-500', qty: 2 }] });
     expect(one('equipment', 'rm-e-503').kind).toBe('vente');
@@ -76,6 +81,6 @@ describe('import Rentman → FabEvent', () => {
   });
   it('rapport : comptes, rien d’inventé', () => {
     expect(report.counts).toMatchObject({ projects: 1, subprojects: 2, lines: 4, crew: 2, costs: 1, docs: 2, files: 2, photos: 1 });
-    expect(report.warnings).toEqual([]);
+    expect(report.warnings).toEqual(['1 article(s) : stock calculé à partir des mouvements de stock', '1 article(s) sans aucune quantité dans Rentman (stock à 0)']);
   });
 });

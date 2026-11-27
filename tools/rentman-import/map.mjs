@@ -20,6 +20,8 @@ export const refId = (v) => {
   return m ? Number(m[1]) : null;
 };
 const pick = (o, ...keys) => { for (const k of keys) { const v = o?.[k]; if (v !== undefined && v !== null && v !== '') return v; } return undefined; };
+/** plus grande valeur numérique parmi plusieurs champs (un champ à 0 ne masque pas les suivants) */
+const maxOf = (o, ...keys) => Math.max(0, ...keys.map((k) => num(o?.[k])));
 const num = (v, d = 0) => { const n = typeof v === 'string' ? parseFloat(v.replace(',', '.')) : Number(v); return Number.isFinite(n) ? n : d; };
 const str = (v) => (v == null ? undefined : String(v).trim() || undefined);
 /** date Rentman (« 2026-06-01T08:00:00+02:00 ») → heure locale FabEvent « 2026-06-01T08:00 » */
@@ -118,13 +120,24 @@ export function mapRentman(rm, now = new Date().toISOString()) {
   }
   const unitsOf = new Map();
   for (const u of rm.serialnumbers || []) { const e = refId(u.equipment); if (e) unitsOf.set(e, (unitsOf.get(e) || 0) + 1); }
+  // stock calculé à partir des mouvements de stock (achats, pertes, corrections…), si la fiche de l'article n'en donne pas
+  const moved = new Map();
+  for (const m of rm.stockmovements || []) { const e = refId(m.equipment); if (e) moved.set(e, (moved.get(e) || 0) + num(pick(m, 'amount', 'quantity'))); }
+  const QTY = ['current_quantity', 'current_quantity_excl_cases', 'quantity', 'quantity_total', 'stock', 'stock_quantity', 'total_quantity', 'amount'];
+  let fromMoves = 0, zero = 0;
   const equipment = (rm.equipment || []).map((e) => {
     const kit = kitItems.get(e.id);
     const sale = /sale|verkoop|vente/i.test(String(pick(e, 'rental_sales', 'type') || ''));
     return {
       id: id('e', e.id), ...base(e), name: str(pick(e, 'displayname', 'name')) || `Article ${e.id}`, code: str(e.code),
       categoryId: refId(e.folder) ? id('f', refId(e.folder)) : undefined,
-      quantity: unitsOf.get(e.id) || Math.max(0, Math.round(num(pick(e, 'quantity', 'current_quantity', 'quantity_total')))),
+      quantity: (() => {
+        const q = unitsOf.get(e.id) || Math.round(maxOf(e, ...QTY)); // numéroté : une unité par numéro de série
+        if (q) return q;
+        const m = Math.max(0, Math.round(moved.get(e.id) || 0));
+        if (m) fromMoves++; else if (!kit?.length) zero++;
+        return m;
+      })(),
       dailyPrice: num(pick(e, 'price', 'rental_price', 'unit_price')),
       costPrice: num(pick(e, 'purchase_price')) || undefined,
       replacementValue: num(pick(e, 'new_price', 'replacement_value', 'value')) || undefined,
@@ -140,6 +153,8 @@ export function mapRentman(rm, now = new Date().toISOString()) {
     };
   });
   const eqName = new Map(equipment.map((e) => [e.id, e.name]));
+  if (fromMoves) warn(`${fromMoves} article(s) : stock calculé à partir des mouvements de stock`);
+  if (zero) warn(`${zero} article(s) sans aucune quantité dans Rentman (stock à 0)`);
   const units = (rm.serialnumbers || []).filter((u) => refId(u.equipment)).map((u, i) => ({
     id: id('u', u.id), ...base(u), equipmentId: id('e', refId(u.equipment)), number: num(u.ref) || undefined,
     serial: str(pick(u, 'serial', 'ref')) || `RM-${u.id}`, barcode: str(Array.isArray(u.qrcodes) ? u.qrcodes[0] : u.qrcodes),
@@ -239,7 +254,7 @@ export function mapRentman(rm, now = new Date().toISOString()) {
     return {
       id: id('l', l.id), ...base(l), projectId, subprojectId, equipmentId,
       name: str(l.name) || (equipmentId ? eqName.get(equipmentId) : undefined) || 'Article',
-      qty: num(pick(l, 'quantity_total', 'quantity'), 1), unitPrice: num(pick(l, 'unit_price', 'price')), catalogPrice: undefined,
+      qty: maxOf(l, 'quantity_total', 'quantity', 'quantity_planned'), unitPrice: num(pick(l, 'unit_price', 'price')), catalogPrice: undefined,
       discount: pct(pick(l, 'discount')), factor: factor > 0 ? factor : undefined,
       groupId: gid ? id('g', gid) : undefined, order: num(l.order, i),
       optional: !!l.is_option || undefined, parentLineId: parent ? id('l', parent) : undefined,
@@ -313,7 +328,7 @@ export function mapRentman(rm, now = new Date().toISOString()) {
     const e = refId(l.equipment);
     srLines.set(sr, [...(srLines.get(sr) || []), {
       equipmentId: e ? id('e', e) : undefined, name: str(pick(l, 'name', 'displayname')) || (e ? eqName.get(id('e', e)) : undefined) || 'Article',
-      qty: num(pick(l, 'quantity_total', 'quantity'), 1), cost: num(pick(l, 'unit_price', 'price', 'purchase_price')),
+      qty: maxOf(l, 'quantity_total', 'quantity', 'quantity_planned'), cost: num(pick(l, 'unit_price', 'price', 'purchase_price')),
       _proj: lineProj.get(refId(pick(l, 'project_equipment', 'projectequipment', 'linked_equipment'))),
     }]);
   }
