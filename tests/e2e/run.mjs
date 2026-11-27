@@ -3393,14 +3393,24 @@ await step('Finances : remise sur le matériel seulement, reprise sur le devis',
 await step('Import Rentman : fichier d’export importé dans une base (projets complets), réimport sans doublon', async () => {
   const { mapRentman } = await import('../../tools/rentman-import/map.mjs');
   const { RENTMAN } = await import('../fixtures/rentman.mjs');
-  const { data, report } = mapRentman(RENTMAN);
-  const f = join(mkdtempSync(join(tmpdir(), 'rm-')), 'export.json');
-  writeFileSync(f, JSON.stringify({ app: 'fabevent', kind: 'import', source: 'rentman', version: 1, exportedAt: new Date().toISOString(), report, data }));
+  const { data, files, report } = mapRentman(RENTMAN);
+  const dir = mkdtempSync(join(tmpdir(), 'rm-'));
+  const f = join(dir, 'export.json'), fp = join(dir, 'export-fichiers-1.json');
+  const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  const exportedAt = new Date().toISOString();
+  writeFileSync(f, JSON.stringify({ app: 'fabevent', kind: 'import', source: 'rentman', version: 1, exportedAt, report, data, parts: 1 }));
+  writeFileSync(fp, JSON.stringify({ app: 'fabevent', kind: 'import', source: 'rentman', part: 'fichiers', version: 1, exportedAt, data: {
+    files: files.map(({ url, fileId, ...m }) => ({ ...m, id: `rm-file-${fileId}`, base64: m.photoOf ? PNG : Buffer.from('%PDF-1.4 test').toString('base64') })),
+  } }));
   await resetDemo();
   await go('parametres');
   await page.locator('input[aria-label="Fichier d\'export Rentman"]').setInputFiles(f);
   await page.waitForSelector('.rentman-preview');
-  expect((await page.locator('.rentman-preview').innerText()).includes('1 projets'), 'aperçu : 1 projet');
+  expect((await page.locator('.rentman-preview').innerText()).includes('paquet(s) de fichiers'), 'aperçu : paquets de fichiers manquants signalés');
+  await page.locator('input[aria-label="Fichier d\'export Rentman"]').setInputFiles([f, fp]);
+  await page.waitForSelector('.rentman-preview:has-text("photos du matériel")');
+  const prev = await page.locator('.rentman-preview').innerText();
+  expect(prev.includes('1 projets') && prev.includes('2 devis et factures') && prev.includes('2 fichiers') && !prev.includes('paquet(s) de fichiers'), 'aperçu : projet, documents, fichiers');
   await page.click('.rentman-import button:text-is("Importer")');
   await page.waitForSelector('.rentman-import .info:has-text("Import terminé")');
   await openProject('Fête de la musique');
@@ -3409,6 +3419,17 @@ await step('Import Rentman : fichier d’export importé dans une base (projets 
   expect(eq.includes('L-Acoustics X12') && eq.includes('Pack voix') && eq.includes('Grande scène'), 'lignes de matériel et sous-projets importés');
   await tab('Général');
   expect((await page.locator('main').innerText()).includes('Ville de Liège'), 'client importé et relié');
+  await tab('Finances & documents');
+  const fin = await page.locator('main').innerText();
+  expect(fin.includes('F-2026-0031') && fin.includes('Q-2026-12'), 'devis et facture Rentman dans les documents du projet');
+  const stored = await page.evaluate(async () => {
+    const open = () => new Promise((r) => { const q = indexedDB.open('fabevent_' + (localStorage.getItem('fabevent.workspace') || 'principal')); q.onsuccess = () => r(q.result); });
+    const d = await open();
+    const get = (t, k) => new Promise((r) => { const q = d.transaction(t).objectStore(t).get(k); q.onsuccess = () => r(q.result); q.onerror = () => r(undefined); });
+    const [cost, file, eq, sr, ap] = await Promise.all([get('costs', 'rm-k-1000'), get('files', 'rm-file-950'), get('equipment', 'rm-e-504'), get('subrentals', 'rm-sr-1100'), get('appointments', 'rm-ap-1400')]);
+    return { cost: !!cost, file: file?.name, photo: !!eq?.photo, sr: sr?.status, ap: !!ap };
+  });
+  expect(stored.cost && stored.file === 'Plan de scène.pdf' && stored.photo && stored.sr === 'confirme' && stored.ap, `coût, fichier, photo, sous-location, rendez-vous importés (${JSON.stringify(stored)})`);
   // réimport : rien en double
   await go('parametres');
   await page.locator('input[aria-label="Fichier d\'export Rentman"]').setInputFiles(f);

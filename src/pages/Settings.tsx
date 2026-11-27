@@ -18,7 +18,7 @@ import { DEFAULT_VAT_MENTIONS, qrSvg } from '../payment';
 import { newTotpSecret, otpauthUri, verifyTotp } from '../totp';
 import type { User } from '../types';
 import { download, uid, money } from '../utils';
-import { importRentman, readRentmanFile, RENTMAN_LABELS, type ImportResult, type RentmanFile } from '../rentmanImport';
+import { importRentman, mergeRentmanFiles, readRentmanFile, RENTMAN_LABELS, type ImportResult, type RentmanFile } from '../rentmanImport';
 import { Icon } from '../components/Icon';
 
 export default function SettingsPage() {
@@ -549,22 +549,33 @@ function RentmanImportCard() {
   const [update, setUpdate] = useState(false);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<ImportResult[] | null>(null);
-  const counts = file ? Object.entries(file.data).map(([k, v]) => [k, (v || []).length] as [string, number]).filter(([, n]) => n) : [];
+  const counts = file ? Object.entries(file.data).flatMap(([k, v]): [string, number][] => {
+    const list = (v || []) as { photoOf?: string; projectTypes?: unknown[]; depots?: unknown[] }[];
+    if (k === 'files') return [['files', list.filter((f) => !f.photoOf).length], ['photos', list.filter((f) => f.photoOf).length]];
+    if (k === 'settings') return [[k, list.reduce((n, x) => n + (x.projectTypes?.length || 0) + (x.depots?.length || 0), 0)]];
+    return [[k, list.length]];
+  }).filter(([, n]) => n) : [];
+  const missingParts = file?.parts && !file.data.files?.length ? file.parts : 0;
   return (
     <div className="card rentman-import">
       <h2>Importer depuis Rentman</h2>
       <p className="muted" style={{ marginTop: 0 }}>
-        Ajoute à cette base ({currentWorkspace()}) tes projets Rentman au complet : clients et lieux (avec leurs contacts), catégories, matériel (kits, unités numérotées),
-        équipe, véhicules, projets, sous-projets, groupes, lignes de matériel, postes. Rien n'est effacé. Le fichier vient de l'export Rentman
-        (GitHub → Actions → « Export Rentman pour FabEvent »).
+        Ajoute à cette base ({currentWorkspace()}) tout ton Rentman : clients, lieux et fournisseurs (avec leurs contacts), catégories, matériel (kits, accessoires,
+        unités numérotées, photos), équipe et indisponibilités, véhicules, projets au complet (sous-projets, groupes, lignes de matériel, postes, véhicules,
+        coûts, sous-locations, remises), réparations, rendez-vous, devis et factures, fichiers, types de projet et dépôts. Rien n'est effacé. Les fichiers viennent
+        de l'export Rentman (GitHub → Actions → « Export Rentman pour FabEvent ») : choisis-les tous ensemble (le fichier principal et les « -fichiers-N »).
       </p>
       <label className="btn secondary" style={{ background: 'var(--soft)', color: 'var(--text)', border: '1px solid var(--border)' }}>
-        Choisir le fichier d'export (.json)
-        <input type="file" accept="application/json,.json" hidden aria-label="Fichier d'export Rentman" onChange={async (e) => {
-          const f = e.target.files?.[0]; e.target.value = '';
-          if (!f) return;
+        Choisir les fichiers d'export (.json)
+        <input type="file" accept="application/json,.json" multiple hidden aria-label="Fichier d'export Rentman" onChange={async (e) => {
+          const fs = [...(e.target.files || [])]; e.target.value = '';
+          if (!fs.length) return;
           setErr(''); setDone(null);
-          try { setFile(readRentmanFile(await f.text())); } catch (x) { setFile(null); setErr((x as Error).message); }
+          try {
+            const list: RentmanFile[] = [];
+            for (const f of fs) list.push(readRentmanFile(await f.text()));
+            setFile(mergeRentmanFiles(list));
+          } catch (x) { setFile(null); setErr((x as Error).message); }
         }} />
       </label>
       {err && <p className="avail ko">{err}</p>}
@@ -572,6 +583,7 @@ function RentmanImportCard() {
         <div className="rentman-preview">
           <p style={{ marginBottom: 4 }}>Export du {new Date(file.exportedAt).toLocaleString('fr-FR')} :</p>
           <ul>{counts.map(([k, n]) => <li key={k}>{n} {RENTMAN_LABELS[k as keyof typeof RENTMAN_LABELS] || k}</li>)}</ul>
+          {!!missingParts && <p className="avail ko">Les {missingParts} paquet(s) de fichiers (« -fichiers-1.json »…) n'ont pas été choisis : les documents et photos ne seront pas importés. Tu pourras les importer ensuite.</p>}
           {!!file.report?.skipped?.length && <p className="muted">Non accessible avec la clé utilisée : {file.report.skipped.join(', ')}.</p>}
           {!!file.report?.warnings?.length && <details><summary className="muted">{file.report.warnings.length} remarque(s)</summary><ul className="muted">{file.report.warnings.map((w) => <li key={w}>{w}</li>)}</ul></details>}
           <label className="check-row"><input type="checkbox" checked={update} onChange={(e) => setUpdate(e.target.checked)} /> Mettre à jour les fiches déjà importées (sinon elles sont gardées telles quelles)</label>

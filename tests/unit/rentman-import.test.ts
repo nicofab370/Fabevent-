@@ -45,8 +45,37 @@ describe('import Rentman → FabEvent', () => {
     expect(posts[1].personId).toBeUndefined();
     expect(data.vehicleAssignments[0]).toMatchObject({ vehicleId: 'rm-v-80', subprojectId: 'rm-s-310', start: '2026-06-21T07:00' });
   });
+  it('accessoires (automatique ou proposé, gratuit ou facturé), fournisseur, conditions du contact', () => {
+    expect(one('equipment', 'rm-e-500').accessories).toEqual([{ equipmentId: 'rm-e-504', qty: 1, free: true, optional: undefined }]);
+    expect(one('equipment', 'rm-e-501').accessories).toEqual([{ equipmentId: 'rm-e-504', qty: 2, free: false, optional: true }]);
+    expect(one('contacts', 'rm-c-12')).toMatchObject({ type: 'fournisseur', paymentDays: 30, language: 'nl' });
+  });
+  it('projet : type, remise globale et remise sur le matériel (sous-projet Rentman)', () => {
+    expect(one('projects', 'rm-p-300')).toMatchObject({ typeName: 'Festival', discount: 5, partDiscounts: { materiel: 15 } });
+    expect(data.settings[0]).toMatchObject({ projectTypes: [{ name: 'Festival' }], depots: [{ id: 'rm-d-1', name: 'Entrepôt Herstal' }] });
+  });
+  it('coûts, sous-location (projet retrouvé par la ligne liée), réparation d’une unité', () => {
+    expect(one('costs', 'rm-k-1000')).toMatchObject({ projectId: 'rm-p-300', qty: 2, amount: 180, price: 110, billable: true });
+    expect(one('subrentals', 'rm-sr-1100')).toMatchObject({ projectId: 'rm-p-300', supplierId: 'rm-c-12', status: 'confirme', lines: [{ name: 'Line array additionnel', qty: 4, cost: 60 }] });
+    expect(one('repairs', 'rm-r-1200')).toMatchObject({ equipmentId: 'rm-e-501', unitId: 'rm-u-901', cost: 140, status: 'ouvert' });
+  });
+  it('indisponibilités (pas les disponibilités), rendez-vous avec l’équipe', () => {
+    expect(data.unavailability).toHaveLength(1);
+    expect(data.unavailability[0]).toMatchObject({ personId: 'rm-p-70', reason: 'Vacances', start: '2026-07-01T00:00' });
+    expect(one('appointments', 'rm-ap-1400')).toMatchObject({ personIds: ['rm-p-70'], projectId: 'rm-p-300', start: '2026-06-10T10:00' });
+  });
+  it('devis et factures : numéro, état, montants', () => {
+    expect(one('docs', 'rm-dq-1500')).toMatchObject({ type: 'devis', status: 'accepte', number: 'Q-2026-12', snapshot: { totalHT: 1000, vat: 210, totalTTC: 1210, vatRate: 21 } });
+    expect(one('docs', 'rm-di-1600')).toMatchObject({ type: 'facture', status: 'envoye', snapshot: { dueDate: '2026-07-25' } });
+  });
+  it('fichiers : projet, équipe, photo de l’article', () => {
+    const { files } = mapRentman(RENTMAN);
+    expect(files.map((f: { fileId: number; projectId?: string; personId?: string; photoOf?: string }) => [f.fileId, f.projectId, f.personId, f.photoOf])).toEqual([
+      [950, 'rm-p-300', undefined, undefined], [951, undefined, undefined, 'rm-e-504'], [952, '', 'rm-p-70', undefined],
+    ]);
+  });
   it('rapport : comptes, rien d’inventé', () => {
-    expect(report.counts).toMatchObject({ projects: 1, subprojects: 2, lines: 4, crew: 2 });
+    expect(report.counts).toMatchObject({ projects: 1, subprojects: 2, lines: 4, crew: 2, costs: 1, docs: 2, files: 2, photos: 1 });
     expect(report.warnings).toEqual([]);
   });
 });
