@@ -32,7 +32,12 @@ async function newContext() {
   await ctx.addInitScript(() => { window.print = () => {}; });
   ctx.on('page', (p) => {
     p.on('pageerror', (e) => consoleErrors.push(e.message));
-    p.on('console', (m) => m.type() === 'error' && consoleErrors.push(m.text()));
+    p.on('console', (m) => {
+      if (m.type() !== 'error') return;
+      const at = m.location()?.url || '';
+      if (/localhost:9999\//.test(at)) return; // serveur fictif des tests (requête en vol après la fin du bouchon)
+      consoleErrors.push(`${m.text()}${at ? ` (${at})` : ''}`);
+    });
     p.on('dialog', (d) => (d.type() === 'prompt' ? d.accept(d.defaultValue()) : d.accept()));
   });
   page = await ctx.newPage();
