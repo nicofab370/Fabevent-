@@ -700,7 +700,7 @@ function SpecSearchModal({ e, onApply, onClose }: { e: Draft; onApply: (e: Draft
       {!state.hits && !state.busy && !state.err && <p className="muted">FabEvent cherche « {q} » sur le web, lit les pages trouvées (fabricant, revendeurs) et te propose ce qu'il y trouve. Rien n'est rempli sans ton choix.</p>}
       {state.busy && <p className="muted">Lecture des pages trouvées… (quelques secondes)</p>}
       {choices && (state.hits!.length === 0
-        ? <p className="muted">Rien d'exploitable trouvé dans les {state.searched} page(s) lues. Essaie une autre formulation (marque + référence exacte), ou <a href={specSearchUrl(e)} target="_blank" rel="noreferrer">ouvre la recherche Google</a>.</p>
+        ? <p className="muted">Rien d'exploitable trouvé dans les {state.searched} page(s) lues. Essaie une autre formulation (marque + référence exacte), ou ouvre la recherche Google.</p>
         : (
           <div className="spec-choices">
             {(Object.keys(SPEC_LABELS) as SpecField[]).map((f) => !!choices[f].length && (
@@ -722,6 +722,7 @@ function SpecSearchModal({ e, onApply, onClose }: { e: Draft; onApply: (e: Draft
           </div>
         ))}
       <div className="form-actions">
+        <a className="button-link secondary" href={specSearchUrl({ ...e, name: q, brand: undefined, model: undefined })} target="_blank" rel="noreferrer" style={{ marginRight: 'auto' }}>Ouvrir la recherche Google</a>
         <button type="button" className="secondary" onClick={onClose}>Fermer</button>
         {choices && <button type="button" disabled={applying || !Object.values(pick).some((i) => i != null && i >= 0)} onClick={apply}>{applying ? 'Application…' : 'Remplir la fiche'}</button>}
       </div>
@@ -753,7 +754,7 @@ function EquipmentLookup({ e, all, onFill }: { e: Draft; all: Equipment[]; onFil
         </button>
       </div>
       {msg && <p className="avail ok" style={{ margin: '4px 0 0' }}>{msg}</p>}
-      {web && <SpecSearchModal e={e} onClose={() => setWeb(false)} onApply={(v, filled) => { onFill(v); setWeb(false); setMsg(filled.length ? `Rempli depuis internet : ${filled.join(', ')}. À vérifier.` : ''); }} />}
+      {web && <SpecSearchModal e={e} onClose={() => setWeb(false)} onApply={(v, filled) => { setWeb(false); onFill(v); setMsg(filled.length ? `Rempli depuis internet : ${filled.join(', ')}. À vérifier.` : ''); }} />}
     </div>
   );
 }

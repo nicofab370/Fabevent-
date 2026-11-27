@@ -45,7 +45,10 @@ async function newContext() {
 }
 
 function expect(cond, msg) { if (!cond) throw new Error(msg); }
+/** E2E_ONLY="mot1|mot2" : ne lance que les scénarios dont le nom contient l'un de ces mots (plus le chargement de la démo) */
+const ONLY = process.env.E2E_ONLY ? new RegExp(process.env.E2E_ONLY, 'i') : null;
 async function step(name, fn) {
+  if (ONLY && !ONLY.test(name) && !/^Démo : chargement/.test(name)) return;
   try {
     await fn();
     results.push({ name, ok: true });
@@ -3333,8 +3336,13 @@ await step('Remplissage automatique : adresse d’un lieu trouvée sur la carte,
   expect(await page.locator('.spec-field:has(legend:text-is("Poids")) input[type=radio]:checked + strong').count() === 0, 'poids déjà rempli : gardé par défaut');
   await page.check('.spec-field:has(legend:text-is("Poids")) input[aria-label="21,5 kg"]');
   await page.check('.spec-photo input');
+  const dialogs = [];
+  const onDlg = (d) => dialogs.push(d.message());
+  page.on('dialog', onDlg);
   await page.click('.modal button:has-text("Remplir la fiche")');
-  await page.waitForSelector('.spec-choices', { state: 'detached' });
+  try { await page.waitForSelector('.spec-choices', { state: 'detached' }); }
+  catch { throw new Error(`fiche non remplie : ${await page.locator('.spec-choices').count()} fenêtre(s), ${await page.locator('.modal').count()} modale(s), message « ${await page.locator('.modal .lookup .avail').first().innerText().catch(() => '')} », alertes ${JSON.stringify(dialogs)}`); }
+  finally { page.off('dialog', onDlg); }
   expect((await page.locator('.modal .lookup .avail.ok').innerText()).includes('Rempli depuis internet'), 'message après remplissage');
   expect(await page.locator('.modal input[aria-label="Longueur (cm)"]').inputValue() === '43' && await page.locator('.modal input[aria-label="Hauteur (cm)"]').inputValue() === '54', 'dimensions remplies');
   const vals = await page.locator('.modal').innerText();
