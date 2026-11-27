@@ -10,4 +10,9 @@ return [
     // code d'installation choisi par toi (8 caractères min.) : demandé une seule fois pour créer le premier compte
     // administrateur sur un serveur qui a déjà des données. À retirer une fois le compte créé.
     // 'setup_code' => 'CHOISIS-UN-CODE',
+
+    // recherche de la fiche technique des articles (Matériel → « Chercher la fiche technique ») : sans réglage, FabEvent
+    // interroge DuckDuckGo puis Bing. Pour une recherche plus fiable, une clé Brave Search API (offre gratuite :
+    // https://brave.com/search/api/) :
+    // 'search_key' => 'TA-CLÉ-BRAVE',
 ];

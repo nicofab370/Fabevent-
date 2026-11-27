@@ -3309,8 +3309,39 @@ await step('Remplissage automatique : adresse d’un lieu trouvée sur la carte,
   await btn.waitFor({ timeout: 5000 });
   await btn.click();
   expect((await page.locator('.modal .lookup .avail.ok').innerText()).includes('poids'), 'poids repris de l’article semblable');
-  expect(await page.locator('.modal a:has-text("Chercher la fiche technique")').getAttribute('href').then((h) => h.includes('X12')), 'lien vers la fiche technique');
+  // fiche technique cherchée sur internet (serveur FabEvent simulé)
+  const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+  let asked = '';
+  await page.evaluate(() => { try { localStorage.setItem('fab.sync.url', 'http://localhost:9999/api/sync.php'); } catch {} });
+  await ctx.route('**/api/lookup.php**', (route) => {
+    const u = new URL(route.request().url());
+    if (u.searchParams.has('img')) return route.fulfill({ contentType: 'image/png', body: PNG });
+    asked = u.searchParams.get('spec') || '';
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, searched: 6, results: [
+      { source: 'l-acoustics.com', url: 'https://www.l-acoustics.com/x12', title: 'X12', weight: 20, dims: { l: 43, w: 37, h: 54 }, power: 0, images: ['https://www.l-acoustics.com/x12.png'] },
+      { source: 'shop.be', url: 'https://shop.be/x12', title: 'L-Acoustics X12', weight: 20, price: { amount: 2890, currency: 'EUR' } },
+      { source: 'shop.co.uk', url: 'https://shop.co.uk/x12', weight: 21.5, price: { amount: 2500, currency: 'GBP' } },
+    ] }) });
+  });
+  await page.click('.modal button:has-text("Chercher la fiche technique")');
+  await page.waitForSelector('.modal .spec-search');
+  await page.click('.modal .spec-search button');
+  await page.waitForSelector('.spec-choices');
+  const choicesText = await page.locator('.spec-choices').innerText();
+  expect(asked === 'L-Acoustics X12', `recherche « marque modèle » (${asked})`);
+  expect(choicesText.includes('20 kg') && choicesText.includes('21,5 kg') && choicesText.includes('43 × 37 × 54 cm') && choicesText.includes('2890 €') && !choicesText.includes('2500'), 'poids, dimensions, prix en euros proposés avec leurs sources');
+  expect(await page.locator('.spec-field:has(legend:text-is("Poids")) input[type=radio]:checked + strong').count() === 0, 'poids déjà rempli : gardé par défaut');
+  await page.check('.spec-field:has(legend:text-is("Poids")) input[aria-label="21,5 kg"]');
+  await page.check('.spec-photo input');
+  await page.click('.modal button:has-text("Remplir la fiche")');
+  await page.waitForSelector('.spec-choices', { state: 'detached' });
+  expect((await page.locator('.modal .lookup .avail.ok').innerText()).includes('Rempli depuis internet'), 'message après remplissage');
+  expect(await page.locator('.modal input[aria-label="Longueur (cm)"]').inputValue() === '43' && await page.locator('.modal input[aria-label="Hauteur (cm)"]').inputValue() === '54', 'dimensions remplies');
+  const vals = await page.locator('.modal').innerText();
+  expect(vals.includes('85,9 L'), 'volume déduit des dimensions');
   await page.keyboard.press('Escape');
+  await ctx.unroute('**/api/lookup.php**');
+  await page.evaluate(() => { try { localStorage.removeItem('fab.sync.url'); } catch {} });
 });
 
 await step('Kits : type d’article simple / kit virtuel / kit fixe (caisse montée, contenu bloqué, vérification au choix)', async () => {

@@ -135,6 +135,8 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
   const groups = sp.groups || [];
   const periods = sortPeriods(sp.periods || []);
   const weight = lines.reduce((a, l) => a + (l.equipmentId && !l.optional ? (eqMap.get(l.equipmentId)?.weight || 0) * l.qty : 0), 0);
+  // volume (m³) des articles dont les dimensions sont connues
+  const volume = lines.reduce((a, l) => { const d = l.equipmentId && !l.optional ? eqMap.get(l.equipmentId)?.dims : undefined; return a + (d ? (d.l * d.w * d.h) / 1e6 * l.qty : 0); }, 0);
   const total = round2(lines.filter((l) => !l.optional).reduce((a, l) => a + lineTotal(l, lineDays(l, sp), settings, isPerPiece(l, eqMap)), 0));
 
   const updLine = async (l: EquipmentLine, changes: Partial<EquipmentLine>) => {
@@ -164,7 +166,7 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
       <div className="sub-head">
         <div>
           <h3>{sp.name} <StatusBadge status={sp.status} /></h3>
-          <div className="muted">{lines.length} ligne(s){weight > 0 && ` · ${round2(weight)} kg`}</div>
+          <div className="muted">{lines.length} ligne(s){weight > 0 && ` · ${round2(weight)} kg`}{volume > 0 && ` · ${String(round2(volume)).replace('.', ',')} m³`}</div>
         </div>
         <div className="actions">
           <strong>{money(total)} HT</strong>

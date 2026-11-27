@@ -123,7 +123,7 @@ export function similarEquipment(e: Partial<Equipment>, all: Equipment[]): Equip
 }
 
 /** Infos techniques reprises d'un article semblable — seulement pour les champs encore vides. */
-const FILLABLE = ['brand', 'summary', 'weight', 'replacementValue', 'dailyPrice', 'costPrice', 'inspectionMonths', 'categoryId', 'photo', 'notes'] as const;
+const FILLABLE = ['brand', 'summary', 'weight', 'dims', 'power', 'replacementValue', 'dailyPrice', 'costPrice', 'inspectionMonths', 'categoryId', 'photo', 'notes'] as const;
 export function fillFromSimilar<T extends Partial<Equipment>>(e: T, src: Equipment): { value: T; filled: string[] } {
   const out: Partial<Equipment> = { ...e };
   const filled: string[] = [];
@@ -135,6 +135,64 @@ export function fillFromSimilar<T extends Partial<Equipment>>(e: T, src: Equipme
   return { value: out as T, filled };
 }
 
-/** Recherche web de la fiche technique (poids, dimensions, consommation). */
+/* ---------- fiche technique sur internet (par le serveur FabEvent : api/lookup.php?spec=…) ---------- */
+
+export interface SpecHit {
+  source: string; url: string; title?: string;
+  weight?: number; dims?: { l: number; w: number; h: number }; power?: number;
+  price?: { amount: number; currency: string }; images?: string[];
+}
+
+/** Ce que l'on cherche : marque + modèle (sinon la désignation). */
+export const specQuery = (e: Partial<Equipment>) => [e.brand, e.model || (e.brand ? '' : e.name)].filter(Boolean).join(' ').trim() || (e.name || '').trim();
+
+export async function searchSpecs(q: string): Promise<{ results: SpecHit[]; searched: number }> {
+  const url = serverScript('lookup.php');
+  if (!url) throw new Error('La recherche sur internet passe par le serveur FabEvent (non configuré sur cet appareil).');
+  if (!navigator.onLine) throw new Error('Pas de connexion internet.');
+  let r: Response;
+  try { r = await fetch(`${url}?spec=${encodeURIComponent(q)}&ws=${encodeURIComponent(currentWorkspace())}`, { credentials: 'include', cache: 'no-store' }); }
+  catch { throw new Error('Serveur injoignable (hors ligne ?).'); }
+  const j = await r.json().catch(() => ({} as Record<string, unknown>));
+  if (!r.ok) throw new Error(String(j.detail || (r.status === 401 ? 'Connecte-toi pour utiliser la recherche.' : 'Recherche indisponible pour l’instant.')));
+  return { results: (j.results as SpecHit[]) || [], searched: Number(j.searched) || 0 };
+}
+
+/** Adresse d'une image trouvée, relayée par le serveur (lisible par le navigateur pour la réduire). */
+export const specImageUrl = (img: string) => `${serverScript('lookup.php')}?img=${encodeURIComponent(img)}&ws=${encodeURIComponent(currentWorkspace())}`;
+
+export type SpecField = 'weight' | 'dims' | 'power' | 'replacementValue' | 'photo';
+export interface SpecChoice { field: SpecField; value: number | { l: number; w: number; h: number } | string; label: string; sources: { source: string; url: string }[] }
+
+const fmt = (n: number) => String(Math.round(n * 100) / 100).replace('.', ',');
+export const dimsLabel = (d: { l: number; w: number; h: number }) => `${fmt(d.l)} × ${fmt(d.w)} × ${fmt(d.h)} cm`;
+/** volume en litres (dm³) */
+export const volumeL = (d?: { l: number; w: number; h: number }) => (d ? (d.l * d.w * d.h) / 1000 : 0);
+
+/**
+ * Propositions par champ, regroupées quand plusieurs pages donnent la même valeur (la plus citée en premier).
+ * Prix neuf : seulement les prix en euros (les autres monnaies ne sont pas converties).
+ */
+export function specChoices(hits: SpecHit[]): Record<SpecField, SpecChoice[]> {
+  const out: Record<SpecField, SpecChoice[]> = { weight: [], dims: [], power: [], replacementValue: [], photo: [] };
+  const add = (field: SpecField, value: SpecChoice['value'], label: string, h: SpecHit) => {
+    const k = JSON.stringify(value);
+    const cur = out[field].find((c) => JSON.stringify(c.value) === k);
+    const src = { source: h.source, url: h.url };
+    if (cur) { if (!cur.sources.some((s) => s.url === h.url)) cur.sources.push(src); } else out[field].push({ field, value, label, sources: [src] });
+  };
+  for (const h of hits) {
+    if (h.weight) add('weight', h.weight, `${fmt(h.weight)} kg`, h);
+    if (h.dims) add('dims', h.dims, `${dimsLabel(h.dims)} (${fmt(volumeL(h.dims))} L)`, h);
+    if (h.power) add('power', h.power, `${fmt(h.power)} W`, h);
+    if (h.price && h.price.currency === 'EUR') add('replacementValue', h.price.amount, `${fmt(h.price.amount)} €`, h);
+    for (const im of h.images || []) add('photo', im, h.title || h.source, h);
+  }
+  for (const f of Object.keys(out) as SpecField[]) if (f !== 'photo') out[f].sort((a, b) => b.sources.length - a.sources.length);
+  out.photo = out.photo.slice(0, 8);
+  return out;
+}
+
+/** Recherche web de la fiche technique (poids, dimensions, consommation), dans un nouvel onglet. */
 export const specSearchUrl = (e: Partial<Equipment>) =>
   `https://www.google.com/search?q=${encodeURIComponent([e.brand, e.model || e.name, 'poids fiche technique datasheet'].filter(Boolean).join(' '))}`;

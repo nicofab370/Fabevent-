@@ -47,7 +47,7 @@ jobs:
         run: |
           mkdir -p paquet/fabevent/api
           cp -r dist/. paquet/fabevent/
-          cp server/_fabevent.php server/auth.php server/sync.php server/mail.php server/public.php server/oauth.php server/lookup.php server/diag.php server/mail-config.example.php server/fabevent-config.example.php server/api-htaccess.example paquet/fabevent/api/
+          cp server/_fabevent.php server/auth.php server/sync.php server/mail.php server/public.php server/oauth.php server/lookup.php server/_specs.php server/diag.php server/mail-config.example.php server/fabevent-config.example.php server/api-htaccess.example paquet/fabevent/api/
       - name: Envoi sur l'hébergement
         env:
           FTP_SERVER: ${{ secrets.FTP_SERVER }}
