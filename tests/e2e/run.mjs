@@ -3382,6 +3382,35 @@ await step('Finances : remise sur le matériel seulement, reprise sur le devis',
   expect((await page.locator('.doc .totals').innerText()).includes('matériel (10 %)'), 'ligne « Remise matériel (10 %) » sur le devis');
 });
 
+await step('Import Rentman : fichier d’export importé dans une base (projets complets), réimport sans doublon', async () => {
+  const { mapRentman } = await import('../../tools/rentman-import/map.mjs');
+  const { RENTMAN } = await import('../fixtures/rentman.mjs');
+  const { data, report } = mapRentman(RENTMAN);
+  const f = join(mkdtempSync(join(tmpdir(), 'rm-')), 'export.json');
+  writeFileSync(f, JSON.stringify({ app: 'fabevent', kind: 'import', source: 'rentman', version: 1, exportedAt: new Date().toISOString(), report, data }));
+  await resetDemo();
+  await go('parametres');
+  await page.locator('input[aria-label="Fichier d\'export Rentman"]').setInputFiles(f);
+  await page.waitForSelector('.rentman-preview');
+  expect((await page.locator('.rentman-preview').innerText()).includes('1 projets'), 'aperçu : 1 projet');
+  await page.click('.rentman-import button:text-is("Importer")');
+  await page.waitForSelector('.rentman-import .info:has-text("Import terminé")');
+  await openProject('Fête de la musique');
+  await tab('Équipement');
+  const eq = await page.locator('main').innerText();
+  expect(eq.includes('L-Acoustics X12') && eq.includes('Pack voix') && eq.includes('Grande scène'), 'lignes de matériel et sous-projets importés');
+  await tab('Général');
+  expect((await page.locator('main').innerText()).includes('Ville de Liège'), 'client importé et relié');
+  // réimport : rien en double
+  await go('parametres');
+  await page.locator('input[aria-label="Fichier d\'export Rentman"]').setInputFiles(f);
+  await page.click('.rentman-import button:text-is("Importer")');
+  await page.waitForSelector('.rentman-import .info:has-text("Import terminé")');
+  expect((await page.locator('.rentman-import .info').innerText()).includes('déjà là'), 'réimport : fiches gardées, pas de doublon');
+  await go('projets');
+  expect(await page.locator('table.list tbody tr', { hasText: 'Fête de la musique' }).count() === 1, 'un seul projet');
+});
+
 console.log('\n  — vérification de la liste (v51) —');
 
 await step('Matériel : dupliquer un article (nouveau code, fiche ouverte en modification, sans les unités)', async () => {

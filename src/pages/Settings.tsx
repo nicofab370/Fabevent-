@@ -18,6 +18,7 @@ import { DEFAULT_VAT_MENTIONS, qrSvg } from '../payment';
 import { newTotpSecret, otpauthUri, verifyTotp } from '../totp';
 import type { User } from '../types';
 import { download, uid, money } from '../utils';
+import { importRentman, readRentmanFile, RENTMAN_LABELS, type ImportResult, type RentmanFile } from '../rentmanImport';
 import { Icon } from '../components/Icon';
 
 export default function SettingsPage() {
@@ -306,6 +307,8 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      <RentmanImportCard />
+
       <div className="card">
         <h2>Base de démonstration</h2>
         <p className="muted">
@@ -537,4 +540,57 @@ function dataUrlToBlob(url: string): Blob {
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return new Blob([bytes], { type });
+}
+
+/** Importer depuis Rentman : fichier produit par l'export (GitHub « Export Rentman pour FabEvent » ou tools/rentman-import). */
+function RentmanImportCard() {
+  const [file, setFile] = useState<RentmanFile | null>(null);
+  const [err, setErr] = useState('');
+  const [update, setUpdate] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<ImportResult[] | null>(null);
+  const counts = file ? Object.entries(file.data).map(([k, v]) => [k, (v || []).length] as [string, number]).filter(([, n]) => n) : [];
+  return (
+    <div className="card rentman-import">
+      <h2>Importer depuis Rentman</h2>
+      <p className="muted" style={{ marginTop: 0 }}>
+        Ajoute à cette base ({currentWorkspace()}) tes projets Rentman au complet : clients et lieux (avec leurs contacts), catégories, matériel (kits, unités numérotées),
+        équipe, véhicules, projets, sous-projets, groupes, lignes de matériel, postes. Rien n'est effacé. Le fichier vient de l'export Rentman
+        (GitHub → Actions → « Export Rentman pour FabEvent »).
+      </p>
+      <label className="btn secondary" style={{ background: 'var(--soft)', color: 'var(--text)', border: '1px solid var(--border)' }}>
+        Choisir le fichier d'export (.json)
+        <input type="file" accept="application/json,.json" hidden aria-label="Fichier d'export Rentman" onChange={async (e) => {
+          const f = e.target.files?.[0]; e.target.value = '';
+          if (!f) return;
+          setErr(''); setDone(null);
+          try { setFile(readRentmanFile(await f.text())); } catch (x) { setFile(null); setErr((x as Error).message); }
+        }} />
+      </label>
+      {err && <p className="avail ko">{err}</p>}
+      {file && !done && (
+        <div className="rentman-preview">
+          <p style={{ marginBottom: 4 }}>Export du {new Date(file.exportedAt).toLocaleString('fr-FR')} :</p>
+          <ul>{counts.map(([k, n]) => <li key={k}>{n} {RENTMAN_LABELS[k as keyof typeof RENTMAN_LABELS] || k}</li>)}</ul>
+          {!!file.report?.skipped?.length && <p className="muted">Non accessible avec la clé utilisée : {file.report.skipped.join(', ')}.</p>}
+          {!!file.report?.warnings?.length && <details><summary className="muted">{file.report.warnings.length} remarque(s)</summary><ul className="muted">{file.report.warnings.map((w) => <li key={w}>{w}</li>)}</ul></details>}
+          <label className="check-row"><input type="checkbox" checked={update} onChange={(e) => setUpdate(e.target.checked)} /> Mettre à jour les fiches déjà importées (sinon elles sont gardées telles quelles)</label>
+          <div className="form-actions" style={{ justifyContent: 'flex-start' }}>
+            <button type="button" disabled={busy} onClick={async () => {
+              if (!confirm(`Importer ces données Rentman dans la base « ${currentWorkspace()} » ?`)) return;
+              setBusy(true);
+              try { setDone(await importRentman(file, { update })); } catch (x) { setErr((x as Error).message); } finally { setBusy(false); }
+            }}>{busy ? 'Import en cours…' : 'Importer'}</button>
+            <button type="button" className="secondary" onClick={() => setFile(null)}>Annuler</button>
+          </div>
+        </div>
+      )}
+      {done && (
+        <div className="info">
+          <strong>Import terminé.</strong>
+          <ul style={{ margin: '4px 0 0' }}>{done.map((r) => <li key={r.table}>{RENTMAN_LABELS[r.table]} : {r.added} ajouté(s){r.updated ? `, ${r.updated} mis à jour` : ''}{r.kept ? `, ${r.kept} déjà là (gardé(s))` : ''}</li>)}</ul>
+        </div>
+      )}
+    </div>
+  );
 }

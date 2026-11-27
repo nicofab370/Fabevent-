@@ -1,0 +1,29 @@
+name: Export Rentman pour FabEvent
+
+# Lit tous tes projets, contacts, matériel, équipe et véhicules dans Rentman (lecture seule)
+# et produit un fichier à importer dans FabEvent (Paramètres → « Importer depuis Rentman »).
+# Une seule fois : Settings → Secrets and variables → Actions → secret RENTMAN_TOKEN = ta clé API Rentman.
+# Puis : onglet Actions → « Export Rentman pour FabEvent » → Run workflow → Artifacts → fabevent-import-rentman.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Export depuis Rentman
+        env:
+          RENTMAN_TOKEN: ${{ secrets.RENTMAN_TOKEN }}
+        run: node tools/rentman-import/export.mjs fabevent-import-rentman.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fabevent-import-rentman
+          path: fabevent-import-rentman.json
+          retention-days: 7
