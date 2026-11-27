@@ -760,8 +760,12 @@ tr.post-open td:first-child { box-shadow: inset 4px 0 0 #d97706; }
 @media screen and (max-width: 640px) { .pick-uses { padding-left: 12px; } .other-uses .ou-dates { margin-left: 0; width: 100%; } }
 .quick-add-list li.qa-browse { justify-content: center; color: var(--muted, #6b7280); border-top: 1px solid var(--border); border-radius: 0; font-style: italic; }
 .chosen-name { flex: 1; min-width: 0; align-self: center; }
-.contact-field { display: flex; gap: 6px; align-items: center; flex: 1; min-width: 0; }
-.contact-field .quick-add-box { flex: 1; min-width: 0; }
+/* champ client / lieu : le nom sur toute la largeur, les actions dessous */
+.contact-field { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+.contact-field .quick-add-box { width: 100%; min-width: 0; }
+.cf-actions { display: flex; flex-wrap: wrap; gap: 2px 10px; }
+.cf-actions button { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px; min-height: 0; font-size: 12px; font-weight: 500; color: var(--muted); }
+.cf-actions button:hover { color: var(--accent); }
 .contact-field .quick-add-list li span.muted { font-size: 12px; }
 .cost-unit { margin-left: 3px; font-size: 12px; }
 .cost-help { margin: -4px 0 4px; font-size: 12px; }
@@ -903,3 +907,4 @@ table.list tr.limiting td:first-child, table.list tr.kit-child.limiting td:nth-c
 .lookup-hits button { display: grid; gap: 2px; width: 100%; text-align: left; background: var(--panel); color: inherit; border: 0; border-radius: 0; padding: 8px 10px; font-weight: 400; cursor: pointer; }
 .lookup-hits button:hover { background: var(--soft); }
 .lookup-hits .muted { font-size: 12px; }
+@media screen and (max-width: 640px) { .cf-actions button { min-height: 32px; padding: 6px 6px; font-size: 13px; } }

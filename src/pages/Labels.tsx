@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom';
 import { Empty, NumInput, PageHead, useSettings } from '../components/ui';
 import { useAvailability } from '../data';
 import { db, getSettings } from '../db';
-import { save, uid } from '../utils';
+import { isVirtualKit, save, uid } from '../utils';
 import { appBaseUrl } from '../db';
 import { contentsText, labelCode } from '../codes';
 import { categoryLabel } from '../categories';
@@ -44,7 +44,7 @@ export default function Labels() {
   const qrLink = !!settings.qrLink;
   /** contenu du QR : le code seul, ou un lien vers la fiche (lisible par l'appareil photo de tout téléphone) */
   const payload = (code: string) => (qrLink ? `${appBaseUrl(settings)}#/q/${encodeURIComponent(code)}` : code);
-  const items = av.equipment.filter((e) => !e.isKit && !e.archived && !e.accessoryOnly && [e.name, e.code].join(' ').toLowerCase().includes(q.toLowerCase()));
+  const items = av.equipment.filter((e) => !isVirtualKit(e) && !e.archived && !e.accessoryOnly && [e.name, e.code].join(' ').toLowerCase().includes(q.toLowerCase()));
   const total = Object.values(counts).reduce((a, b) => a + (b || 0), 0);
 
   /** Étiquettes à imprimer ; `persist` enregistre le code sur les articles / unités qui n'en ont pas encore. */

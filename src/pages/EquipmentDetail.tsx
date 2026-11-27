@@ -8,7 +8,7 @@ import { newArticleCode, nextUnitCode } from '../codegen';
 import { ensureSerialCodes } from '../autoCodes';
 import { db, getSettings } from '../db';
 import type { Equipment, SerialUnit } from '../types';
-import { availableQty, kitBreakdown, stockAt, fmtDate, fmtRange, inspectionsDue, money, save, toLocalInput, uid } from '../utils';
+import { availableQty, fmtDate, fmtRange, inspectionsDue, isFixedKit, isVirtualKit, kitBreakdown, money, save, stockAt, toLocalInput, uid } from '../utils';
 import { EquipmentForm } from './EquipmentList';
 import { InspectionModal, RepairModal } from './Maintenance';
 import PrintLabelModal from '../components/PrintLabelModal';
@@ -55,7 +55,7 @@ export default function EquipmentDetail() {
   // kit : contenu avec les quantités, aujourd'hui (stock, sorti ou réservé, disponible, kits complets)
   const today0 = new Date(); today0.setHours(0, 0, 0, 0);
   const today1 = new Date(today0); today1.setHours(23, 59);
-  const kit = eq.isKit && eq.kitItems.length ? kitBreakdown(eq, av.equipment, av.res, toLocalInput(today0), toLocalInput(today1)) : null;
+  const kit = isVirtualKit(eq) ? kitBreakdown(eq, av.equipment, av.res, toLocalInput(today0), toLocalInput(today1)) : null;
 
   // Frise : disponibilité jour par jour sur 28 jours
   const first = new Date();
@@ -75,7 +75,7 @@ export default function EquipmentDetail() {
         <button className="secondary" onClick={() => nav('/materiel')}><Icon name="arrow-left" />Retour</button>
         <button className="secondary" onClick={() => setRepair({})}>Déclarer une réparation</button>
         {eq.inspectionMonths ? <button className="secondary" onClick={() => setInspect({})}>Enregistrer un contrôle</button> : null}
-        {!eq.isKit && !eq.accessoryOnly && <button className="secondary" onClick={() => setPrinting({})}><Icon name="tag" />Imprimer l'étiquette</button>}
+        {!isVirtualKit(eq) && !eq.accessoryOnly && <button className="secondary" onClick={() => setPrinting({})}><Icon name="tag" />Imprimer l'étiquette</button>}
         {canEditEquipment(me) && <button className="secondary" title="Créer un nouvel article avec les mêmes infos (catégorie, prix, kit, accessoires…), avec son propre code ; les unités et codes-barres ne sont pas copiés" onClick={async () => {
           const [all, cats, st] = await Promise.all([db.equipment.toArray(), db.categories.toArray(), getSettings()]);
           // nouvel article : ni identifiant, ni code, ni code-barres, ni unités de l'original
@@ -96,14 +96,14 @@ export default function EquipmentDetail() {
       {eq.archived && <div className="alert">Article archivé : il n'est plus proposé dans les projets.</div>}
       {eq.photo && <img src={eq.photo} alt="" style={{ maxHeight: 160, borderRadius: 10, marginBottom: 12 }} />}
       <div className="stats">
-        <div className="stat"><b>{kit ? kit.kitsStock : eq.isKit ? 'Kit' : eq.accessoryOnly ? '—' : eq.quantity}</b><span>{kit ? `kit${kit.kitsStock > 1 ? 's' : ''} complet${kit.kitsStock > 1 ? 's' : ''} avec le stock` : eq.isKit ? 'composé' : eq.accessoryOnly ? 'hors inventaire' : eq.trackSerials ? 'unités en service' : 'en stock'}</span></div>
+        <div className="stat"><b>{kit ? kit.kitsStock : isVirtualKit(eq) ? 'Kit' : eq.accessoryOnly ? '—' : eq.quantity}</b><span>{kit ? `kit${kit.kitsStock > 1 ? 's' : ''} complet${kit.kitsStock > 1 ? 's' : ''} avec le stock` : eq.isKit ? 'composé' : eq.accessoryOnly ? 'hors inventaire' : eq.trackSerials ? 'unités en service' : 'en stock'}</span></div>
         {kit && <div className="stat"><b className={kit.kitsAvail > 0 ? '' : 'avail ko'}>{kit.kitsAvail}</b><span>disponible{kit.kitsAvail > 1 ? 's' : ''} aujourd'hui</span></div>}
         <div className="stat"><b>{money(eq.dailyPrice)}</b><span>{eq.kind === 'vente' ? 'prix de vente / pièce' : 'prix / jour HT'}</span></div>
         <div className="stat"><b>{money(eq.replacementValue || 0)}</b><span>valeur de remplacement</span></div>
         <div className="stat"><b>{eq.code || '—'}</b><span>référence{eq.location ? ` · ${eq.location}` : ''}</span></div>
         {(eq.extraCodes || []).length > 0 && <div className="stat"><b>{eq.extraCodes!.join(' · ')}</b><span>autres codes reconnus au scan</span></div>}
       </div>
-      {eq._stock && av.depots.length > 1 && !eq.isKit && (
+      {eq._stock && av.depots.length > 1 && !isVirtualKit(eq) && (
         <div className="info">Stock par dépôt : {av.depots.map((dp) => `${dp.name} ${stockAt(eq, dp.id, av.res)}`).join(' · ')}
           {av.transfers.some((t) => t.status !== 'annule' && t.lines.some((l) => l.equipmentId === eq.id)) && <> — <a href="#/transferts">voir les transferts</a></>}</div>
       )}
@@ -115,7 +115,7 @@ export default function EquipmentDetail() {
           et se coche à la sortie et au retour.
         </div>
       )}
-      {!eq.isKit && !eq.accessoryOnly && (
+      {!isVirtualKit(eq) && !eq.accessoryOnly && (
         <div className="card">
           <div className="page-head" style={{ marginBottom: 8 }}>
             <h2 style={{ margin: 0 }}>Disponibilité sur 4 semaines</h2>
@@ -200,7 +200,14 @@ export default function EquipmentDetail() {
               </table>
             </div>
           )}
-          <p className="muted" style={{ fontSize: 12 }}>« Kits possibles » : disponibles aujourd'hui / avec tout le stock. Un élément partagé avec d'autres kits ou projets réduit le nombre de kits disponibles.</p>
+          {isFixedKit(eq) && (
+            <>
+              <ul>{eq.kitItems.map((k) => <li key={k.equipmentId}>{k.qty} × <Link to={'/materiel/' + k.equipmentId}>{allMap.get(k.equipmentId)?.name || '?'}</Link> par caisse</li>)}</ul>
+              <p className="muted" style={{ fontSize: 12 }}>Kit fixe : {eq.quantity} caisse(s) montée(s). Leur contenu y est bloqué ({eq.kitItems.map((k) => `${k.qty * eq.quantity} × ${allMap.get(k.equipmentId)?.name || '?'}`).join(', ')}) et n’est plus disponible seul.
+                {' '}{eq.kitCheck ? 'Le contenu se vérifie à la sortie et au retour.' : 'À la sortie et au retour, on scanne la caisse seule.'}</p>
+            </>
+          )}
+          {kit && <p className="muted" style={{ fontSize: 12 }}>« Kits possibles » : disponibles aujourd'hui / avec tout le stock. Un élément partagé avec d'autres kits ou projets réduit le nombre de kits disponibles.</p>}
         </div>
       )}
       {(eq.accessories || []).length > 0 && (

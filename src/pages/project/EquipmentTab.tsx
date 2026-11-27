@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Empty, Field, Modal, NumInput, StatusBadge } from '../../components/ui';
 import { db } from '../../db';
 import type { EquipGroup, Equipment, EquipmentLine, Subproject } from '../../types';
-import { availableQty, blockPeriod, inDepot, stockAt, confirmDeleteSubproject, factorFor, fmtRange, lineBlock, lineDays, lineTotal, money, nowIso, round2, save, sortPeriods, uid, type Reservation, patch } from '../../utils';
+import { availableQty, blockPeriod, confirmDeleteSubproject, factorFor, fmtRange, inDepot, isFixedKit, isVirtualKit, lineBlock, lineDays, lineTotal, money, nowIso, patch, type Reservation, round2, save, sortPeriods, stockAt, uid } from '../../utils';
 import { isPerPiece, type ProjectData } from './shared';
 import { codeFromScan, findByCode } from '../../codes';
 import { Icon } from '../../components/Icon';
@@ -107,7 +107,7 @@ function Catalogue({ d, qty, setQty, targetLabel, onAdd }: { d: ProjectData; qty
             <div key={e.id} className="eq-cat-item" draggable
               onDragStart={(ev) => { ev.dataTransfer.setData(EQ_MIME, e.id); ev.dataTransfer.effectAllowed = 'copy'; }}>
               {e.photo ? <img src={e.photo} alt="" className="thumb" /> : <span className="drag-handle" aria-hidden>⠿</span>}
-              <span style={{ flex: 1, minWidth: 0 }}>{e.name}{e.isKit && <span className="badge" style={{ marginLeft: 4 }}>Kit</span>}<span className="muted" style={{ display: 'block', fontSize: 11 }}>{e.code} · {money(e.dailyPrice)}{e.kind === 'vente' ? '' : '/j'}</span></span>
+              <span style={{ flex: 1, minWidth: 0 }}>{e.name}{e.isKit && <span className="badge" style={{ marginLeft: 4 }}>{isFixedKit(e) ? 'Kit fixe' : 'Kit'}</span>}<span className="muted" style={{ display: 'block', fontSize: 11 }}>{e.code} · {money(e.dailyPrice)}{e.kind === 'vente' ? '' : '/j'}</span></span>
               <span className={'avail ' + (avail > 0 ? 'ok' : 'ko')} title="Disponible">{avail}</span>
               <button className="ghost small" aria-label={`Ajouter ${e.name}`} onClick={() => onAdd(e.id)}>+</button>
             </div>
@@ -201,7 +201,7 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
                         const parentKit = l.parentLineId ? lines.find((x) => x.id === l.parentLineId && !!x.equipmentId && !!eqMap.get(x.equipmentId)?.isKit) : undefined;
                         const avail = eq && !eq.accessoryOnly ? availableQty(eq, av.equipment, av.res, b0, b1, parentKit ? parentKit.id : l.id, d.depot) : null;
                         // kit : ce qui manque dans son contenu (le kit n'est pas « manquant » en entier pour autant)
-                        const kitShort = eq?.isKit && eq.kitItems?.length && !l.optional
+                        const kitShort = eq && isVirtualKit(eq) && !l.optional
                           ? eq.kitItems.map((k) => { const c = eqMap.get(k.equipmentId); const need = k.qty * l.qty; const left = c ? availableQty(c, av.equipment, av.res, b0, b1, l.id, d.depot) - need : -need; return { name: c?.name || '?', miss: -left }; }).filter((x) => x.miss > 0)
                           : [];
                         const perPiece = isPerPiece(l, eqMap);
@@ -219,7 +219,7 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
                               {l.periodIds?.length ? <div className="muted eq-sub" style={{ fontSize: 11 }}><Icon name="clock" />{periods.filter((p) => l.periodIds!.includes(p.id)).map((p) => p.name).join(', ')} · {fmtRange(b0, b1)}</div> : null}
                               {l.remark && <div className="muted eq-sub" style={{ fontSize: 11 }}>Devis : {l.remark}</div>}
                               {l.internalRemark && <div className="muted eq-sub" style={{ fontSize: 11 }}>Entrepôt : {l.internalRemark}</div>}
-                              {eq?.isKit && !!eq.kitItems?.length && !lines.some((c) => c.parentLineId === l.id) && (
+                              {eq && (isVirtualKit(eq) || (isFixedKit(eq) && eq.kitCheck && !!eq.kitItems?.length)) && !lines.some((c) => c.parentLineId === l.id) && (
                                 <div className="muted eq-sub" style={{ fontSize: 11 }}>kit : {eq.kitItems.map((k) => `${k.qty} × ${eqMap.get(k.equipmentId)?.name || '?'}`).join(', ')}</div>
                               )}
                             {eq && avail !== null && avail < l.qty && !l.optional && (eq.alternatives || []).map((altId) => {
@@ -443,7 +443,9 @@ export async function addEquipmentToSub(sp: Subproject, equipment: Equipment[], 
     }
     // contenu du kit (lignes enfants scannables une à une) + accessoires proposés à cocher ; par défaut tous, sinon seulement ceux cochés
     const accSel = accPick?.[eqId];
-    const children = [...(eq.kitItems || []).map((k) => ({ equipmentId: k.equipmentId, qty: k.qty, free: true })), ...(eq.accessories || []).filter((x) => !accSel || accSel.includes(x.equipmentId))];
+    // kit fixe : son contenu n'est détaillé (pour le vérifier à la sortie et au retour) que si demandé sur le kit
+    const kitKids = isVirtualKit(eq) || (isFixedKit(eq) && eq.kitCheck) ? eq.kitItems || [] : [];
+    const children = [...kitKids.map((k) => ({ equipmentId: k.equipmentId, qty: k.qty, free: true })), ...(eq.accessories || []).filter((x) => !accSel || accSel.includes(x.equipmentId))];
     for (const a of children) {
       const acc = eqMap.get(a.equipmentId);
       if (!acc) continue;
@@ -576,7 +578,7 @@ function EquipmentPicker({ sp, groupId, initialQ = '', depot, depots = [], disco
               <div className={'pick-row' + (n ? ' on' : '')} onClick={(ev) => { if (!(ev.target as HTMLElement).closest('input,button,a')) bump(e.id, 1); }} title="Clic : +1">
                 {e.photo ? <img src={e.photo} alt="" className="thumb" /> : <span className="thumb" />}
                 <div className="pick-name">
-                  <div><strong>{e.name}</strong> {e.isKit && <span className="badge">Kit</span>} {e.kind === 'vente' && <span className="badge">vente</span>}</div>
+                  <div><strong>{e.name}</strong> {e.isKit && <span className="badge">{isFixedKit(e) ? 'Kit fixe' : 'Kit'}</span>} {e.kind === 'vente' && <span className="badge">vente</span>}</div>
                   <div className="muted" style={{ fontSize: 11 }}>{details(e)}</div>
                 </div>
                 <div className="pick-stock">

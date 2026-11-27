@@ -1,4 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks';
+import { isFixedKit } from '../utils';
 import { useState } from 'react';
 import { NO_CATEGORY, categoryLabel, inCategory, mainCategories, subCategories, topCategory } from '../categories';
 import { db } from '../db';
@@ -77,7 +78,7 @@ export function EquipmentChooser({ title, equipment, exclude = [], withQty = fal
                 title={withQty ? 'Clic : +1' : 'Clic : choisir'}>
                 {e.photo ? <img src={e.photo} alt="" className="thumb" /> : <span className="thumb" />}
                 <div className="pick-name">
-                  <div><strong>{e.name}</strong> {e.isKit && <span className="badge">Kit</span>} {e.accessoryOnly && <span className="badge">hors inventaire</span>}</div>
+                  <div><strong>{e.name}</strong> {e.isKit && <span className="badge">{isFixedKit(e) ? 'Kit fixe' : 'Kit'}</span>} {e.accessoryOnly && <span className="badge">hors inventaire</span>}</div>
                   <div className="muted" style={{ fontSize: 11 }}>{[e.code, categoryLabel(cats, e.categoryId)].filter(Boolean).join(' · ')}</div>
                 </div>
                 <span className="muted pick-price">{info?.(e)}</span>

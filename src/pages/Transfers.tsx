@@ -7,7 +7,7 @@ import { useAvailability } from '../data';
 import { db, nextNumber } from '../db';
 import type { Transfer, TransferStatus } from '../types';
 import { TRANSFER_LABELS } from '../types';
-import { availableQty, escHtml as esc, fmtDate, fmtRange, save, stockAt, toLocalInput } from '../utils';
+import { availableQty, escHtml as esc, fmtDate, fmtRange, isVirtualKit, save, stockAt, toLocalInput } from '../utils';
 import { applyTransfer } from '../transferApply';
 import { unitNo } from '../unitNumbers';
 import type { SerialUnit } from '../types';
@@ -179,7 +179,7 @@ function TransferModal({ initial, onClose }: { initial: Partial<Transfer>; onClo
           <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
             <button type="button" className="secondary small" onClick={() => setChoosing(true)}>+ Ajouter du matériel…</button>
             {choosing && (
-              <EquipmentChooser title="Matériel à transférer" withQty equipment={av.equipment.filter((e) => !e.isKit)}
+              <EquipmentChooser title="Matériel à transférer" withQty equipment={av.equipment.filter((e) => !isVirtualKit(e))}
                 exclude={lines.map((l) => l.equipmentId)}
                 info={(e) => `${t.fromDepotId ? stockAt(e, t.fromDepotId, av.res) : e.quantity} au départ`}
                 onClose={() => setChoosing(false)}

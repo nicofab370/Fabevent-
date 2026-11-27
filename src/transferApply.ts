@@ -1,7 +1,7 @@
 import { moveUnitToDepot } from './codes';
 import { db, mainDepotId } from './db';
 import type { Settings, Transfer } from './types';
-import { patch } from './utils';
+import { isVirtualKit, patch } from './utils';
 
 /*
  * Transfert définitif effectué : le stock change vraiment de dépôt (stock propre de chaque dépôt, unités choisies).
@@ -15,7 +15,7 @@ export async function applyTransfer(t: Transfer, settings: Pick<Settings, 'depot
   const [from, to] = sign === 1 ? [t.fromDepotId, t.toDepotId] : [t.toDepotId, t.fromDepotId];
   for (const l of t.lines) {
     const e = await db.equipment.get(l.equipmentId);
-    if (!e || e.isKit || e.accessoryOnly) continue;
+    if (!e || isVirtualKit(e) || e.accessoryOnly) continue;
     if (e.trackSerials) {
       for (const id of l.unitIds || []) await moveUnitToDepot(id, to, label || `Transfert ${t.number}`);
       continue;

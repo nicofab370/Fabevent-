@@ -10,7 +10,7 @@ import { newArticleCode, nextUnitCode } from '../codegen';
 import { useAvailability } from '../data';
 import { currentWorkspace, db } from '../db';
 import type { Equipment, SerialUnit } from '../types';
-import { fmtDate, fmtRange, money, patch, save, stockAt, toLocalInput } from '../utils';
+import { fixedKitBlocked, fmtDate, fmtRange, isVirtualKit, money, patch, save, stockAt, toLocalInput } from '../utils';
 import { AssociateModal, stockMove } from './Checklist';
 import { Icon } from '../components/Icon';
 import { CategoryOptions } from '../components/CategoryOptions';
@@ -112,10 +112,12 @@ export default function Inventory() {
   };
   /** unités attendues au dépôt : en service ou à réparer (les unités en réparation et perdues n'y sont pas) */
   const unitsHere = (eqId: string) => av.units.filter((u) => u.equipmentId === eqId && u.status === 'ok' && inDepot(u)).sort((a, b) => (a.number || 1e9) - (b.number || 1e9) || (a.barcode || a.serial).localeCompare(b.barcode || b.serial, 'fr', { numeric: true }));
-  const items = av.equipment.filter((e) => !e.isKit && !e.archived && !e.accessoryOnly);
-  const kits = av.equipment.filter((e) => e.isKit && !e.archived && e.kitItems.length);
+  // une caisse montée (kit fixe) se compte comme un article ; un kit virtuel s'ouvre pour compter ses composants
+  const items = av.equipment.filter((e) => !isVirtualKit(e) && !e.archived && !e.accessoryOnly);
+  const kits = av.equipment.filter((e) => isVirtualKit(e) && !e.archived);
   const byId = new Map(av.equipment.map((e) => [e.id, e]));
-  const expected = (e: Equipment) => (e.trackSerials ? unitsHere(e.id).length : multi ? stockAt(e, dep, av.res) : e.quantity);
+  // en vrac : ce qui est rangé dans les caisses montées (kits fixes) n'est pas sur l'étagère
+  const expected = (e: Equipment) => (e.trackSerials ? unitsHere(e.id).length : Math.max(0, (multi ? stockAt(e, dep, av.res) : e.quantity) - fixedKitBlocked(e.id, av.equipment, multi ? dep : undefined)));
   const countOf = (e: Equipment): number | undefined => (e.trackSerials ? (unitsHere(e.id).some((u) => found.has(u.id)) ? unitsHere(e.id).filter((u) => found.has(u.id)).length : undefined) : ses.counted[e.id]);
   const stateOf = (e: Equipment): 'todo' | 'ok' | 'diff' => { const c = countOf(e); return c === undefined ? 'todo' : c === expected(e) ? 'ok' : 'diff'; };
 
@@ -188,7 +190,7 @@ export default function Inventory() {
       say({ ok: true, msg: `${e.name} n° ${unit.serial} — ${seenN} / ${total}${moved}${unit.defect ? ` · à réparer : ${unit.defect}` : ''}` });
       return true;
     }
-    if (e.isKit && e.kitItems.length) {
+    if (isVirtualKit(e)) {
       if (!ui.burst) { beep(true); setFlash({ ok: true, msg: `${e.name} : ouvert pour le comptage` }); setOpen({ id: e.id }); return true; }
       // scan en continu : le contenu du kit compte d'un coup (les unités à numéro de série se scannent à part)
       const bulk = e.kitItems.filter((k) => !byId.get(k.equipmentId)?.trackSerials);
@@ -310,13 +312,13 @@ export default function Inventory() {
       </div>
 
       {groups.length === 0 ? <Empty>{qn ? 'Aucun article trouvé. Crée-le avec « + Nouvel article ».' : ui.view === 'todo' ? 'Tout est compté ici.' : ui.view === 'diff' ? 'Aucun écart.' : 'Aucun article.'}</Empty> : groups.map((g) => {
-        const cnt = g.list.filter((e) => !e.isKit);
+        const cnt = g.list.filter((e) => !isVirtualKit(e));
         return (
           <section key={g.name} className="inv-group">
             <div className="inv-fold"><span>{g.name}</span><span>{cnt.filter((e) => countOf(e) !== undefined).length}/{cnt.length}</span></div>
             <div className="inv-list">
               {g.list.map((e) => {
-                if (e.isKit) {
+                if (isVirtualKit(e)) {
                   const n = ses.kitsDone?.[e.id] || 0;
                   return (
                     <button key={e.id} type="button" className="inv-row st-kit" onClick={() => setOpen({ id: e.id })}>
@@ -350,20 +352,20 @@ export default function Inventory() {
         <button disabled={!diffs.length} onClick={() => setSending(true)}>Appliquer {diffs.length} écart{diffs.length > 1 ? 's' : ''}</button>
       </div>
 
-      {openItem && !openItem.isKit && !openItem.trackSerials && (
+      {openItem && !isVirtualKit(openItem) && !openItem.trackSerials && (
         <CountModal e={openItem} exp={expected(openItem)} parts={partsOf(ses, openItem.id)} onClose={() => { setOpen(null); ref.current?.focus(); }}
           onSave={(n, parts) => setTotal(openItem.id, n, parts)} onClear={() => setTotal(openItem.id, undefined)}
           onPrint={() => { setOpen(null); setPrintFor({ id: openItem.id }); }} onInfo={() => setSheet(openItem.id)}
           onAddStock={() => { setOpen(null); setAddStock(openItem.id); }} />
       )}
-      {openItem && !openItem.isKit && openItem.trackSerials && (
+      {openItem && !isVirtualKit(openItem) && openItem.trackSerials && (
         <UnitsModal e={openItem} here={unitsHere(openItem.id)} bringHere={bringHere} all={av.units.filter((u) => u.equipmentId === openItem.id)} found={found} flash={open?.unit}
           equipment={av.equipment} units={av.units} onToggle={(id) => (found.has(id) ? unmarkUnits([id]) : markUnits([id]))}
           onMark={markUnits} onReset={() => unmarkUnits(av.units.filter((u) => u.equipmentId === openItem.id).map((u) => u.id))}
           onClose={() => { setOpen(null); ref.current?.focus(); }} onInfo={() => setSheet(openItem.id)}
           onPrint={(unitIds) => { setOpen(null); setPrintFor({ id: openItem.id, unitIds }); }} />
       )}
-      {openItem && openItem.isKit && (
+      {openItem && isVirtualKit(openItem) && (
         <KitModal kit={openItem} byId={byId} units={av.units} here={unitsHere} found={found} bringHere={bringHere} done={ses.kitsDone?.[openItem.id] || 0} canUndo={ses.kits[ses.kits.length - 1]?.kitId === openItem.id}
           onCommit={(qtys, units) => commitKit(openItem.id, qtys, units)} onUndo={undoKit} onClose={() => { setOpen(null); ref.current?.focus(); }}
           onPrint={() => { setOpen(null); setPrintFor({ id: openItem.id }); }} />
@@ -865,7 +867,7 @@ export function ItemSheet({ id, onClose }: { id: string; onClose: () => void }) 
         </dd>
       </dl>
 
-      {!e.trackSerials && !e.isKit && (
+      {!e.trackSerials && !isVirtualKit(e) && (
         <form className="toolbar" onSubmit={async (ev) => { ev.preventDefault(); if (addQty) { await stockMove(e.id, addQty, `Ajout au stock${addNote ? ` — ${addNote}` : ''}`); setAddQty(0); setAddNote(''); } }}>
           <strong>Ajouter du stock</strong>
           <NumInput className="w-qty" value={addQty} onChange={setAddQty} aria-label="Quantité à ajouter" />
