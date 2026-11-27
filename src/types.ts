@@ -477,6 +477,17 @@ export interface EquipmentLine extends Base {
   optionGroup?: string;
   /** accessoire ajouté automatiquement avec une autre ligne */
   parentLineId?: ID;
+  /** ligne de contenu d'un kit (sous la ligne du kit) */
+  kitPart?: boolean;
+  /**
+   * prix du catalogue au moment de l'ajout (ou de la dernière mise à jour acceptée / ignorée) :
+   * un changement de prix au catalogue n'est jamais appliqué tout seul aux projets, il est proposé
+   */
+  catalogPrice?: number;
+  /** nom du catalogue accepté ou ignoré (proposition de renommage) */
+  catalogName?: string;
+  /** composition du kit acceptée ou ignorée (signature), pour ne plus la proposer */
+  kitAck?: string;
   /** consommable déjà déduit du stock */
   consumed?: boolean;
   /** créneaux propres à la ligne (prioritaires sur ceux du groupe) */

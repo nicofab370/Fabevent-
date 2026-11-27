@@ -3292,6 +3292,43 @@ await step('Kits : type d’article simple / kit virtuel / kit fixe (caisse mont
   expect((await row.innerText()).includes('Kit fixe'), 'badge « Kit fixe » dans le catalogue');
 });
 
+await step('Catalogue modifié : rien ne change tout seul dans les projets, mise à jour proposée et choisie', async () => {
+  await resetDemo();
+  // prix de l'enceinte X12 avant / après, dans un projet qui l'utilise
+  await openProject('Festival des Lumières');
+  await tab('Équipement');
+  const x12Row = () => page.locator('table tr', { hasText: 'Enceinte L-Acoustics X12' }).first();
+  const priceBefore = await x12Row().locator('input').nth(1).inputValue().catch(() => '');
+  const before = await page.locator('.catalog-changes').count();
+  // le catalogue change : prix de la X12 +10 €
+  await go('materiel');
+  await page.locator('table.list tbody tr', { hasText: 'Enceinte L-Acoustics X12' }).first().click();
+  await page.click('main button:text-is("Modifier")');
+  await page.waitForSelector('.edit-inline');
+  const priceField = page.locator('.edit-inline label.field', { has: page.locator('span:text-is("Prix location / jour HT (€)")') }).locator('input');
+  const old = Number((await priceField.inputValue()).replace(',', '.'));
+  await priceField.fill(String(old + 10));
+  await page.click('.edit-inline button[type=submit]');
+  await page.waitForTimeout(400);
+  // le projet n'a pas changé tout seul ; un bandeau propose la mise à jour
+  await openProject('Festival des Lumières');
+  await tab('Équipement');
+  expect(await page.locator('.catalog-changes').count() === 1, `bandeau « le catalogue a changé » (avant : ${before})`);
+  const priceAfter = await x12Row().locator('input').nth(1).inputValue().catch(() => '');
+  expect(priceAfter === priceBefore, `prix du projet inchangé (${priceBefore} / ${priceAfter})`);
+  await page.click('.catalog-changes button:has-text("Voir et mettre à jour")');
+  await page.waitForSelector('.modal');
+  const row = page.locator('.modal tr', { hasText: 'Enceinte L-Acoustics X12' }).filter({ hasText: 'Prix' }).first();
+  expect((await row.innerText()).includes('→'), 'changement de prix listé');
+  // ne mettre à jour QUE la X12
+  await page.locator('.modal input[aria-label="Tout cocher"]').uncheck();
+  await row.locator('input[type=checkbox]').check();
+  await page.click('.modal button:has-text("Mettre à jour 1 ligne(s)")');
+  await page.waitForTimeout(500);
+  expect(await page.locator('.modal tr', { hasText: 'Enceinte L-Acoustics X12' }).filter({ hasText: 'Prix' }).count() === 0, 'changement appliqué, plus proposé');
+  await page.keyboard.press('Escape');
+});
+
 console.log('\n  — vérification de la liste (v51) —');
 
 await step('Matériel : dupliquer un article (nouveau code, fiche ouverte en modification, sans les unités)', async () => {

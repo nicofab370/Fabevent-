@@ -1,4 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks';
+import { catalogChanges, resolveCatalogChanges } from '../../catalogChanges';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Empty, Field, Modal, NumInput, StatusBadge } from '../../components/ui';
@@ -53,6 +54,7 @@ export default function EquipmentTab({ d }: { d: ProjectData }) {
 
   return (
     <>
+      <CatalogChangesBanner d={d} />
       <div className="info" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         <span style={{ flex: 1, minWidth: 260 }}>
           Organise le matériel en <strong>groupes</strong> (par type : son, lumière… ; par emplacement : scène, bar… ; ou par jour).
@@ -138,11 +140,13 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
     await patch(db.lines, l.id, changes);
     const children = lines.filter((c) => c.parentLineId === l.id);
     // les accessoires suivent la quantité et le groupe de leur ligne
+    // contenu du kit et accessoires suivent la quantité, dans les proportions de la ligne (pas celles du catalogue,
+    // qui a pu changer : la mise à jour se fait à la demande, voir CatalogChanges)
     if (changes.qty !== undefined && l.equipmentId) {
       const acc = eqMap.get(l.equipmentId)?.accessories || [];
       for (const c of children) {
-        const a = acc.find((x) => x.equipmentId === c.equipmentId);
-        if (a) await save(db.lines, { ...c, qty: a.qty * changes.qty });
+        const per = l.qty > 0 ? c.qty / l.qty : acc.find((x) => x.equipmentId === c.equipmentId)?.qty;
+        if (per !== undefined) await save(db.lines, { ...c, qty: Math.round(per * changes.qty * 100) / 100 });
       }
     }
     if ('groupId' in changes) for (const c of children) await save(db.lines, { ...c, groupId: changes.groupId });
@@ -299,7 +303,7 @@ function LineModal({ sp, line, accessories, eq, allEquipment, onClose }: { sp: S
     if (on && !cur) {
       const accEq = allEquipment.find((x) => x.id === a.equipmentId);
       const t = nowIso();
-      await db.lines.put({ id: uid(), createdAt: t, updatedAt: t, projectId: line.projectId, subprojectId: line.subprojectId, groupId: l.groupId || line.groupId, equipmentId: a.equipmentId, name: accEq?.name || '?', qty: a.qty * line.qty, unitPrice: a.free ? 0 : accEq?.dailyPrice || 0, discount: 0, order: line.order + 0.5, parentLineId: line.id, periodIds: l.periodIds?.length ? l.periodIds : undefined });
+      await db.lines.put({ id: uid(), createdAt: t, updatedAt: t, projectId: line.projectId, subprojectId: line.subprojectId, groupId: l.groupId || line.groupId, equipmentId: a.equipmentId, name: accEq?.name || '?', qty: a.qty * line.qty, unitPrice: a.free ? 0 : accEq?.dailyPrice || 0, catalogPrice: a.free ? undefined : accEq?.dailyPrice, discount: 0, order: line.order + 0.5, parentLineId: line.id, periodIds: l.periodIds?.length ? l.periodIds : undefined });
     } else if (!on && cur) {
       await db.lines.delete(cur.id);
     }
@@ -439,19 +443,19 @@ export async function addEquipmentToSub(sp: Subproject, equipment: Equipment[], 
     } else {
       total = n;
       lineId = uid();
-      await db.lines.put({ id: lineId, createdAt: t, updatedAt: t, projectId: sp.projectId, subprojectId: sp.id, groupId, equipmentId: eqId, name: eq.name, qty: n, unitPrice: eq.dailyPrice, discount, order: order++ });
+      await db.lines.put({ id: lineId, createdAt: t, updatedAt: t, projectId: sp.projectId, subprojectId: sp.id, groupId, equipmentId: eqId, name: eq.name, qty: n, unitPrice: eq.dailyPrice, catalogPrice: eq.dailyPrice, discount, order: order++ });
     }
     // contenu du kit (lignes enfants scannables une à une) + accessoires proposés à cocher ; par défaut tous, sinon seulement ceux cochés
     const accSel = accPick?.[eqId];
     // kit fixe : son contenu n'est détaillé (pour le vérifier à la sortie et au retour) que si demandé sur le kit
     const kitKids = isVirtualKit(eq) || (isFixedKit(eq) && eq.kitCheck) ? eq.kitItems || [] : [];
-    const children = [...kitKids.map((k) => ({ equipmentId: k.equipmentId, qty: k.qty, free: true })), ...(eq.accessories || []).filter((x) => !accSel || accSel.includes(x.equipmentId))];
+    const children = [...kitKids.map((k) => ({ equipmentId: k.equipmentId, qty: k.qty, free: true, part: true })), ...(eq.accessories || []).filter((x) => !accSel || accSel.includes(x.equipmentId)).map((x) => ({ ...x, part: false }))];
     for (const a of children) {
       const acc = eqMap.get(a.equipmentId);
       if (!acc) continue;
       const child = existing.find((l) => l.parentLineId === lineId && l.equipmentId === a.equipmentId);
       if (child) await save(db.lines, { ...child, qty: a.qty * total });
-      else await db.lines.put({ id: uid(), createdAt: t, updatedAt: t, projectId: sp.projectId, subprojectId: sp.id, groupId, equipmentId: acc.id, name: acc.name, qty: a.qty * total, unitPrice: a.free ? 0 : acc.dailyPrice, discount: 0, order: order++, parentLineId: lineId });
+      else await db.lines.put({ id: uid(), createdAt: t, updatedAt: t, projectId: sp.projectId, subprojectId: sp.id, groupId, equipmentId: acc.id, name: acc.name, qty: a.qty * total, unitPrice: a.free ? 0 : acc.dailyPrice, catalogPrice: a.free ? undefined : acc.dailyPrice, discount: 0, order: order++, parentLineId: lineId, kitPart: a.part || undefined });
     }
   }
 }
@@ -704,5 +708,53 @@ function QuickAdd({ equipment, units, availOf, onAdd, onBrowse }: {
       {onBrowse && <button type="button" className="secondary small" title="Choisir dans une fenêtre avec filtres (catégories, disponibilité, étiquettes)" onClick={() => { onBrowse(term); setQ(''); }}>Filtres…</button>}
       {msg && <span className="avail ok">{msg}</span>}
     </div>
+  );
+}
+
+/**
+ * Le catalogue a changé depuis l'ajout du matériel (prix, nom, contenu d'un kit) : rien n'est changé tout seul
+ * dans le projet ; on voit les différences et on choisit ce qu'on met à jour (ou ce qu'on ignore).
+ */
+function CatalogChangesBanner({ d }: { d: ProjectData }) {
+  const changes = catalogChanges(d.lines, d.av.equipment);
+  const [open, setOpen] = useState(false);
+  const [sel, setSel] = useState<Set<string> | null>(null);
+  const [busy, setBusy] = useState(false);
+  if (!changes.length) return null;
+  const picked = sel ?? new Set(changes.filter((c) => !c.manual).map((c) => c.key));
+  const run = async (mode: 'appliquer' | 'ignorer') => {
+    setBusy(true);
+    try { await resolveCatalogChanges(changes.filter((c) => picked.has(c.key)), mode, d.lines, d.av.equipment); setSel(null); }
+    finally { setBusy(false); }
+  };
+  const KIND = { prix: 'Prix', nom: 'Nom', contenu: 'Contenu du kit' };
+  return (
+    <>
+      <div className="info catalog-changes">
+        <span><Icon name="warning" /> <strong>Le catalogue a changé</strong> depuis l'ajout de ce matériel ({changes.length} différence{changes.length > 1 ? 's' : ''} : {Array.from(new Set(changes.map((c) => KIND[c.kind].toLowerCase()))).join(', ')}). Rien n'a été modifié dans ce projet.</span>
+        <button type="button" className="secondary small" onClick={() => setOpen(true)}>Voir et mettre à jour…</button>
+      </div>
+      {open && (
+        <Modal title="Changements du catalogue" onClose={() => setOpen(false)} wide>
+          <p className="muted" style={{ marginTop: 0 }}>Coche ce que tu veux reprendre dans ce projet. « Ignorer » garde le projet tel quel et ne propose plus ce changement. Les documents déjà créés (devis, factures) ne changent pas.</p>
+          <table className="list">
+            <thead><tr><th style={{ width: 32 }}><input type="checkbox" aria-label="Tout cocher" checked={picked.size === changes.length} onChange={(e) => setSel(new Set(e.target.checked ? changes.map((c) => c.key) : []))} /></th><th>Ligne</th><th>Changement</th></tr></thead>
+            <tbody>
+              {changes.map((c) => (
+                <tr key={c.key}>
+                  <td><input type="checkbox" aria-label={`Choisir : ${c.line} (${KIND[c.kind]})`} checked={picked.has(c.key)} onChange={(e) => { const n = new Set(picked); if (e.target.checked) n.add(c.key); else n.delete(c.key); setSel(n); }} /></td>
+                  <td><strong>{c.line}</strong><div className="muted" style={{ fontSize: 11 }}>{KIND[c.kind]}</div></td>
+                  <td>{c.text}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="form-actions">
+            <button type="button" className="secondary" disabled={busy || !picked.size} onClick={() => run('ignorer')}>Ignorer la sélection</button>
+            <button type="button" disabled={busy || !picked.size} onClick={() => run('appliquer')}>{busy ? '…' : `Mettre à jour ${picked.size} ligne(s)`}</button>
+          </div>
+        </Modal>
+      )}
+    </>
   );
 }

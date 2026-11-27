@@ -142,6 +142,14 @@ export const isVirtualKit = (e?: Pick<Equipment, 'isKit' | 'kitType' | 'kitItems
 /** Kit fixe : caisse montée, un article avec son propre stock ; ses composants y sont bloqués. */
 export const isFixedKit = (e?: Pick<Equipment, 'isKit' | 'kitType'>) => !!e?.isKit && e.kitType === 'fixe';
 
+/** Ligne de contenu d'un kit (et pas un accessoire facturé ou proposé sous la ligne du kit). */
+export function isKitPart(child: Pick<EquipmentLine, 'kitPart' | 'equipmentId' | 'unitPrice'>, kit?: Pick<Equipment, 'isKit' | 'kitItems' | 'accessories'>): boolean {
+  if (!kit?.isKit) return false;
+  if (child.kitPart) return true;
+  // anciennes lignes (sans le repère) : un composant du kit, ou une ligne gratuite qui n'est pas un accessoire
+  return kit.kitItems.some((k) => k.equipmentId === child.equipmentId) || (!child.unitPrice && !(kit.accessories || []).some((a) => a.equipmentId === child.equipmentId));
+}
+
 /** Quantité d'un article bloquée dans les kits fixes montés (dans un dépôt, ou tout le parc). */
 export function fixedKitBlocked(eqId: string, all: Equipment[], depotId?: string): number {
   let n = 0;
@@ -195,12 +203,20 @@ export function buildReservations(lines: EquipmentLine[], subs: Subproject[], eq
       out.push({ equipmentId: eqId, qty, start, end: sold ? FOREVER : end, lineId: l.id, subprojectId: sp.id, projectId: sp.projectId, source: 'projet', depotId: depotOf(sp.projectId), firm: FIRM.includes(sp.status) || !!sp.reserve });
     }
   };
-  // lignes enfants d'un kit : le kit réserve déjà ses composants (dépliés dans push), on ne les compte pas deux fois
-  const kitLines = new Set(lines.filter((l) => !l.parentLineId && l.equipmentId && eqMap.get(l.equipmentId)?.isKit).map((l) => l.id));
+  // Le contenu d'un kit est figé dans les lignes du projet : on réserve CES lignes (jamais le contenu actuel du
+  // catalogue, qui peut avoir changé depuis). Kit virtuel sans lignes de contenu (anciens projets) : déplié.
+  // Kit fixe : la caisse est réservée ; son contenu détaillé (pour la vérification) ne compte pas une 2e fois.
+  const byId = new Map(lines.map((l) => [l.id, l]));
+  const kitOf = (l: EquipmentLine) => (l.equipmentId ? eqMap.get(l.equipmentId) : undefined);
+  const parts = new Set(lines.filter((c) => c.parentLineId && isKitPart(c, kitOf(byId.get(c.parentLineId)!))).map((c) => c.id));
+  const hasParts = new Set(lines.filter((c) => parts.has(c.id)).map((c) => c.parentLineId!));
   for (const l of lines) {
     const sp = subMap.get(l.subprojectId);
     if (!sp || !l.equipmentId || l.optional || !RESERVING.includes(sp.status)) continue;
-    if (l.parentLineId && kitLines.has(l.parentLineId)) continue;
+    const parent = l.parentLineId ? byId.get(l.parentLineId) : undefined;
+    if (parent && parts.has(l.id) && isFixedKit(kitOf(parent))) continue;
+    const eq = eqMap.get(l.equipmentId);
+    if (isVirtualKit(eq) && hasParts.has(l.id)) continue;
     push(l.equipmentId, l.qty, l, sp, 0);
   }
   // kits fixes montés : leurs composants sont bloqués dans les caisses, en permanence (dans le dépôt de chaque caisse)

@@ -283,7 +283,7 @@ async function seedAll() {
         // contenu du kit : lignes enfants (gratuites), comme à l'ajout via l'app
         for (const k of e.kitItems || []) {
           const item = (await db.equipment.get(k.equipmentId))!;
-          await db.lines.put({ ...base(), projectId: p.id, subprojectId: sp.id, groupId, equipmentId: item.id, name: item.name, qty: k.qty * qty, unitPrice: 0, discount: 0, order: lo++, parentLineId: lineId, optional: opt?.optional });
+          await db.lines.put({ ...base(), projectId: p.id, subprojectId: sp.id, groupId, equipmentId: item.id, name: item.name, qty: k.qty * qty, unitPrice: 0, discount: 0, order: lo++, parentLineId: lineId, kitPart: true, optional: opt?.optional });
         }
         for (const a of e.accessories || []) {
           const acc = (await db.equipment.get(a.equipmentId))!;

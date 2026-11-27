@@ -908,3 +908,5 @@ table.list tr.limiting td:first-child, table.list tr.kit-child.limiting td:nth-c
 .lookup-hits button:hover { background: var(--soft); }
 .lookup-hits .muted { font-size: 12px; }
 @media screen and (max-width: 640px) { .cf-actions button { min-height: 32px; padding: 6px 6px; font-size: 13px; } }
+.catalog-changes { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.catalog-changes > span { flex: 1; min-width: 240px; }
