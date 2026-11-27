@@ -207,8 +207,8 @@ export function buildReservations(lines: EquipmentLine[], subs: Subproject[], eq
   // catalogue, qui peut avoir changé depuis). Kit virtuel sans lignes de contenu (anciens projets) : déplié.
   // Kit fixe : la caisse est réservée ; son contenu détaillé (pour la vérification) ne compte pas une 2e fois.
   const byId = new Map(lines.map((l) => [l.id, l]));
-  const kitOf = (l: EquipmentLine) => (l.equipmentId ? eqMap.get(l.equipmentId) : undefined);
-  const parts = new Set(lines.filter((c) => c.parentLineId && isKitPart(c, kitOf(byId.get(c.parentLineId)!))).map((c) => c.id));
+  const kitOf = (l?: EquipmentLine) => (l?.equipmentId ? eqMap.get(l.equipmentId) : undefined);
+  const parts = new Set(lines.filter((c) => c.parentLineId && isKitPart(c, kitOf(byId.get(c.parentLineId)))).map((c) => c.id));
   const hasParts = new Set(lines.filter((c) => parts.has(c.id)).map((c) => c.parentLineId!));
   for (const l of lines) {
     const sp = subMap.get(l.subprojectId);

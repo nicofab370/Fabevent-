@@ -2711,13 +2711,14 @@ await step('Projet : fiche de ligne — accessoires facultatifs à cocher/décoc
   const m = page.locator('.modal');
   await m.waitFor();
   const accBox = m.locator('.check-row', { hasText: 'NL4' }).locator('input');
-  expect(await accBox.isChecked(), 'accessoire déjà présent = coché dans la fiche');
+  // accessoire facultatif (démo) : pas ajouté d'office, on le coche dans la fiche de ligne
+  expect(!(await accBox.isChecked()), 'accessoire facultatif absent = décoché dans la fiche');
   await accBox.click();
   await page.waitForTimeout(600);
-  expect((await page.locator('.eq-table tbody tr', { hasText: 'Câble NL4' }).count()) === nl4Before - 1, 'accessoire décoché retiré de la ligne');
+  expect((await page.locator('.eq-table tbody tr', { hasText: 'Câble NL4' }).count()) === nl4Before + 1, 'accessoire coché ajouté sous la ligne');
   await accBox.click();
   await page.waitForTimeout(600);
-  expect((await page.locator('.eq-table tbody tr', { hasText: 'Câble NL4' }).count()) === nl4Before, 'accessoire re-coché réajouté');
+  expect((await page.locator('.eq-table tbody tr', { hasText: 'Câble NL4' }).count()) === nl4Before, 'accessoire décoché retiré');
   await page.keyboard.press("Escape");
   await page.waitForTimeout(300);
   // fiche d'un kit : contenu listé
