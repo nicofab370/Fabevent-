@@ -5,8 +5,8 @@ import { Empty, Field, Modal, NumInput } from '../../components/ui';
 import { invoiceSchedule, MOMENT_STATE_LABELS, projectMoments, settingsMoments, type ScheduleRow } from '../../invoicing';
 import { db } from '../../db';
 import { createDocument } from '../../documents';
-import type { DepositStatus, DocType } from '../../types';
-import { CONFIRMED, DEPOSIT_LABELS, DOC_LABELS, DOC_STATUS_LABELS, INVOICE_TYPES, MOMENT_TRIGGERS } from '../../types';
+import type { DepositStatus, DiscountPart, DocType } from '../../types';
+import { CONFIRMED, DEPOSIT_LABELS, DISCOUNT_PARTS, DOC_LABELS, DOC_STATUS_LABELS, INVOICE_TYPES, MOMENT_TRIGGERS } from '../../types';
 import { fmtDate, lineDays, lineTotal, money, patch, round2 } from '../../utils';
 import { computeFinance, invoicedHT, isPerPiece, type ProjectData } from './shared';
 import { hrOrders } from './hrOrders';
@@ -259,21 +259,29 @@ function FinanceOverview({ d, invoiced }: { d: ProjectData; invoiced: number }) 
   const [openEq, setOpenEq] = useState(false);
   const { f, eq } = financeOf(d, subId);
   const whole = !subId;
-  const brutOf = (label: string, revenue: number) => (label === 'Matériel' ? round2(eq.locBrut + eq.venteBrut) : revenue);
-  const brut = round2(f.rows.reduce((a, r) => a + brutOf(r.label, r.revenue), 0));
+  // chiffre d'affaires avant toute remise (lignes et partie)
+  const brutOf = (r: (typeof f.rows)[number]) => (r.label === 'Matériel' ? round2(eq.locBrut + eq.venteBrut) : r.before ?? r.revenue);
+  const brut = round2(f.rows.reduce((a, r) => a + brutOf(r), 0));
   const lineDisc = round2(brut - f.gross);
   const totalDisc = round2(lineDisc + f.discount);
   const pctN = (a: number, b: number) => (b ? (a / b) * 100 : 0);
   const pctT = (a: number, b: number) => (b ? `${pctN(a, b).toFixed(1).replace('.', ',')} %` : '—');
   const actualCost = whole ? f.actualCost : f.cost;
   const actualMargin = round2(f.totalHT - actualCost);
-  const row = (key: string, label: React.ReactNode, cost: number, real: React.ReactNode, b: number, total: number, kid = false) => (
+  /** remise sur une partie (matériel, personnel…) : modifiable sur tout le projet, rappelée par sous-projet */
+  const partInput = (part: DiscountPart) => whole
+    ? <span className="fin-disc"><NumInput className="w-qty" value={project.partDiscounts?.[part] || 0} aria-label={`Remise ${DISCOUNT_PARTS[part]} %`}
+        onChange={(n) => { const pd = { ...(project.partDiscounts || {}) }; if (n) pd[part] = n; else delete pd[part]; return patch(db.projects, project.id, { partDiscounts: Object.keys(pd).length ? pd : undefined }); }} /> %</span>
+    : `${project.partDiscounts?.[part] || 0} %`;
+  const row = (key: string, label: React.ReactNode, cost: number, real: React.ReactNode, b: number, total: number, kid = false, part?: DiscountPart) => (
     <tr key={key} className={kid ? 'fin-kid' : undefined}>
       <td>{label}</td>
       <td className="n">{money(cost)}</td>
       <td className="n">{real}</td>
       <td className="n">{money(b)}</td>
-      <td className="n muted">{b && round2(b - total) ? pctT(b - total, b) : '—'}</td>
+      <td className="n muted" title={part ? `Remise sur ${DISCOUNT_PARTS[part].toLowerCase()} seulement (avant la remise globale) ; remise effective, lignes comprises : ${b ? pctT(b - total, b) : '—'}` : undefined}>
+        {part ? partInput(part) : b && round2(b - total) ? pctT(b - total, b) : '—'}
+      </td>
       <td className="n">{money(total)}</td>
       <td className="n" style={{ color: total - cost < 0 ? 'var(--danger)' : undefined }}>{money(round2(total - cost))}</td>
     </tr>
@@ -312,7 +320,7 @@ function FinanceOverview({ d, invoiced }: { d: ProjectData; invoiced: number }) 
                   ? <button type="button" className="link-btn fin-toggle" aria-expanded={openEq} onClick={() => setOpenEq(!openEq)}><Icon name={openEq ? 'chevron-down' : 'chevron-right'} />Matériel</button>
                   : r.label;
                 return [
-                  row(r.label, label, r.cost, real, brutOf(r.label, r.revenue), r.revenue),
+                  row(r.label, label, r.cost, real, brutOf(r), r.revenue, false, r.part),
                   ...(r.label === 'Matériel' && openEq ? [
                     row('loc', 'Location', eq.locCost, <span className="muted">—</span>, round2(eq.locBrut), round2(eq.loc), true),
                     row('vente', 'Vente', round2(eq.venteCost), <span className="muted">—</span>, round2(eq.venteBrut), round2(eq.vente), true),

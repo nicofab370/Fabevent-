@@ -3362,6 +3362,26 @@ await step('Catalogue modifié : rien ne change tout seul dans les projets, mise
   await page.keyboard.press('Escape');
 });
 
+await step('Finances : remise sur le matériel seulement, reprise sur le devis', async () => {
+  await resetDemo();
+  await openProject('Festival des Lumières');
+  await tab('Finances & documents');
+  const num = (t) => parseFloat(t.replace(/[^\d,−-]/g, '').replace('−', '-').replace(',', '.'));
+  const ht = async () => num(await page.locator('.stat', { hasText: 'total HT' }).first().locator('b').innerText());
+  const before = await ht();
+  const matRow = page.locator('.fin-table tr', { hasText: 'Matériel' }).first();
+  const mat = num((await matRow.locator('td').nth(5).innerText()));
+  const per0 = (await page.locator('.fin-table tr', { hasText: 'Personnel' }).first().locator('td').nth(5).innerText());
+  await page.fill('input[aria-label="Remise Matériel %"]', '10');
+  await page.locator('input[aria-label="Remise Matériel %"]').blur();
+  await page.waitForTimeout(400);
+  expect(Math.abs((before - (await ht())) - mat * 0.1) < 0.05, `total HT −10 % du matériel (${before} → ${await ht()})`);
+  expect((await page.locator('.fin-table tr', { hasText: 'Personnel' }).first().locator('td').nth(5).innerText()) === per0, 'personnel non remisé');
+  await page.click('button:text-is("+ Devis")');
+  await page.waitForSelector('.doc');
+  expect((await page.locator('.doc .totals').innerText()).includes('matériel (10 %)'), 'ligne « Remise matériel (10 %) » sur le devis');
+});
+
 console.log('\n  — vérification de la liste (v51) —');
 
 await step('Matériel : dupliquer un article (nouveau code, fiche ouverte en modification, sans les unités)', async () => {

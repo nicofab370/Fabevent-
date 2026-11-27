@@ -318,6 +318,10 @@ export const MOMENT_TRIGGERS: Record<InvoiceMoment['trigger'], string> = {
   accord: 'À la confirmation', avant: 'Avant le premier jour', fin: 'À la fin du projet',
 };
 
+/** parties du projet sur lesquelles une remise peut porter */
+export type DiscountPart = 'materiel' | 'personnel' | 'transport' | 'frais';
+export const DISCOUNT_PARTS: Record<DiscountPart, string> = { materiel: 'Matériel', personnel: 'Personnel', transport: 'Transport', frais: 'Frais supplémentaires' };
+
 export interface Project extends Base {
   number: string;
   name: string;
@@ -361,6 +365,8 @@ export interface Project extends Base {
   noteList?: ProjectNote[];
   /** caution demandée au client (non soumise à TVA) */
   deposit?: { amount: number; status: DepositStatus };
+  /** remises sur une partie seulement (%), avant la remise globale : matériel, personnel, transport, frais */
+  partDiscounts?: Partial<Record<DiscountPart, number>>;
   /** assurance du matériel loué, en % du prix de location */
   insurancePct?: number;
   /** moments de facturation choisis (sinon ceux du client ou du type de projet) */
@@ -889,7 +895,10 @@ export interface DocSnapshot {
   extras?: { label: string; qty: number; unitPrice: number; total: number; /** fournisseur (texte libre) : affiché tel quel, absent du document s'il est vide */ supplier?: string }[];
   subprojects: SnapshotSub[];
   totalHT: number;
+  /** total des remises : remises par partie + remise globale */
   discountAmount: number;
+  /** remises sur une partie seulement (matériel, personnel…), détaillées sur le document */
+  partDiscounts?: { label: string; pct: number; amount: number }[];
   vatRate: number;
   vat: number;
   /** détail de la TVA par taux quand des lignes ont un taux spécifique (obligatoire sur une facture belge) */
