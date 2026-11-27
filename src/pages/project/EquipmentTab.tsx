@@ -202,12 +202,18 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
                       {ordered.map((l) => {
                         const eq = l.equipmentId ? eqMap.get(l.equipmentId) : undefined;
                         const [b0, b1] = lineBlock(l, sp);
-                        // élément du contenu d'un kit : sa réservation est portée par la ligne du kit, c'est elle qu'on retire du calcul
-                        const parentKit = l.parentLineId ? lines.find((x) => x.id === l.parentLineId && !!x.equipmentId && !!eqMap.get(x.equipmentId)?.isKit) : undefined;
-                        const avail = eq && !eq.accessoryOnly ? availableQty(eq, av.equipment, av.res, b0, b1, parentKit ? parentKit.id : l.id, d.depot) : null;
+                        // chaque ligne (contenu d'un kit compris) porte sa propre réservation : c'est elle qu'on retire du calcul
+                        const avail = eq && !eq.accessoryOnly ? availableQty(eq, av.equipment, av.res, b0, b1, l.id, d.depot) : null;
                         // kit : ce qui manque dans son contenu (le kit n'est pas « manquant » en entier pour autant)
                         const kitShort = eq && isVirtualKit(eq) && !l.optional
-                          ? eq.kitItems.map((k) => { const c = eqMap.get(k.equipmentId); const need = k.qty * l.qty; const left = c ? availableQty(c, av.equipment, av.res, b0, b1, l.id, d.depot) - need : -need; return { name: c?.name || '?', miss: -left }; }).filter((x) => x.miss > 0)
+                          ? eq.kitItems.map((k) => {
+                              const c = eqMap.get(k.equipmentId);
+                              // le contenu est réservé par ses lignes (sinon, ancien projet, par la ligne du kit)
+                              const part = lines.find((x) => x.parentLineId === l.id && x.equipmentId === k.equipmentId);
+                              const need = part ? part.qty : k.qty * l.qty;
+                              const left = c ? availableQty(c, av.equipment, av.res, b0, b1, part ? part.id : l.id, d.depot) - need : -need;
+                              return { name: c?.name || '?', miss: -left };
+                            }).filter((x) => x.miss > 0)
                           : [];
                         const perPiece = isPerPiece(l, eqMap);
                         return (
