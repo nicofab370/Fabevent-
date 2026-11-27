@@ -942,3 +942,20 @@ table.list tr.limiting td:first-child, table.list tr.kit-child.limiting td:nth-c
   .eq-table td:nth-child(2) .w-qty { height: 36px; }
   .eq-table td:last-child .ghost { min-height: 32px; height: 32px; }
 }
+
+/* Aperçu financier d'un projet */
+.fin-scope { margin: 0 0 10px; }
+.fin-kpis .fin-ring { display: flex; align-items: center; gap: 10px; }
+.fin-kpis .fin-ring > div { display: grid; }
+.fin-table .fin-kid td { font-size: 13px; color: var(--muted); }
+.fin-table .fin-kid td:first-child { padding-left: 28px; }
+.fin-table .fin-total td { border-top: 2px solid var(--border); }
+.fin-toggle { display: inline-flex; align-items: center; gap: 4px; padding: 0; font-weight: inherit; color: inherit; }
+.fin-bottom { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; margin-top: 12px; }
+.fin-bottom > p { flex: 1; min-width: 220px; margin: 0; }
+.fin-summary { min-width: 280px; background: var(--soft); border-radius: 10px; padding: 6px 12px; border-collapse: separate; }
+.fin-summary td { padding: 6px 4px; }
+.fin-summary td.n { text-align: right; }
+.fin-summary .fin-strong td { font-weight: 700; border-top: 1px solid var(--border); }
+.fin-disc { display: inline-flex; align-items: center; gap: 4px; }
+@media screen and (max-width: 640px) { .fin-summary { width: 100%; min-width: 0; } }

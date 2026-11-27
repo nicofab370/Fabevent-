@@ -1144,17 +1144,40 @@ await step('Caution : affichée sur le devis, hors total', async () => {
 await step('Coût réel : la marge réelle suit le coût saisi', async () => {
   await openProject('Gala de fin d');
   await tab('Finances & documents');
-  const r = page.locator('tr', { hasText: 'Personnel' }).first();
+  const r = page.locator('.fin-table tr', { hasText: 'Personnel' }).first();
   await r.locator('input').fill('2000');
   await r.locator('input').blur();
   await page.waitForTimeout(400);
-  const num = (t) => parseFloat(t.replace(/[\s\u202f\u00a0€]/g, '').replace(',', '.'));
-  const cells = async (label) => (await page.locator('tr', { hasText: label }).first().locator('td').allInnerTexts());
-  const sub = await cells('Sous-total');
-  const totalRow = await cells('Total HT');
-  const actualCost = num(sub[5]);
-  expect(actualCost >= 2000, `coût réel cumulé (${sub[5]})`);
-  expect(Math.abs(num(totalRow[1]) - actualCost - num(totalRow[5].split('(')[0])) < 0.02, `marge réelle = total − coût réel (${totalRow[5]})`);
+  const num = (t) => parseFloat(t.replace(/[^\d,−-]/g, '').replace('−', '-').replace(',', '.'));
+  const tot = await page.locator('.fin-table tr.fin-total td').allInnerTexts();
+  const actualCost = num(tot[2]);
+  expect(actualCost >= 2000, `coût réel cumulé (${tot[2]})`);
+  const totalHT = num(await page.locator('.fin-summary tr', { hasText: 'Total HT' }).locator('td').nth(1).innerText());
+  const real = (await page.locator('.stat', { hasText: 'bénéfice réel' }).innerText()).split('·').pop();
+  expect(Math.abs(totalHT - actualCost - num(real)) < 0.02, `bénéfice réel = total − coûts réels (${real})`);
+});
+
+await step('Aperçu financier : par catégorie (matériel location / vente), et par sous-projet', async () => {
+  await resetDemo();
+  await openProject('Festival des Lumières');
+  await tab('Finances & documents');
+  const num = (t) => parseFloat(t.replace(/[^\d,−-]/g, '').replace('−', '-').replace(',', '.'));
+  const htAll = num(await page.locator('.stat', { hasText: 'total HT' }).first().locator('b').innerText());
+  expect(await page.locator('.stat', { hasText: 'facturé' }).count() === 1 && await page.locator('.stat', { hasText: 'bénéfice prévu' }).count() === 1, 'indicateurs facturé et bénéfice');
+  await page.click('.fin-table button:has-text("Matériel")');
+  expect(await page.locator('.fin-table tr.fin-kid', { hasText: 'Location' }).count() === 1 && await page.locator('.fin-table tr.fin-kid', { hasText: 'Vente' }).count() === 1, 'matériel détaillé en location / vente');
+  const chips = page.locator('.fin-scope .chip');
+  expect(await chips.count() >= 3, 'choix « Tout le projet » + sous-projets');
+  let sum = 0;
+  for (let i = 1; i < await chips.count(); i++) {
+    await chips.nth(i).click(); await page.waitForTimeout(200);
+    expect((await page.locator('.fin-overview h2').innerText()).includes('—'), 'titre du sous-projet');
+    sum += num(await page.locator('.stat', { hasText: 'total HT' }).first().locator('b').innerText());
+  }
+  // sans coûts supplémentaires facturés, les sous-projets font le total du projet
+  expect(sum <= htAll + 0.05, `somme des sous-projets (${sum}) ≤ projet (${htAll})`);
+  await chips.first().click();
+  expect(num(await page.locator('.stat', { hasText: 'total HT' }).first().locator('b').innerText()) === htAll, 'retour au total du projet');
 });
 
 await step('Entrepôt : 1re sortie → En cours, tout rentré → Exécution terminée', async () => {
