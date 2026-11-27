@@ -49,6 +49,8 @@ new MutationObserver(() => {
     labelling = 0;
     for (const t of document.querySelectorAll<HTMLTableElement>('table.list')) {
       if (t.closest('.doc') || t.closest('.lab') || t.closest('.pdf-root')) continue;
+      // le matériel d'un projet a sa propre mise en page compacte (2 lignes par article)
+      if (t.classList.contains('eq-table')) continue;
       if (!t.querySelector('thead th')) continue;
       t.classList.add('cards-sm');
       const heads = Array.from(t.querySelectorAll('thead th')).map((th) => th.textContent?.trim() || '');
