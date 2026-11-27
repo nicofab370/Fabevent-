@@ -7,7 +7,8 @@ import { db } from '../db';
 import type { Contact, Project, VenueComment, VenueInfo, VenueSpot } from '../types';
 import { VENUE_INFO_LABELS } from '../types';
 import { fmtDate, fmtRange, nowIso, patch, uid } from '../utils';
-import { ContactForm } from './Contacts';
+import { ContactForm, deleteContacts } from './Contacts';
+import { BulkBar, SelectAllTh, SelectTd, useSelection } from '../components/Selection';
 import { Icon } from '../components/Icon';
 
 /** Projets tenus dans un lieu (lieu enregistré, ou même nom affiché). */
@@ -39,14 +40,15 @@ export default function Venues() {
   const list = venues.filter((v) => [v.company, v.city, v.address, ...(v.comments || []).map((c) => c.text), ...Object.values(v.venueInfo || {}),
     ...(v.spots || []).flatMap((x) => [x.name, x.address, x.city])]
     .join(' ').toLowerCase().includes(q.toLowerCase()));
-  const csv = () => exportCsv('lieux.csv', ['Lieu', 'Adresse', 'Code postal', 'Ville', 'Téléphone', ...Object.values(VENUE_INFO_LABELS), 'Projets', 'Commentaires'],
-    list.map((v) => [v.company, v.address, v.postalCode, v.city, v.phone, ...(Object.keys(VENUE_INFO_LABELS) as (keyof VenueInfo)[]).map((k) => v.venueInfo?.[k]),
+  const sel = useSelection(list.map((v) => v.id));
+  const csv = (rows = list) => exportCsv('lieux.csv', ['Lieu', 'Adresse', 'Code postal', 'Ville', 'Téléphone', ...Object.values(VENUE_INFO_LABELS), 'Projets', 'Commentaires'],
+    rows.map((v) => [v.company, v.address, v.postalCode, v.city, v.phone, ...(Object.keys(VENUE_INFO_LABELS) as (keyof VenueInfo)[]).map((k) => v.venueInfo?.[k]),
       venueProjects(v, projects).length, (v.comments || []).map((c) => `${fmtDate(c.at)} : ${c.text}`).join(' | ')]));
 
   return (
     <>
       <PageHead title="Lieux">
-        <CsvButton onClick={csv} />
+        <CsvButton onClick={() => csv()} />
         <button onClick={() => setCreating(true)}>+ Nouveau lieu</button>
       </PageHead>
       <div className="info">
@@ -55,10 +57,14 @@ export default function Venues() {
       </div>
       <div className="card">
         <div className="toolbar"><input placeholder="Rechercher un lieu, une ville, un commentaire…" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+        <BulkBar sel={sel} noun="lieu(x)">
+          <button className="secondary small" onClick={() => csv(list.filter((v) => sel.has(v.id)))}>Exporter (CSV)</button>
+          <button className="danger small" onClick={() => deleteContacts(sel.ids).then((n) => n && sel.clear())}>Supprimer</button>
+        </BulkBar>
         {list.length === 0 ? <Empty>Aucun lieu.</Empty> : (
           <div className="table-wrap">
             <table className="list">
-              <thead><tr><th>Lieu</th><th>Ville</th><th className="n">Projets</th><th>Dernier projet</th><th>Dernier commentaire</th></tr></thead>
+              <thead><tr><SelectAllTh sel={sel} /><th>Lieu</th><th>Ville</th><th className="n">Projets</th><th>Dernier projet</th><th>Dernier commentaire</th></tr></thead>
               <tbody>
                 {list.map((v) => {
                   const ps = venueProjects(v, projects);
@@ -66,6 +72,7 @@ export default function Venues() {
                   const alerts = (v.comments || []).filter((c) => c.important).length;
                   return (
                     <tr key={v.id} className="click" onClick={() => nav('/lieux/' + v.id)}>
+                      <SelectTd sel={sel} id={v.id} label={v.company} />
                       <td><strong>{v.company}</strong>{alerts > 0 && <span className="badge st-annule" style={{ marginLeft: 6 }}><Icon name="warning" />{alerts}</span>}</td>
                       <td>{v.city}{v.spots?.length ? <div className="muted" style={{ fontSize: 12 }}>{v.spots.length} endroit(s) : {v.spots.map((x) => x.name).join(', ')}</div> : null}</td>
                       <td className="n">{ps.length}</td>

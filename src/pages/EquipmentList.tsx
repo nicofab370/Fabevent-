@@ -337,13 +337,13 @@ export default function EquipmentList() {
     [e.name, e.brand, e.model, e.summary, e.code, e.barcode, ...(e.tags || [])].join(' ').toLowerCase().includes(q.toLowerCase()));
   const toggle = (id: string) => { const n = new Set(selected); if (n.has(id)) n.delete(id); else n.add(id); setSelected(n); };
 
-  const csv = () => exportCsv('materiel.csv', ['Désignation', 'Marque', 'Modèle', 'Description courte', 'Référence', 'Catégorie', 'Type', 'Stock', 'Prix HT', "Valeur de remplacement", 'Poids', 'Code-barres', 'Emplacement', 'Étiquettes', 'Archivé'],
-    filtered.map((e) => [e.name, e.brand, e.model, e.summary, e.code, e.categoryId ? catName.get(e.categoryId) : '', e.isKit ? (isFixedKit(e) ? 'kit fixe' : 'kit') : e.kind || 'location', e.quantity, e.dailyPrice, e.replacementValue, e.weight, e.barcode, e.location, (e.tags || []).join(', '), e.archived ? 'oui' : '']));
+  const csv = (list = filtered) => exportCsv('materiel.csv', ['Désignation', 'Marque', 'Modèle', 'Description courte', 'Référence', 'Catégorie', 'Type', 'Stock', 'Prix HT', "Valeur de remplacement", 'Poids', 'Code-barres', 'Emplacement', 'Étiquettes', 'Archivé'],
+    list.map((e) => [e.name, e.brand, e.model, e.summary, e.code, e.categoryId ? catName.get(e.categoryId) : '', e.isKit ? (isFixedKit(e) ? 'kit fixe' : 'kit') : e.kind || 'location', e.quantity, e.dailyPrice, e.replacementValue, e.weight, e.barcode, e.location, (e.tags || []).join(', '), e.archived ? 'oui' : '']));
 
   return (
     <>
       <PageHead title="Matériel">
-        <CsvButton onClick={csv} />
+        <CsvButton onClick={() => csv()} />
         <button className="secondary" onClick={() => nav('/etiquettes')}>Étiquettes QR</button>
         <button className="secondary" onClick={() => nav('/inventaire')}>Inventaire</button>
         <button className="secondary" onClick={() => setShowCats(true)}>Catégories</button>
@@ -382,6 +382,24 @@ export default function EquipmentList() {
           <div className="info bulk-bar">
             <strong>{selected.size} article(s) sélectionné(s)</strong>
             {canEditPrices(me) && <button className="small" onClick={() => setBulk(true)}>Modifier en groupe…</button>}
+            <button className="secondary small" onClick={() => csv(filtered.filter((e) => selected.has(e.id)))}>Exporter (CSV)</button>
+            <button className="secondary small" title="Masqués des listes et des choix ; l'historique est conservé" onClick={async () => {
+              const ids = [...selected];
+              const archive = !ids.every((id) => equipment.find((e) => e.id === id)?.archived);
+              for (const id of ids) await db.equipment.update(id, { archived: archive || undefined, updatedAt: new Date().toISOString() });
+              setSelected(new Set());
+            }}>{[...selected].every((id) => equipment.find((e) => e.id === id)?.archived) ? 'Désarchiver' : 'Archiver'}</button>
+            {canEditPrices(me) && <button className="danger small" onClick={async () => {
+              const ids = [...selected];
+              const usedIds = new Set((await db.lines.where('equipmentId').anyOf(ids).toArray()).map((l) => l.equipmentId!));
+              const inKits = new Set(equipment.flatMap((e) => [...e.kitItems.map((k) => k.equipmentId), ...(e.accessories || []).map((a) => a.equipmentId)]).filter((id) => selected.has(id)));
+              const ok = ids.filter((id) => !usedIds.has(id) && !inKits.has(id));
+              const keptMsg = ids.length - ok.length ? `\n${ids.length - ok.length} article(s) utilisés dans des projets, des kits ou comme accessoires sont gardés (archive-les plutôt).` : '';
+              if (!ok.length) { alert(`Les ${ids.length} article(s) sélectionnés sont utilisés dans des projets, des kits ou comme accessoires : archive-les plutôt.`); return; }
+              if (!confirm(`Supprimer ${ok.length} article(s) et leurs unités numérotées ?` + keptMsg)) return;
+              for (const id of ok) { await db.units.where({ equipmentId: id }).delete(); await db.equipment.delete(id); }
+              setSelected(new Set());
+            }}>Supprimer</button>}
             <button className="secondary small" onClick={() => setSelected(new Set())}>Désélectionner</button>
           </div>
         )}

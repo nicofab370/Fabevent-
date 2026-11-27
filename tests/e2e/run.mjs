@@ -3432,7 +3432,7 @@ await step('Finances : remise sur le matériel seulement, reprise sur le devis',
 await step('Tableaux : clic sur le titre d’une colonne = tri A → Z, puis Z → A (texte et montants)', async () => {
   await resetDemo();
   await go('contacts');
-  const names = () => page.locator('table.list tbody tr td:first-child').allInnerTexts();
+  const names = () => page.locator('table.list tbody tr td:nth-child(2)').allInnerTexts();
   const th = page.locator('table.list thead th:text-is("Nom")');
   await th.click();
   const asc = await names();
@@ -3445,8 +3445,49 @@ await step('Tableaux : clic sur le titre d’une colonne = tri A → Z, puis Z �
   // montants : du plus petit au plus grand (et pas dans l'ordre du texte)
   await go('vehicules');
   await page.click('table.list thead th:has-text("Forfait/j")');
-  const prices = (await page.locator('table.list tbody tr td:nth-child(4)').allInnerTexts()).map((t) => parseFloat(t.replace(/[^\d,]/g, '').replace(',', '.')) || 0);
+  const prices = (await page.locator('table.list tbody tr td:nth-child(5)').allInnerTexts()).map((t) => parseFloat(t.replace(/[^\d,]/g, '').replace(',', '.')) || 0);
   expect(prices.every((p, i) => i === 0 || prices[i - 1] <= p), `forfaits croissants (${prices.join(' ; ')})`);
+});
+
+await step('Tableaux : plusieurs lignes cochées → changer le type / le statut, exporter, supprimer', async () => {
+  await resetDemo();
+  // contacts : deux cochés, type changé d'un coup
+  await go('contacts');
+  const boxes = page.locator('table.list tbody tr td.sel-col input');
+  const n0 = await boxes.count();
+  await boxes.nth(0).check(); await boxes.nth(1).check();
+  expect((await page.locator('.bulk-bar').innerText()).includes('2 contact(s) sélectionné(s)'), 'barre : 2 contacts');
+  const picked = [await page.locator('table.list tbody tr').nth(0).locator('td').nth(1).innerText(), await page.locator('table.list tbody tr').nth(1).locator('td').nth(1).innerText()].map((t) => t.split('\n')[0].trim());
+  await page.selectOption('.bulk-bar select[aria-label="Changer le type"]', 'fournisseur');
+  await page.waitForTimeout(300);
+  for (const name of picked) expect((await page.locator('table.list tbody tr', { hasText: name }).first().innerText()).includes('Fournisseur'), `${name} passé en fournisseur`);
+  // export des seules lignes cochées
+  const dl = page.waitForEvent('download');
+  await page.click('.bulk-bar button:text-is("Exporter (CSV)")');
+  const csvText = readFileSync(await (await dl).path(), 'utf8');
+  expect(csvText.trim().split(/\r?\n/).length === 3, 'CSV : en-tête + 2 lignes cochées');
+  // tout sélectionner, puis désélectionner
+  await page.check('table.list thead input[aria-label="Tout sélectionner"]');
+  expect((await page.locator('.bulk-bar').innerText()).includes(`${n0} contact(s)`), 'tout sélectionner');
+  await page.click('.bulk-bar button:text-is("Désélectionner")');
+  expect(await page.locator('.bulk-bar').count() === 0, 'barre masquée sans sélection');
+  // projets : statut changé pour deux projets
+  await go('projets');
+  const prow = page.locator('table.list tbody tr');
+  const pnames = [await prow.nth(0).locator('td').nth(2).innerText(), await prow.nth(1).locator('td').nth(2).innerText()].map((t) => t.split('\n')[0].trim());
+  await prow.nth(0).locator('td.sel-col input').check(); await prow.nth(1).locator('td.sel-col input').check();
+  await page.selectOption('.bulk-bar select[aria-label="Changer le statut"]', 'annule');
+  await page.waitForTimeout(500);
+  for (const name of pnames) expect((await page.locator('table.list tbody tr', { hasText: name }).first().innerText()).includes('Annulé'), `${name} annulé`);
+  // véhicules : suppression d'un véhicule coché
+  await go('vehicules');
+  const v0 = await page.locator('table.list tbody tr').count();
+  await page.locator('table.list tbody tr').first().locator('td.sel-col input').check();
+  await page.click('.bulk-bar button:text-is("Supprimer")');
+  await page.waitForTimeout(300);
+  expect(await page.locator('table.list tbody tr').count() === v0 - 1, 'véhicule supprimé');
+  // la case ne trie pas et n'ouvre pas la ligne
+  expect(await page.locator('.modal').count() === 0, 'cocher n’ouvre pas la fiche');
 });
 
 await step('Import Rentman : fichier d’export importé dans une base (projets complets), réimport sans doublon', async () => {

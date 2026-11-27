@@ -5,6 +5,7 @@ import { db } from '../db';
 import type { Vehicle } from '../types';
 import { fmtRange, money, save, toLocalInput } from '../utils';
 import { CsvButton, exportCsv } from '../components/extra';
+import { BulkBar, SelectAllTh, SelectTd, useSelection } from '../components/Selection';
 
 type Draft = Partial<Vehicle> & { name: string; dailyPrice: number };
 
@@ -15,22 +16,33 @@ export default function Vehicles() {
   const [edit, setEdit] = useState<Draft | null>(null);
   const pMap = new Map(projects.map((p) => [p.id, p]));
   const nowS = toLocalInput(new Date());
+  const sel = useSelection(vehicles.map((v) => v.id));
+  const csv = (list = vehicles) => exportCsv('vehicules.csv', ['Véhicule', 'Immatriculation', 'Places', 'Charge utile', 'Forfait / jour', 'Prix / km'], list.map((v) => [v.name, v.plate, v.seats, v.payload, v.dailyPrice, v.pricePerKm]));
 
   return (
     <>
       <PageHead title="Véhicules">
-        <CsvButton onClick={() => exportCsv('vehicules.csv', ['Véhicule', 'Immatriculation', 'Places', 'Charge utile', 'Forfait / jour', 'Prix / km'], vehicles.map((v) => [v.name, v.plate, v.seats, v.payload, v.dailyPrice, v.pricePerKm]))} />
+        <CsvButton onClick={() => csv()} />
         <button onClick={() => setEdit({ name: '', dailyPrice: 0 })}>+ Nouveau véhicule</button>
       </PageHead>
       <div className="card">
+        <BulkBar sel={sel} noun="véhicule(s)">
+          <button className="secondary small" onClick={() => csv(vehicles.filter((v) => sel.has(v.id)))}>Exporter (CSV)</button>
+          <button className="danger small" onClick={async () => {
+            if (!confirm(`Supprimer ${sel.size} véhicule(s) et leurs réservations ?`)) return;
+            for (const id of sel.ids) { await db.vehicleAssignments.where({ vehicleId: id }).delete(); await db.vehicles.delete(id); }
+            sel.clear();
+          }}>Supprimer</button>
+        </BulkBar>
         {vehicles.length === 0 ? <Empty>Aucun véhicule.</Empty> : (
           <table className="list">
-            <thead><tr><th>Véhicule</th><th>Immatriculation</th><th className="n">Charge utile</th><th className="n">Forfait/j</th><th className="n">€/km</th><th>Prochaines sorties</th></tr></thead>
+            <thead><tr><SelectAllTh sel={sel} /><th>Véhicule</th><th>Immatriculation</th><th className="n">Charge utile</th><th className="n">Forfait/j</th><th className="n">€/km</th><th>Prochaines sorties</th></tr></thead>
             <tbody>
               {vehicles.map((v) => {
                 const next = vas.filter((a) => a.vehicleId === v.id && a.end >= nowS).sort((a, b) => a.start.localeCompare(b.start));
                 return (
                   <tr key={v.id} className="click" onClick={() => setEdit(v)}>
+                    <SelectTd sel={sel} id={v.id} label={v.name} />
                     <td><strong>{v.name}</strong></td><td>{v.plate}</td>
                     <td className="n">{v.payload ? `${v.payload} kg` : ''}</td>
                     <td className="n">{money(v.dailyPrice)}</td>
