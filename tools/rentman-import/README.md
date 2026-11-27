@@ -6,7 +6,7 @@ Importe d'un coup tout ton Rentman dans FabEvent :
 - catégories (dossiers), types de projet et dépôts (emplacements de stock) ;
 - matériel : kits, accessoires (automatiques ou proposés, gratuits ou facturés), unités numérotées, photos ;
 - équipe avec ses indisponibilités, véhicules, rendez-vous ;
-- **projets au complet** : sous-projets avec leur statut et leurs horaires, groupes, lignes de matériel (prix, remises, options, contenu des kits, remarques), postes avec les techniciens affectés, véhicules, coûts supplémentaires, sous-locations, remises (globale et par partie) ;
+- **projets au complet** : sous-projets avec leur statut, leurs horaires et leur planning (montage, show, démontage…), groupes, lignes de matériel (prix, remises, options, contenu des kits, remarques), postes avec les techniciens affectés, véhicules, coûts supplémentaires, sous-locations, remises (globale et par partie) ;
 - réparations ;
 - devis et factures (numéro, date, montants, état) ;
 - fichiers joints aux projets et aux membres de l'équipe (PDF des devis et factures, plans, permis…).
@@ -49,6 +49,7 @@ Dans FabEvent, va dans **Paramètres → « Importer depuis Rentman »** et choi
 | Numéros de série | Unités numérotées (inactif = hors service) |
 | Statut du sous-projet | Demande, brouillon, option, confirmé, en cours, terminé ou annulé (reconnu d'après son nom, FR / NL / EN) |
 | Période d'utilisation / de planification | Horaires du sous-projet / préparation et retour |
+| Bloc de planning du personnel (montage, show, démontage…) | Créneau du sous-projet (montage, prestation, démontage ou autre, d'après son nom) ; les postes y sont rattachés |
 | Fonction (quantité n) | n postes ; les techniciens affectés y sont placés |
 | Remise d'une ligne (0,1) | Remise 10 % |
 | Remise location / personnel / transport / coûts du sous-projet | Remise par partie du projet (matériel, personnel, transport, frais) |

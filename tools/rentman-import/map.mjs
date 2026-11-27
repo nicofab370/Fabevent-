@@ -43,6 +43,15 @@ export function mapStatus(name) {
   if (/concept|brouillon|draft/.test(n)) return 'brouillon';
   return 'demande';
 }
+/** Bloc de planning Rentman (son nom) → type de créneau FabEvent. */
+export function periodKind(name) {
+  const n = String(name || '').toLowerCase();
+  if (/d[ée]montage|afbouw|break ?down|tear ?down|abbau|load ?out|get ?out|d[ée]charg/.test(n)) return 'demontage';
+  if (/montage|opbouw|build ?up|set ?up|aufbau|load ?in|get ?in|install|charg/.test(n)) return 'montage';
+  if (/show|event|[ée]v[ée]nement|prestation|concert|spectacle|repr[ée]sentation|voorstelling|uitvoering|op locatie|jour j|live/.test(n)) return 'prestation';
+  return 'autre';
+}
+
 const STATUS_RANK = { annule: 0, demande: 1, brouillon: 2, option: 3, confirme: 4, en_cours: 5, execute: 6, termine: 7 };
 
 /** Remise Rentman : fraction (0,15) ou pourcentage (15) → pourcentage. */
@@ -237,6 +246,37 @@ export function mapRentman(rm, now = new Date().toISOString()) {
   });
   const firstSubOf = new Map(subprojects.map((s) => [s.projectId, s.id]).reverse());
 
+  /* ---------- planning : blocs de planning du personnel (montage, show, démontage…) → créneaux du sous-projet ---------- */
+  const subById = new Map(subprojects.map((s) => [s.id, s]));
+  const groupPeriod = new Map();
+  for (const g of rm.projectfunctiongroups || []) {
+    const sp = refId(g.subproject), pid = refId(g.project);
+    const sub = subById.get(sp ? id('s', sp) : pid ? firstSubOf.get(id('p', pid)) : undefined);
+    const start = localTime(pick(g, 'planperiod_start', 'usageperiod_start', 'start')), end = localTime(pick(g, 'planperiod_end', 'usageperiod_end', 'end'));
+    if (!sub || !start || !end) continue;
+    const name = str(pick(g, 'name', 'displayname')) || 'Créneau';
+    const period = { id: id('pg', g.id), name, kind: periodKind(name), start, end };
+    (sub.periods ||= []).push(period);
+    groupPeriod.set(g.id, period.id);
+  }
+  for (const sub of subprojects) {
+    if (!sub.periods?.length) continue;
+    // période d'utilisation de Rentman gardée comme prestation si aucun bloc n'en est une ; préparation et retour gardés aussi
+    if (!sub.periods.some((p) => p.kind === 'prestation')) sub.periods.push({ id: `${sub.id}-usage`, name: 'Prestation', kind: 'prestation', start: sub.start, end: sub.end });
+    // préparation et retour de Rentman : seulement ce qui dépasse les blocs de planning
+    const first = sub.periods.reduce((a, p) => (p.start < a ? p.start : a), sub.periods[0].start);
+    const last = sub.periods.reduce((a, p) => (p.end > a ? p.end : a), sub.periods[0].end);
+    if (sub.prepStart && sub.prepStart < first) sub.periods.push({ id: `${sub.id}-prep`, name: 'Préparation', kind: 'autre', start: sub.prepStart, end: first });
+    if (sub.returnEnd && sub.returnEnd > last) sub.periods.push({ id: `${sub.id}-retour`, name: 'Retour', kind: 'autre', start: last, end: sub.returnEnd });
+    // comme FabEvent : dates du sous-projet déduites des créneaux (prestations = utilisation, le reste = préparation / retour)
+    const ps = sub.periods.filter((p) => p.end > p.start).sort((a, b) => a.start.localeCompare(b.start));
+    const used = ps.filter((p) => p.kind === 'prestation');
+    const allStart = ps[0].start, allEnd = ps.reduce((a, p) => (p.end > a ? p.end : a), ps[0].end);
+    sub.periods = ps;
+    sub.start = used[0].start; sub.end = used.reduce((a, p) => (p.end > a ? p.end : a), used[0].end);
+    sub.prepStart = allStart < sub.start ? allStart : undefined; sub.returnEnd = allEnd > sub.end ? allEnd : undefined;
+  }
+
   /* ---------- lignes de matériel ---------- */
   const peq = rm.projectequipment || [];
   const kitIds = new Set(equipment.filter((e) => e.isKit).map((e) => e.id));
@@ -274,14 +314,15 @@ export function mapRentman(rm, now = new Date().toISOString()) {
     if (!subprojectId) { warn(`Poste ${f.id} sans sous-projet : ignoré`); continue; }
     const projectId = pid ? id('p', pid) : subprojects.find((s) => s.id === subprojectId)?.projectId;
     const sub = subprojects.find((s) => s.id === subprojectId);
-    const start = localTime(pick(f, 'usageperiod_start', 'planperiod_start')) || sub?.start, end = localTime(pick(f, 'usageperiod_end', 'planperiod_end')) || sub?.end;
+    const gp = sub?.periods?.find((p) => p.id === groupPeriod.get(refId(pick(f, 'group', 'functiongroup', 'function_group'))));
+    const start = localTime(pick(f, 'planperiod_start', 'usageperiod_start')) || gp?.start || sub?.start, end = localTime(pick(f, 'planperiod_end', 'usageperiod_end')) || gp?.end || sub?.end;
     const assigned = crewByFn.get(f.id) || [];
     const n = Math.max(1, num(f.quantity, 1), assigned.length);
     const rate = num(pick(f, 'price', 'unit_price', 'price_per_unit'));
     for (let k = 0; k < n; k++) {
       const a = assigned[k];
       crew.push({
-        id: id('cr', `${f.id}-${k}`), ...base(f), projectId, subprojectId, personId: a && refId(pick(a, 'crewmember', 'crew', 'member')) ? id('p', refId(pick(a, 'crewmember', 'crew', 'member'))) : undefined,
+        id: id('cr', `${f.id}-${k}`), ...base(f), projectId, subprojectId, periodId: groupPeriod.get(refId(pick(f, 'group', 'functiongroup', 'function_group'))), personId: a && refId(pick(a, 'crewmember', 'crew', 'member')) ? id('p', refId(pick(a, 'crewmember', 'crew', 'member'))) : undefined,
         function: str(f.name) || 'Poste', start: localTime(pick(a || {}, 'planperiod_start', 'usageperiod_start')) || start, end: localTime(pick(a || {}, 'planperiod_end', 'usageperiod_end')) || end,
         rate, billable: rate > 0, cost: num(pick(a || {}, 'cost', 'purchase_cost', 'costs', 'cost_rate')) || undefined,
         notes: str(pick(a || {}, 'remark')) || str(pick(f, 'remark')),

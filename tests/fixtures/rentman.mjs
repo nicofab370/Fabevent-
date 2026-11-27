@@ -35,7 +35,12 @@ export const RENTMAN = {
     { id: 602, project: '/projects/300', equipment: '/equipment/500', equipment_group: '/projectequipmentgroup/400', parent: '/projectequipment/601', quantity_total: 2, unit_price: 0, order: 3 },
     { id: 603, project: '/projects/300', equipment: '/equipment/503', equipment_group: '/projectequipmentgroup/400', quantity_total: 2, unit_price: 9, is_option: true, order: 4 },
   ],
-  projectfunctions: [{ id: 700, project: '/projects/300', subproject: '/subprojects/310', name: 'Ingé son', quantity: 2, price: 350, planperiod_start: '2026-06-21T12:00:00+02:00', planperiod_end: '2026-06-22T00:30:00+02:00' }],
+  projectfunctiongroups: [
+    { id: 1, subproject: '/subprojects/310', name: 'Montage', planperiod_start: '2026-06-21T08:00:00+02:00', planperiod_end: '2026-06-21T13:00:00+02:00' },
+    { id: 2, subproject: '/subprojects/310', name: 'Show', planperiod_start: '2026-06-21T14:00:00+02:00', planperiod_end: '2026-06-21T23:30:00+02:00' },
+    { id: 3, subproject: '/subprojects/310', name: 'Démontage', planperiod_start: '2026-06-21T23:30:00+02:00', planperiod_end: '2026-06-22T02:00:00+02:00' },
+  ],
+  projectfunctions: [{ id: 700, project: '/projects/300', subproject: '/subprojects/310', name: 'Ingé son', group: '/projectfunctiongroups/2', quantity: 2, price: 350, planperiod_start: '2026-06-21T12:00:00+02:00', planperiod_end: '2026-06-22T00:30:00+02:00' }],
   projectcrew: [{ id: 710, function: '/projectfunctions/700', crewmember: '/crewmembers/70' }],
   projectvehicles: [{ id: 800, project: '/projects/300', subproject: '/subprojects/310', vehicle: '/vehicles/80', planperiod_start: '2026-06-21T07:00:00+02:00', planperiod_end: '2026-06-22T03:00:00+02:00' }],
   costs: [{ id: 1000, subproject: '/subprojects/310', name: 'Hôtel équipe', quantity: 2, purchase_price: 90, sale_price: 110 }],

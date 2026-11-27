@@ -38,6 +38,14 @@ describe('import Rentman → FabEvent', () => {
     expect(one('subprojects', 'rm-s-310')).toMatchObject({ status: 'confirme', start: '2026-06-21T14:00', prepStart: '2026-06-21T08:00', returnEnd: '2026-06-22T02:00', groups: [{ id: 'rm-g-400', name: 'Son', periodIds: [] }] });
     expect(one('subprojects', 'rm-s-311').status).toBe('annule');
   });
+  it('planning : blocs de planning → créneaux (montage, prestation, démontage), postes rattachés à leur créneau', () => {
+    const sp = one('subprojects', 'rm-s-310');
+    expect(sp.periods.map((p: { name: string; kind: string; start: string }) => [p.name, p.kind, p.start])).toEqual([
+      ['Montage', 'montage', '2026-06-21T08:00'], ['Show', 'prestation', '2026-06-21T14:00'], ['Démontage', 'demontage', '2026-06-21T23:30'],
+    ]);
+    expect(sp).toMatchObject({ start: '2026-06-21T14:00', end: '2026-06-21T23:30', prepStart: '2026-06-21T08:00', returnEnd: '2026-06-22T02:00' });
+    expect(data.crew.filter((c: { function: string }) => c.function === 'Ingé son').every((c: { periodId?: string }) => c.periodId === 'rm-pg-2')).toBe(true);
+  });
   it('lignes : groupe, remise en %, contenu de kit, option, remarque entrepôt', () => {
     expect(one('lines', 'rm-l-600')).toMatchObject({ subprojectId: 'rm-s-310', groupId: 'rm-g-400', qty: 4, unitPrice: 45, discount: 10, internalRemark: 'Prendre les housses' });
     expect(one('lines', 'rm-l-602')).toMatchObject({ parentLineId: 'rm-l-601', kitPart: true });

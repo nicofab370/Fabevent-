@@ -48,6 +48,7 @@ const COLLECTIONS = {
   subprojects: '/subprojects',
   projectequipmentgroup: '/projectequipmentgroup',
   projectequipment: '/projectequipment',
+  projectfunctiongroups: '/projectfunctiongroups',
   projectfunctions: '/projectfunctions',
   projectcrew: '/projectcrew',
   projectvehicles: '/projectvehicles',
