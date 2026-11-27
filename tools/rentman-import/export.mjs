@@ -29,7 +29,7 @@ if (!TOKEN) {
   process.exit(1);
 }
 
-/** Collections lues (nom FabEvent de la collection → chemin de l'API). */
+/** Collections lues (nom de la collection → chemin de l'API, ou plusieurs chemins essayés dans l'ordre). */
 const COLLECTIONS = {
   statuses: '/statuses',
   contacts: '/contacts',
@@ -39,7 +39,7 @@ const COLLECTIONS = {
   equipmentsetscontent: '/equipmentsetscontent',
   serialnumbers: '/serialnumbers',
   stockmovements: '/stockmovements',
-  crewmembers: '/crewmembers',
+  crewmembers: ['/crew', '/crewmembers'],
   vehicles: '/vehicles',
   accessories: '/accessories',
   projecttypes: '/projecttypes',
@@ -55,7 +55,7 @@ const COLLECTIONS = {
   subrentals: '/subrentals',
   subrentalequipment: '/subrentalequipment',
   repairs: '/repairs',
-  crewavailability: '/crewavailability',
+  crewavailability: ['/crewavailability', '/crewavailabilities'],
   appointments: '/appointments',
   appointmentcrew: '/appointmentcrew',
   quotes: '/quotes',
@@ -96,11 +96,13 @@ async function all(path) {
 const rm = {};
 const skipped = [];
 console.log(`Lecture de Rentman (${API})…`);
-for (const [name, path] of Object.entries(COLLECTIONS)) {
+for (const [name, paths] of Object.entries(COLLECTIONS)) {
   try {
-    const { rows, skipped: why } = await all(path);
+    let res;
+    for (const path of [paths].flat()) { res = { path, ...(await all(path)) }; if (!res.skipped) break; }
+    const { path, rows, skipped: why } = res;
     rm[name] = rows;
-    if (why) { skipped.push(`${path} (${why})`); console.log(`  ${path} : non accessible (${why}), ignoré`); }
+    if (why) { skipped.push(`${path} (${why})`); console.log(`  ${[paths].flat().join(' / ')} : non accessible (${why}), ignoré`); }
   } catch (e) {
     console.error(`\n${e.message}`);
     process.exit(1);

@@ -281,7 +281,7 @@ export function mapRentman(rm, now = new Date().toISOString()) {
     for (let k = 0; k < n; k++) {
       const a = assigned[k];
       crew.push({
-        id: id('cr', `${f.id}-${k}`), ...base(f), projectId, subprojectId, personId: a && refId(a.crewmember) ? id('p', refId(a.crewmember)) : undefined,
+        id: id('cr', `${f.id}-${k}`), ...base(f), projectId, subprojectId, personId: a && refId(pick(a, 'crewmember', 'crew', 'member')) ? id('p', refId(pick(a, 'crewmember', 'crew', 'member'))) : undefined,
         function: str(f.name) || 'Poste', start: localTime(pick(a || {}, 'planperiod_start', 'usageperiod_start')) || start, end: localTime(pick(a || {}, 'planperiod_end', 'usageperiod_end')) || end,
         rate, billable: rate > 0, cost: num(pick(a || {}, 'cost', 'purchase_cost', 'costs', 'cost_rate')) || undefined,
         notes: str(pick(a || {}, 'remark')) || str(pick(f, 'remark')),
@@ -368,7 +368,7 @@ export function mapRentman(rm, now = new Date().toISOString()) {
 
   /* ---------- indisponibilités de l'équipe ---------- */
   const unavailability = (rm.crewavailability || []).map((a) => {
-    const p = refId(a.crewmember);
+    const p = refId(pick(a, 'crewmember', 'crew', 'member'));
     const st = String(pick(a, 'status', 'availability', 'type') ?? '').toLowerCase();
     // seules les périodes « indisponible » (une disponibilité déclarée n'en est pas une)
     if (!p || (/avail|beschikbaar|dispon/.test(st) && !/un|niet|indis|non/.test(st))) return null;
@@ -379,7 +379,7 @@ export function mapRentman(rm, now = new Date().toISOString()) {
 
   /* ---------- rendez-vous ---------- */
   const apptCrew = new Map();
-  for (const c of rm.appointmentcrew || []) { const ap = refId(c.appointment), p = refId(c.crewmember); if (ap && p) apptCrew.set(ap, [...(apptCrew.get(ap) || []), id('p', p)]); }
+  for (const c of rm.appointmentcrew || []) { const ap = refId(c.appointment), p = refId(pick(c, 'crewmember', 'crew', 'member')); if (ap && p) apptCrew.set(ap, [...(apptCrew.get(ap) || []), id('p', p)]); }
   const appointments = (rm.appointments || []).map((a) => {
     const start = localTime(pick(a, 'start', 'planperiod_start'));
     if (!start) return null;
@@ -429,7 +429,7 @@ export function mapRentman(rm, now = new Date().toISOString()) {
     const meta = { fileId: f.id, url, name: str(pick(f, 'name', 'displayname', 'filename')) || `fichier-${f.id}`, type: str(pick(f, 'type', 'mime_type', 'mimetype')) || 'application/octet-stream', size: num(f.size), createdAt: localIso(f.created) || now };
     if (photoOf.has(f.id)) files.push({ ...meta, photoOf: photoOf.get(f.id) });
     else if (t === 'projects' || t === 'subprojects') { const pid = t === 'projects' ? rid : subProj.get(rid); if (pid) files.push({ ...meta, projectId: id('p', pid) }); else otherFiles++; }
-    else if (t === 'crewmembers') files.push({ ...meta, projectId: '', personId: id('p', rid) });
+    else if (t === 'crewmembers' || t === 'crew') files.push({ ...meta, projectId: '', personId: id('p', rid) });
     else if (t === 'equipment' && !photoOf.size) files.push({ ...meta, photoOf: id('e', rid) });
     else otherFiles++;
   }
@@ -445,6 +445,8 @@ export function mapRentman(rm, now = new Date().toISOString()) {
   if (missEq) warn(`${missEq} ligne(s) de matériel pointent vers un article absent de l'export (gardées comme lignes libres)`);
   for (const l of lines) if (l.equipmentId && !eqIds.has(l.equipmentId)) l.equipmentId = undefined;
   for (const p of projects) { if (p.clientId && !cIds.has(p.clientId)) p.clientId = undefined; if (p.venueId && !cIds.has(p.venueId)) p.venueId = undefined; }
+  const lost = crew.filter((c) => c.personId && !pIds.has(c.personId)).length;
+  if (lost) warn(`${lost} poste(s) avec un technicien absent de l'export (équipe non lue avec cette clé ?) : gardés sans technicien`);
   for (const c of crew) if (c.personId && !pIds.has(c.personId)) c.personId = undefined;
   for (const x of [...costs, ...subrentals, ...repairs]) if (x.supplierId && !cIds.has(x.supplierId)) x.supplierId = undefined;
   for (const sr of subrentals) for (const l of sr.lines) if (l.equipmentId && !eqIds.has(l.equipmentId)) l.equipmentId = undefined;
