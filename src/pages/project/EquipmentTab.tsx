@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { catalogChanges, resolveCatalogChanges } from '../../catalogChanges';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Empty, Field, Modal, NumInput, StatusBadge } from '../../components/ui';
 import { db } from '../../db';
@@ -55,6 +55,7 @@ export default function EquipmentTab({ d }: { d: ProjectData }) {
   return (
     <>
       <CatalogChangesBanner d={d} />
+      <OptionalAccessories d={d} />
       <div className="info" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         <span style={{ flex: 1, minWidth: 260 }}>
           Organise le matériel en <strong>groupes</strong> (par type : son, lumière… ; par emplacement : scène, bar… ; ou par jour).
@@ -425,7 +426,12 @@ function GroupModal({ sp, group, onClose }: { sp: Subproject; group: Partial<Equ
 }
 
 /** Ajoute des articles (et leurs accessoires automatiques) à une salle, dans un groupe éventuel. */
-export async function addEquipmentToSub(sp: Subproject, equipment: Equipment[], existing: EquipmentLine[], items: Record<string, number>, groupId?: string, discount = 0, accPick?: Record<string, string[]>) {
+/** Accessoires facultatifs à proposer après un ajout (fenêtre « Accessoires proposés »). */
+export interface AccessoryAsk { lineId: string; equipmentId: string; qty: number }
+export const accessoryAsks = new EventTarget();
+
+export async function addEquipmentToSub(sp: Subproject, equipment: Equipment[], existing: EquipmentLine[], items: Record<string, number>, groupId?: string, discount = 0) {
+  const asks: AccessoryAsk[] = [];
   const eqMap = new Map(equipment.map((e) => [e.id, e]));
   let order = existing.length;
   const t = nowIso();
@@ -445,11 +451,12 @@ export async function addEquipmentToSub(sp: Subproject, equipment: Equipment[], 
       lineId = uid();
       await db.lines.put({ id: lineId, createdAt: t, updatedAt: t, projectId: sp.projectId, subprojectId: sp.id, groupId, equipmentId: eqId, name: eq.name, qty: n, unitPrice: eq.dailyPrice, catalogPrice: eq.dailyPrice, discount, order: order++ });
     }
-    // contenu du kit (lignes enfants scannables une à une) + accessoires proposés à cocher ; par défaut tous, sinon seulement ceux cochés
-    const accSel = accPick?.[eqId];
+    // contenu du kit (lignes enfants scannables une à une) + accessoires automatiques ; les facultatifs sont proposés après
     // kit fixe : son contenu n'est détaillé (pour le vérifier à la sortie et au retour) que si demandé sur le kit
     const kitKids = isVirtualKit(eq) || (isFixedKit(eq) && eq.kitCheck) ? eq.kitItems || [] : [];
-    const children = [...kitKids.map((k) => ({ equipmentId: k.equipmentId, qty: k.qty, free: true, part: true })), ...(eq.accessories || []).filter((x) => !accSel || accSel.includes(x.equipmentId)).map((x) => ({ ...x, part: false }))];
+    const children = [...kitKids.map((k) => ({ equipmentId: k.equipmentId, qty: k.qty, free: true, part: true })), ...(eq.accessories || []).filter((x) => !x.optional).map((x) => ({ ...x, part: false }))];
+    const optional = (eq.accessories || []).filter((x) => x.optional && !existing.some((l) => l.parentLineId === lineId && l.equipmentId === x.equipmentId));
+    if (optional.length) asks.push({ lineId, equipmentId: eqId, qty: total });
     for (const a of children) {
       const acc = eqMap.get(a.equipmentId);
       if (!acc) continue;
@@ -458,6 +465,7 @@ export async function addEquipmentToSub(sp: Subproject, equipment: Equipment[], 
       else await db.lines.put({ id: uid(), createdAt: t, updatedAt: t, projectId: sp.projectId, subprojectId: sp.id, groupId, equipmentId: acc.id, name: acc.name, qty: a.qty * total, unitPrice: a.free ? 0 : acc.dailyPrice, catalogPrice: a.free ? undefined : acc.dailyPrice, discount: 0, order: order++, parentLineId: lineId, kitPart: a.part || undefined });
     }
   }
+  if (asks.length) accessoryAsks.dispatchEvent(new CustomEvent<AccessoryAsk[]>('ask', { detail: asks }));
 }
 
 /**
@@ -493,12 +501,8 @@ function EquipmentPicker({ sp, groupId, initialQ = '', depot, depots = [], disco
   const selected = equipment.filter((e) => (qty[e.id] || 0) > 0);
   const count = selected.reduce((a, e) => a + (qty[e.id] || 0), 0);
   const bump = (id: string, d: number) => setQty((x) => ({ ...x, [id]: Math.max(0, (x[id] || 0) + d) }));
-  /** accessoires proposés cochables (défaut : tous) */
-  const [accPick, setAccPick] = useState<Record<string, string[]>>({});
-  const [accOpen, setAccOpen] = useState('');
-  const selAcc = (e: Equipment) => accPick[e.id] ?? (e.accessories || []).map((a) => a.equipmentId);
   const commit = async (close: boolean) => {
-    await addEquipmentToSub(sp, equipment, existing, qty, target || undefined, discount, accPick);
+    await addEquipmentToSub(sp, equipment, existing, qty, target || undefined, discount);
     if (close) return onClose();
     setAdded(`${count} article(s) ajouté(s)`);
     setQty({});
@@ -599,27 +603,6 @@ function EquipmentPicker({ sp, groupId, initialQ = '', depot, depots = [], disco
                 </div>
               </div>
               {openUses === e.id && <div className="pick-uses"><UsageBreakdown eq={e} uses={uses} stock={stockAt(e, where || depot, res)} here={n || undefined} avail={a - n} hereLabel="cet ajout" /></div>}
-              {!!e.accessories?.length && (
-                <div className="pick-acc">
-                  <button type="button" className="link-btn small" aria-expanded={accOpen === e.id || n > 0} onClick={(ev) => { ev.stopPropagation(); setAccOpen(accOpen === e.id ? '' : e.id); }}>
-                    {accOpen === e.id && n === 0 ? '−' : '+'} Accessoires facultatifs ({e.accessories.length}) — {selAcc(e).length} coché(s)
-                  </button>
-                  {(accOpen === e.id || n > 0) && (
-                    <div className="pick-acc-list">
-                      {e.accessories.map((a) => {
-                        const acc = equipment.find((x) => x.id === a.equipmentId);
-                        return (
-                          <label key={a.equipmentId} className="check-row" title={acc ? `${a.qty} × ${acc.name} ajouté(s) avec ${e.name}${a.free ? ' (offert)' : ''}` : ''}>
-                            <input type="checkbox" checked={selAcc(e).includes(a.equipmentId)} onClick={(ev) => ev.stopPropagation()}
-                              onChange={(ev) => { const cur = selAcc(e); setAccPick((x) => ({ ...x, [e.id]: ev.target.checked ? [...cur, a.equipmentId] : cur.filter((y) => y !== a.equipmentId) })); }} />
-                            {a.qty} × {acc?.name || '?'}{a.free ? ' (offert)' : ''}
-                          </label>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
               </div>
             );
           })}
@@ -756,5 +739,67 @@ function CatalogChangesBanner({ d }: { d: ProjectData }) {
         </Modal>
       )}
     </>
+  );
+}
+
+/**
+ * Après l'ajout d'un article qui a des accessoires facultatifs : fenêtre « Accessoires proposés »,
+ * rien de coché par défaut ; les accessoires choisis sont ajoutés sous la ligne de l'article.
+ */
+function OptionalAccessories({ d }: { d: ProjectData }) {
+  const [asks, setAsks] = useState<AccessoryAsk[]>([]);
+  const [pick, setPick] = useState<Record<string, number>>({});
+  useEffect(() => {
+    const on = (ev: Event) => setAsks((x) => [...x, ...(ev as CustomEvent<AccessoryAsk[]>).detail]);
+    accessoryAsks.addEventListener('ask', on);
+    return () => accessoryAsks.removeEventListener('ask', on);
+  }, []);
+  if (!asks.length) return null;
+  const eqMap = new Map(d.av.equipment.map((e) => [e.id, e]));
+  const key = (a: AccessoryAsk, accId: string) => `${a.lineId}|${accId}`;
+  const close = () => { setAsks([]); setPick({}); };
+  const add = async () => {
+    const t = nowIso();
+    for (const a of asks) {
+      const line = await db.lines.get(a.lineId);
+      const eq = eqMap.get(a.equipmentId);
+      if (!line || !eq) continue;
+      for (const acc of (eq.accessories || []).filter((x) => x.optional)) {
+        const n = pick[key(a, acc.equipmentId)];
+        if (!n) continue;
+        const accEq = eqMap.get(acc.equipmentId);
+        await db.lines.put({ id: uid(), createdAt: t, updatedAt: t, projectId: line.projectId, subprojectId: line.subprojectId, groupId: line.groupId, equipmentId: acc.equipmentId, name: accEq?.name || '?',
+          qty: n, unitPrice: acc.free ? 0 : accEq?.dailyPrice || 0, catalogPrice: acc.free ? undefined : accEq?.dailyPrice, discount: 0, order: line.order + 0.5, parentLineId: line.id, periodIds: line.periodIds, optional: line.optional });
+      }
+    }
+    close();
+  };
+  const chosen = Object.values(pick).filter((n) => n > 0).length;
+  return (
+    <Modal title="Accessoires proposés" onClose={close}>
+      <p className="muted" style={{ marginTop: 0 }}>Ces accessoires facultatifs vont avec ce que tu viens d'ajouter. Coche ceux à ajouter (ils se mettent sous l'article).</p>
+      {asks.map((a) => {
+        const eq = eqMap.get(a.equipmentId);
+        return (
+          <div key={a.lineId} className="acc-ask">
+            <strong>{a.qty} × {eq?.name}</strong>
+            {(eq?.accessories || []).filter((x) => x.optional).map((acc) => {
+              const k = key(a, acc.equipmentId), accEq = eqMap.get(acc.equipmentId), n = pick[k] || 0;
+              return (
+                <label key={k} className="check-row acc-ask-row">
+                  <input type="checkbox" checked={n > 0} onChange={(e) => setPick({ ...pick, [k]: e.target.checked ? acc.qty * a.qty : 0 })} aria-label={`Ajouter ${accEq?.name || '?'}`} />
+                  <span>{accEq?.name || '?'} <span className="muted">{acc.free ? '(offert)' : accEq ? `· ${money(accEq.dailyPrice)}` : ''}</span></span>
+                  {n > 0 && <NumInput className="w-qty" step="1" min={1} value={n} onChange={(v) => setPick({ ...pick, [k]: v || 1 })} aria-label={`Quantité ${accEq?.name || ''}`} />}
+                </label>
+              );
+            })}
+          </div>
+        );
+      })}
+      <div className="form-actions">
+        <button type="button" className="secondary" onClick={close}>Non merci</button>
+        <button type="button" disabled={!chosen} onClick={add}>Ajouter {chosen || ''} accessoire{chosen > 1 ? 's' : ''}</button>
+      </div>
+    </Modal>
   );
 }

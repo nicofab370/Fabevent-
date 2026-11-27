@@ -2645,23 +2645,32 @@ await step('Fiche produit : édition directement dans la page + autres codes (al
   expect((await page.locator('.stats').innerText()).includes('SB18-ANCIEN'), 'alias affiché sur la fiche');
 });
 
-await step('Projet : accessoires proposés à cocher (décochables) dans le sélecteur', async () => {
+await step('Projet : accessoires facultatifs proposés dans une fenêtre après l’ajout (rien de coché par défaut)', async () => {
   await resetDemo();
   await openProject('Beurs Maastricht');
   await tab('Équipement');
-  const nl4Before = await page.locator('main table.list tr', { hasText: 'Câble NL4' }).count();
+  const nl4 = () => page.locator('main table.list tr', { hasText: 'Câble NL4' }).count();
+  const nl4Before = await nl4();
+  // 1er ajout : « Non merci » → rien d'ajouté
   await page.click('button:text-is("+ Matériel")');
   await page.waitForSelector('.pick-list');
-  const item = page.locator('.pick-item', { hasText: 'Caisson SB18' });
-  await item.locator('.pick-acc button').click();
-  expect((await item.locator('.pick-acc button').innerText()).includes('1 coché'), 'accessoire coché par défaut');
-  await item.locator('.pick-acc-list input[type=checkbox]').uncheck();
-  expect((await item.locator('.pick-acc button').innerText()).includes('0 coché'), 'accessoire décoché');
-  await item.locator('input[aria-label="Quantité Caisson SB18"]').fill('1');
+  expect(await page.locator('.pick-acc').count() === 0, 'plus de section « accessoires » dans le sélecteur');
+  await page.locator('.pick-item', { hasText: 'Caisson SB18' }).locator('input[aria-label="Quantité Caisson SB18"]').fill('2');
   await page.locator('.modal .form-actions button', { hasText: 'Ajouter (' }).click();
-  await page.waitForTimeout(600);
-  expect((await page.locator('main table.list tr', { hasText: 'Caisson SB18' }).count()) >= 1, 'caisson ajouté au sous-projet');
-  expect((await page.locator('main table.list tr', { hasText: 'Câble NL4' }).count()) === nl4Before, 'accessoire décoché non ajouté');
+  await page.waitForSelector('.modal:has-text("Accessoires proposés")');
+  const box = page.locator('.modal input[aria-label="Ajouter Câble NL4 15 m"]');
+  expect(!(await box.isChecked()), 'accessoire facultatif décoché par défaut');
+  await page.click('.modal button:text-is("Non merci")');
+  await page.waitForTimeout(400);
+  expect((await nl4()) === nl4Before, 'refusé : aucun accessoire ajouté');
+  // saisie rapide : l'accessoire coché est ajouté (2 par caisson)
+  await page.locator('input[aria-label="Ajouter un article"]').first().fill('1 SB18');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.modal:has-text("Accessoires proposés")');
+  await page.locator('.modal input[type=checkbox]').first().check();
+  await page.click('.modal button:has-text("Ajouter 1 accessoire")');
+  await page.waitForTimeout(500);
+  expect((await nl4()) === nl4Before + 1, 'accessoire ajouté sous le caisson');
 });
 
 await step('Projet : contenu du kit affiché sous la ligne (lignes enfants)', async () => {
