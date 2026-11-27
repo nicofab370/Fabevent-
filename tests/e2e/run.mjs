@@ -3429,6 +3429,26 @@ await step('Finances : remise sur le matériel seulement, reprise sur le devis',
   expect((await page.locator('.doc .totals').innerText()).includes('matériel (10 %)'), 'ligne « Remise matériel (10 %) » sur le devis');
 });
 
+await step('Tableaux : clic sur le titre d’une colonne = tri A → Z, puis Z → A (texte et montants)', async () => {
+  await resetDemo();
+  await go('contacts');
+  const names = () => page.locator('table.list tbody tr td:first-child').allInnerTexts();
+  const th = page.locator('table.list thead th:text-is("Nom")');
+  await th.click();
+  const asc = await names();
+  const cmp = (a, b) => a.localeCompare(b, 'fr', { numeric: true, sensitivity: 'base' });
+  expect(asc.length > 2 && asc.every((n, i) => i === 0 || cmp(asc[i - 1], n) <= 0), `A → Z (${asc.slice(0, 3).join(', ')}…)`);
+  expect(await th.getAttribute('class').then((c) => c.includes('sort-asc')), 'flèche ▲ sur la colonne');
+  await th.click();
+  const desc = await names();
+  expect(JSON.stringify(desc) === JSON.stringify([...asc].reverse()), 'Z → A au 2e clic');
+  // montants : du plus petit au plus grand (et pas dans l'ordre du texte)
+  await go('vehicules');
+  await page.click('table.list thead th:has-text("Forfait/j")');
+  const prices = (await page.locator('table.list tbody tr td:nth-child(4)').allInnerTexts()).map((t) => parseFloat(t.replace(/[^\d,]/g, '').replace(',', '.')) || 0);
+  expect(prices.every((p, i) => i === 0 || prices[i - 1] <= p), `forfaits croissants (${prices.join(' ; ')})`);
+});
+
 await step('Import Rentman : fichier d’export importé dans une base (projets complets), réimport sans doublon', async () => {
   const { mapRentman } = await import('../../tools/rentman-import/map.mjs');
   const { RENTMAN } = await import('../fixtures/rentman.mjs');

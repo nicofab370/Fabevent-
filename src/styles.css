@@ -99,6 +99,12 @@ table.list td { padding: 8px; border-bottom: 1px solid var(--border); vertical-a
 table.list tr.click { cursor: pointer; }
 table.list tr.click:hover td { background: var(--soft); }
 table.list td.n, table.list th.n { text-align: right; white-space: nowrap; }
+/* tri par clic sur le titre de colonne (tableSort.ts) */
+table.list th[data-sortable="1"] { cursor: pointer; user-select: none; }
+table.list th[data-sortable="1"]:hover { color: var(--text); }
+table.list th.sort-asc, table.list th.sort-desc { color: var(--text); }
+table.list th.sort-asc::after { content: " ▲"; font-size: 9px; }
+table.list th.sort-desc::after { content: " ▼"; font-size: 9px; }
 table.list input, table.list select { padding: 4px 6px; }
 .w-qty { width: 70px; } .w-price { width: 100px; }
 
