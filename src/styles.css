@@ -908,3 +908,55 @@ table.list tr.limiting td:first-child, table.list tr.kit-child.limiting td:nth-c
 .lookup-hits button:hover { background: var(--soft); }
 .lookup-hits .muted { font-size: 12px; }
 @media screen and (max-width: 640px) { .cf-actions button { min-height: 32px; padding: 6px 6px; font-size: 13px; } }
+.catalog-changes { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.catalog-changes > span { flex: 1; min-width: 240px; }
+
+/* Téléphone : matériel d'un projet, 2 lignes compactes par article ; contenu d'un kit plus petit et en retrait */
+@media screen and (max-width: 640px) {
+  .eq-table tr { grid-template-columns: 46px minmax(0, 1fr) auto; row-gap: 2px; padding: 6px 0; }
+  .eq-table td.eq-name { font-size: 14px; line-height: 1.25; padding-left: 0 !important; box-shadow: none !important; }
+  .eq-table td.eq-name a { font-weight: 600; }
+  .eq-table td.eq-name > svg { display: none; }
+  .eq-table .eq-code { font-size: 11px; }
+  .eq-table td.eq-avail { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; }
+  .eq-table td.eq-avail .avail { font-size: 12px; }
+  .eq-table td.eq-total { font-weight: 600; }
+  .eq-table td.zero { visibility: hidden; }
+  .eq-table td:last-child { display: flex; gap: 0; }
+  .eq-table td:last-child .ghost { min-height: 32px; min-width: 32px; padding: 2px; }
+  .eq-table tr.kid { margin-left: 18px; padding: 3px 0 3px 8px; border-left: 3px solid var(--accent); grid-template-columns: 40px minmax(0, 1fr) auto; }
+  .eq-table tr.kid td.eq-name { font-size: 13px; }
+  .eq-table tr.kid td.eq-name a { font-weight: 400; }
+  .eq-table tr.kid .w-qty { width: 40px; height: 26px; font-size: 13px; }
+}
+@media screen and (max-width: 640px) {
+  .eq-table td.eq-avail { flex-wrap: nowrap; min-width: 0; overflow: hidden; }
+  .eq-table td.eq-avail .avail { flex: none; }
+  .eq-table td.eq-avail .use-chips, .eq-table td.eq-avail > :not(.avail) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .eq-table td.eq-avail .kit-incomplete { text-align: left; white-space: normal; }
+  .eq-table td.eq-avail .kit-incomplete .muted { display: inline !important; margin-left: 4px; }
+  .eq-table td:nth-child(2) { align-self: start; }
+}
+@media screen and (max-width: 640px) {
+  .eq-table tr { row-gap: 0; padding: 4px 0; }
+  .eq-table td:nth-child(2) .w-qty { height: 36px; }
+  .eq-table td:last-child .ghost { min-height: 32px; height: 32px; }
+}
+
+/* Aperçu financier d'un projet */
+.fin-scope { margin: 0 0 10px; }
+.fin-kpis .fin-ring { display: flex; align-items: center; gap: 10px; }
+.fin-kpis .fin-ring > div { display: grid; }
+.fin-table .fin-kid td { font-size: 13px; color: var(--muted); }
+.fin-table .fin-kid td:first-child { padding-left: 28px; }
+.fin-table .fin-total td { border-top: 2px solid var(--border); }
+.fin-toggle { display: inline-flex; align-items: center; gap: 4px; padding: 0; font-weight: inherit; color: inherit; }
+.fin-bottom { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; margin-top: 12px; }
+.fin-bottom > p { flex: 1; min-width: 220px; margin: 0; }
+.fin-summary { min-width: 280px; background: var(--soft); border-radius: 10px; padding: 6px 12px; border-collapse: separate; }
+.fin-summary td { padding: 6px 4px; }
+.fin-summary td.n { text-align: right; }
+.fin-summary .fin-strong td { font-weight: 700; border-top: 1px solid var(--border); }
+.fin-disc { display: inline-flex; align-items: center; gap: 4px; }
+@media screen and (max-width: 640px) { .fin-summary { width: 100%; min-width: 0; } }
+@media screen and (max-width: 640px) { .fin-toggle { min-height: 32px; } }

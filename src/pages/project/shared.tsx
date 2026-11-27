@@ -3,7 +3,7 @@ import { useSettings } from '../../components/ui';
 import { useAvailability } from '../../data';
 import { db, getSettings } from '../../db';
 import { invoicedTotal } from '../../invoicing';
-import type { CrewAssignment, Equipment, EquipmentLine, Person, Project, ProjectCost, Settings, Subproject, Unavailability, VehicleAssignment } from '../../types';
+import type { CrewAssignment, DiscountPart, Equipment, EquipmentLine, Person, Project, ProjectCost, Settings, Subproject, Unavailability, VehicleAssignment } from '../../types';
 import { RESERVING } from '../../types';
 import { crewAmount, crewCostProfile, lineDays, lineTotal, overlaps, patch, round2, save } from '../../utils';
 import { tripKm, vehiclePrice } from '../../geo';
@@ -55,7 +55,8 @@ export function isPerPiece(l: EquipmentLine, eqMap: Map<string, Equipment>) {
 }
 
 interface Finance {
-  rows: { label: string; revenue: number; cost: number }[];
+  /** revenue : après la remise de la partie ; before : avant (part : clé de la remise) */
+  rows: { label: string; revenue: number; cost: number; before?: number; part?: DiscountPart }[];
   gross: number;
   discount: number;
   totalHT: number;
@@ -98,11 +99,16 @@ export function computeFinance(
   const extraRev = costs.filter((c) => c.billable && c.price).reduce((a, c) => a + (c.qty || 1) * (c.price || 0), 0);
   const insurance = insuranceAmount(rentalRev, project, s);
   const extraCost = costs.reduce((a, c) => a + (c.amount || 0), 0);
+  // remise sur une partie seulement (matériel, personnel…), avant la remise globale
+  const part = (label: string, key: DiscountPart, revenue: number, cost: number) => {
+    const pct = project.partDiscounts?.[key] || 0;
+    return { label, part: key, before: round2(revenue), revenue: round2(revenue - revenue * pct / 100), cost: round2(cost) };
+  };
   const rows = [
-    { label: 'Matériel', revenue: round2(eqRev), cost: round2(consCost + subrentCost) },
-    { label: 'Personnel', revenue: round2(crewRev), cost: round2(crewCost) },
-    { label: 'Transport', revenue: round2(vehRev), cost: 0 },
-    { label: 'Frais supplémentaires', revenue: round2(extraRev), cost: round2(extraCost) },
+    part('Matériel', 'materiel', eqRev, consCost + subrentCost),
+    part('Personnel', 'personnel', crewRev, crewCost),
+    part('Transport', 'transport', vehRev, 0),
+    part('Frais supplémentaires', 'frais', extraRev, extraCost),
     ...(insurance ? [{ label: 'Assurance', revenue: insurance, cost: 0 }] : []),
     ...(apptCost ? [{ label: 'Rendez-vous', revenue: 0, cost: round2(apptCost) }] : []),
   ];

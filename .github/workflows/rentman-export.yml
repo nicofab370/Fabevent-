@@ -1,0 +1,41 @@
+name: Export Rentman pour FabEvent
+
+# Lit tout ton Rentman (lecture seule) : contacts, matériel, équipe, véhicules, projets complets, coûts,
+# sous-locations, réparations, indisponibilités, rendez-vous, devis, factures, fichiers et photos.
+# Produit les fichiers à importer dans FabEvent (Paramètres → « Importer depuis Rentman »).
+# Une seule fois : Settings → Secrets and variables → Actions → secret RENTMAN_TOKEN = ta clé API Rentman.
+# Puis : onglet Actions → « Export Rentman pour FabEvent » → Run workflow → Artifacts → fabevent-import-rentman.
+on:
+  workflow_dispatch:
+    inputs:
+      fichiers:
+        description: "Télécharger aussi les fichiers (documents des projets et de l'équipe, photos du matériel)"
+        type: boolean
+        default: true
+      taille_max_mo:
+        description: "Taille maximale d'un fichier (Mo)"
+        type: number
+        default: 25
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Export depuis Rentman
+        env:
+          RENTMAN_TOKEN: ${{ secrets.RENTMAN_TOKEN }}
+          RENTMAN_FILES: ${{ inputs.fichiers && '1' || '0' }}
+          RENTMAN_FILE_MAX_MB: ${{ inputs.taille_max_mo }}
+        run: node tools/rentman-import/export.mjs fabevent-import-rentman.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fabevent-import-rentman
+          path: fabevent-import-rentman*.json
+          retention-days: 7

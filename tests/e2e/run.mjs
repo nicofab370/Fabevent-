@@ -32,7 +32,12 @@ async function newContext() {
   await ctx.addInitScript(() => { window.print = () => {}; });
   ctx.on('page', (p) => {
     p.on('pageerror', (e) => consoleErrors.push(e.message));
-    p.on('console', (m) => m.type() === 'error' && consoleErrors.push(m.text()));
+    p.on('console', (m) => {
+      if (m.type() !== 'error') return;
+      const at = m.location()?.url || '';
+      if (/localhost:9999\//.test(at)) return; // serveur fictif des tests (requête en vol après la fin du bouchon)
+      consoleErrors.push(`${m.text()}${at ? ` (${at})` : ''}`);
+    });
     p.on('dialog', (d) => (d.type() === 'prompt' ? d.accept(d.defaultValue()) : d.accept()));
   });
   page = await ctx.newPage();
@@ -1144,17 +1149,40 @@ await step('Caution : affichée sur le devis, hors total', async () => {
 await step('Coût réel : la marge réelle suit le coût saisi', async () => {
   await openProject('Gala de fin d');
   await tab('Finances & documents');
-  const r = page.locator('tr', { hasText: 'Personnel' }).first();
-  await r.locator('input').fill('2000');
-  await r.locator('input').blur();
+  const r = page.locator('.fin-table tr', { hasText: 'Personnel' }).first().locator('td').nth(2).locator('input');
+  await r.fill('2000');
+  await r.blur();
   await page.waitForTimeout(400);
-  const num = (t) => parseFloat(t.replace(/[\s\u202f\u00a0€]/g, '').replace(',', '.'));
-  const cells = async (label) => (await page.locator('tr', { hasText: label }).first().locator('td').allInnerTexts());
-  const sub = await cells('Sous-total');
-  const totalRow = await cells('Total HT');
-  const actualCost = num(sub[5]);
-  expect(actualCost >= 2000, `coût réel cumulé (${sub[5]})`);
-  expect(Math.abs(num(totalRow[1]) - actualCost - num(totalRow[5].split('(')[0])) < 0.02, `marge réelle = total − coût réel (${totalRow[5]})`);
+  const num = (t) => parseFloat(t.replace(/[^\d,−-]/g, '').replace('−', '-').replace(',', '.'));
+  const tot = await page.locator('.fin-table tr.fin-total td').allInnerTexts();
+  const actualCost = num(tot[2]);
+  expect(actualCost >= 2000, `coût réel cumulé (${tot[2]})`);
+  const totalHT = num(await page.locator('.fin-summary tr', { hasText: 'Total HT' }).locator('td').nth(1).innerText());
+  const real = (await page.locator('.stat', { hasText: 'bénéfice réel' }).innerText()).split('·').pop();
+  expect(Math.abs(totalHT - actualCost - num(real)) < 0.02, `bénéfice réel = total − coûts réels (${real})`);
+});
+
+await step('Aperçu financier : par catégorie (matériel location / vente), et par sous-projet', async () => {
+  await resetDemo();
+  await openProject('Festival des Lumières');
+  await tab('Finances & documents');
+  const num = (t) => parseFloat(t.replace(/[^\d,−-]/g, '').replace('−', '-').replace(',', '.'));
+  const htAll = num(await page.locator('.fin-kpis .stat').first().locator('b').innerText());
+  expect(await page.locator('.stat', { hasText: 'facturé' }).count() === 1 && await page.locator('.stat', { hasText: 'bénéfice prévu' }).count() === 1, 'indicateurs facturé et bénéfice');
+  await page.click('.fin-table button:has-text("Matériel")');
+  expect(await page.locator('.fin-table tr.fin-kid', { hasText: 'Location' }).count() === 1 && await page.locator('.fin-table tr.fin-kid', { hasText: 'Vente' }).count() === 1, 'matériel détaillé en location / vente');
+  const chips = page.locator('.fin-scope .chip');
+  expect(await chips.count() >= 3, 'choix « Tout le projet » + sous-projets');
+  let sum = 0;
+  for (let i = 1; i < await chips.count(); i++) {
+    await chips.nth(i).click(); await page.waitForTimeout(200);
+    expect((await page.locator('.fin-overview h2').innerText()).includes('—'), 'titre du sous-projet');
+    sum += num(await page.locator('.fin-kpis .stat').first().locator('b').innerText());
+  }
+  // sans coûts supplémentaires facturés, les sous-projets font le total du projet
+  expect(sum <= htAll + 0.05, `somme des sous-projets (${sum}) ≤ projet (${htAll})`);
+  await chips.first().click();
+  expect(num(await page.locator('.fin-kpis .stat').first().locator('b').innerText()) === htAll, 'retour au total du projet');
 });
 
 await step('Entrepôt : 1re sortie → En cours, tout rentré → Exécution terminée', async () => {
@@ -2645,23 +2673,32 @@ await step('Fiche produit : édition directement dans la page + autres codes (al
   expect((await page.locator('.stats').innerText()).includes('SB18-ANCIEN'), 'alias affiché sur la fiche');
 });
 
-await step('Projet : accessoires proposés à cocher (décochables) dans le sélecteur', async () => {
+await step('Projet : accessoires facultatifs proposés dans une fenêtre après l’ajout (rien de coché par défaut)', async () => {
   await resetDemo();
   await openProject('Beurs Maastricht');
   await tab('Équipement');
-  const nl4Before = await page.locator('main table.list tr', { hasText: 'Câble NL4' }).count();
+  const nl4 = () => page.locator('main table.list tr', { hasText: 'Câble NL4' }).count();
+  const nl4Before = await nl4();
+  // 1er ajout : « Non merci » → rien d'ajouté
   await page.click('button:text-is("+ Matériel")');
   await page.waitForSelector('.pick-list');
-  const item = page.locator('.pick-item', { hasText: 'Caisson SB18' });
-  await item.locator('.pick-acc button').click();
-  expect((await item.locator('.pick-acc button').innerText()).includes('1 coché'), 'accessoire coché par défaut');
-  await item.locator('.pick-acc-list input[type=checkbox]').uncheck();
-  expect((await item.locator('.pick-acc button').innerText()).includes('0 coché'), 'accessoire décoché');
-  await item.locator('input[aria-label="Quantité Caisson SB18"]').fill('1');
+  expect(await page.locator('.pick-acc').count() === 0, 'plus de section « accessoires » dans le sélecteur');
+  await page.locator('.pick-item', { hasText: 'Caisson SB18' }).locator('input[aria-label="Quantité Caisson SB18"]').fill('2');
   await page.locator('.modal .form-actions button', { hasText: 'Ajouter (' }).click();
-  await page.waitForTimeout(600);
-  expect((await page.locator('main table.list tr', { hasText: 'Caisson SB18' }).count()) >= 1, 'caisson ajouté au sous-projet');
-  expect((await page.locator('main table.list tr', { hasText: 'Câble NL4' }).count()) === nl4Before, 'accessoire décoché non ajouté');
+  await page.waitForSelector('.modal:has-text("Accessoires proposés")');
+  const box = page.locator('.modal input[aria-label="Ajouter Câble NL4 15 m"]');
+  expect(!(await box.isChecked()), 'accessoire facultatif décoché par défaut');
+  await page.click('.modal button:text-is("Non merci")');
+  await page.waitForTimeout(400);
+  expect((await nl4()) === nl4Before, 'refusé : aucun accessoire ajouté');
+  // saisie rapide : l'accessoire coché est ajouté (2 par caisson)
+  await page.locator('input[aria-label="Ajouter un article"]').first().fill('1 SB18');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.modal:has-text("Accessoires proposés")');
+  await page.locator('.modal input[type=checkbox]').first().check();
+  await page.click('.modal button:has-text("Ajouter 1 accessoire")');
+  await page.waitForTimeout(500);
+  expect((await nl4()) === nl4Before + 1, 'accessoire ajouté sous le caisson');
 });
 
 await step('Projet : contenu du kit affiché sous la ligne (lignes enfants)', async () => {
@@ -2702,13 +2739,14 @@ await step('Projet : fiche de ligne — accessoires facultatifs à cocher/décoc
   const m = page.locator('.modal');
   await m.waitFor();
   const accBox = m.locator('.check-row', { hasText: 'NL4' }).locator('input');
-  expect(await accBox.isChecked(), 'accessoire déjà présent = coché dans la fiche');
+  // accessoire facultatif (démo) : pas ajouté d'office, on le coche dans la fiche de ligne
+  expect(!(await accBox.isChecked()), 'accessoire facultatif absent = décoché dans la fiche');
   await accBox.click();
   await page.waitForTimeout(600);
-  expect((await page.locator('.eq-table tbody tr', { hasText: 'Câble NL4' }).count()) === nl4Before - 1, 'accessoire décoché retiré de la ligne');
+  expect((await page.locator('.eq-table tbody tr', { hasText: 'Câble NL4' }).count()) === nl4Before + 1, 'accessoire coché ajouté sous la ligne');
   await accBox.click();
   await page.waitForTimeout(600);
-  expect((await page.locator('.eq-table tbody tr', { hasText: 'Câble NL4' }).count()) === nl4Before, 'accessoire re-coché réajouté');
+  expect((await page.locator('.eq-table tbody tr', { hasText: 'Câble NL4' }).count()) === nl4Before, 'accessoire décoché retiré');
   await page.keyboard.press("Escape");
   await page.waitForTimeout(300);
   // fiche d'un kit : contenu listé
@@ -3181,7 +3219,10 @@ await step('Diagnostic : API qui renvoie la page HTML de l’app → message exp
   await page.evaluate(() => { try { localStorage.setItem('fabevent.workspace', 'principal'); localStorage.setItem('fab.sync.url', 'http://localhost:9999/api/sync.php'); } catch {} });
   await stubSignedIn(ctx);
   await page.goto(U);
+  // reconnexion automatique (session du serveur simulé) puis rechargement
+  await page.waitForFunction(() => !!localStorage.getItem('fab.session.principal'), null, { timeout: 15000 });
   await page.waitForSelector('.sidebar nav');
+  await page.waitForTimeout(800);
   // API stubbée en HTML (cas réécriture SPA : api/ absent) → diagnostic attendu
   await ctx.route('**/api/sync.php**', (route) => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>FabEvent</title><p>app</p>' }));
   await go('parametres');
@@ -3290,6 +3331,113 @@ await step('Kits : type d’article simple / kit virtuel / kit fixe (caisse mont
   await page.waitForSelector('.modal', { state: 'detached' });
   const row = page.locator('table.list tbody tr', { hasText: 'Caisse micros test' });
   expect((await row.innerText()).includes('Kit fixe'), 'badge « Kit fixe » dans le catalogue');
+});
+
+await step('Catalogue modifié : rien ne change tout seul dans les projets, mise à jour proposée et choisie', async () => {
+  await resetDemo();
+  // prix de l'enceinte X12 avant / après, dans un projet qui l'utilise
+  await openProject('Festival des Lumières');
+  await tab('Équipement');
+  const x12Row = () => page.locator('table tr', { hasText: 'Enceinte L-Acoustics X12' }).first();
+  const priceBefore = await x12Row().locator('input').nth(1).inputValue().catch(() => '');
+  const before = await page.locator('.catalog-changes').count();
+  // le catalogue change : prix de la X12 +10 €
+  await go('materiel');
+  await page.locator('table.list tbody tr', { hasText: 'Enceinte L-Acoustics X12' }).first().click();
+  await page.click('main button:text-is("Modifier")');
+  await page.waitForSelector('.edit-inline');
+  const priceField = page.locator('.edit-inline label.field', { has: page.locator('span:text-is("Prix location / jour HT (€)")') }).locator('input');
+  const old = Number((await priceField.inputValue()).replace(',', '.'));
+  await priceField.fill(String(old + 10));
+  await page.click('.edit-inline button[type=submit]');
+  await page.waitForTimeout(400);
+  // le projet n'a pas changé tout seul ; un bandeau propose la mise à jour
+  await openProject('Festival des Lumières');
+  await tab('Équipement');
+  expect(await page.locator('.catalog-changes').count() === 1, `bandeau « le catalogue a changé » (avant : ${before})`);
+  const priceAfter = await x12Row().locator('input').nth(1).inputValue().catch(() => '');
+  expect(priceAfter === priceBefore, `prix du projet inchangé (${priceBefore} / ${priceAfter})`);
+  await page.click('.catalog-changes button:has-text("Voir et mettre à jour")');
+  await page.waitForSelector('.modal');
+  const row = page.locator('.modal tr', { hasText: 'Enceinte L-Acoustics X12' }).filter({ hasText: 'Prix' }).first();
+  expect((await row.innerText()).includes('→'), 'changement de prix listé');
+  // ne mettre à jour QUE la X12
+  await page.locator('.modal input[aria-label="Tout cocher"]').uncheck();
+  await row.locator('input[type=checkbox]').check();
+  await page.click('.modal button:has-text("Mettre à jour 1 ligne(s)")');
+  await page.waitForTimeout(500);
+  expect(await page.locator('.modal tr', { hasText: 'Enceinte L-Acoustics X12' }).filter({ hasText: 'Prix' }).count() === 0, 'changement appliqué, plus proposé');
+  await page.keyboard.press('Escape');
+});
+
+await step('Finances : remise sur le matériel seulement, reprise sur le devis', async () => {
+  await resetDemo();
+  await openProject('Festival des Lumières');
+  await tab('Finances & documents');
+  const num = (t) => parseFloat(t.replace(/[^\d,−-]/g, '').replace('−', '-').replace(',', '.'));
+  const ht = async () => num(await page.locator('.stat', { hasText: 'total HT' }).first().locator('b').innerText());
+  const before = await ht();
+  const matRow = page.locator('.fin-table tr', { hasText: 'Matériel' }).first();
+  const mat = num((await matRow.locator('td').nth(5).innerText()));
+  const per0 = (await page.locator('.fin-table tr', { hasText: 'Personnel' }).first().locator('td').nth(5).innerText());
+  await page.fill('input[aria-label="Remise Matériel %"]', '10');
+  await page.locator('input[aria-label="Remise Matériel %"]').blur();
+  await page.waitForTimeout(400);
+  expect(Math.abs((before - (await ht())) - mat * 0.1) < 0.05, `total HT −10 % du matériel (${before} → ${await ht()})`);
+  expect((await page.locator('.fin-table tr', { hasText: 'Personnel' }).first().locator('td').nth(5).innerText()) === per0, 'personnel non remisé');
+  await page.click('button:text-is("+ Devis")');
+  await page.waitForSelector('.doc');
+  expect((await page.locator('.doc .totals').innerText()).includes('matériel (10 %)'), 'ligne « Remise matériel (10 %) » sur le devis');
+});
+
+await step('Import Rentman : fichier d’export importé dans une base (projets complets), réimport sans doublon', async () => {
+  const { mapRentman } = await import('../../tools/rentman-import/map.mjs');
+  const { RENTMAN } = await import('../fixtures/rentman.mjs');
+  const { data, files, report } = mapRentman(RENTMAN);
+  const dir = mkdtempSync(join(tmpdir(), 'rm-'));
+  const f = join(dir, 'export.json'), fp = join(dir, 'export-fichiers-1.json');
+  const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  const exportedAt = new Date().toISOString();
+  writeFileSync(f, JSON.stringify({ app: 'fabevent', kind: 'import', source: 'rentman', version: 1, exportedAt, report, data, parts: 1 }));
+  writeFileSync(fp, JSON.stringify({ app: 'fabevent', kind: 'import', source: 'rentman', part: 'fichiers', version: 1, exportedAt, data: {
+    files: files.map(({ url, fileId, ...m }) => ({ ...m, id: `rm-file-${fileId}`, base64: m.photoOf ? PNG : Buffer.from('%PDF-1.4 test').toString('base64') })),
+  } }));
+  await resetDemo();
+  await go('parametres');
+  await page.locator('input[aria-label="Fichier d\'export Rentman"]').setInputFiles(f);
+  await page.waitForSelector('.rentman-preview');
+  expect((await page.locator('.rentman-preview').innerText()).includes('paquet(s) de fichiers'), 'aperçu : paquets de fichiers manquants signalés');
+  await page.locator('input[aria-label="Fichier d\'export Rentman"]').setInputFiles([f, fp]);
+  await page.waitForSelector('.rentman-preview:has-text("photos du matériel")');
+  const prev = await page.locator('.rentman-preview').innerText();
+  expect(prev.includes('1 projets') && prev.includes('2 devis et factures') && prev.includes('2 fichiers') && !prev.includes('paquet(s) de fichiers'), 'aperçu : projet, documents, fichiers');
+  await page.click('.rentman-import button:text-is("Importer")');
+  await page.waitForSelector('.rentman-import .info:has-text("Import terminé")');
+  await openProject('Fête de la musique');
+  await tab('Équipement');
+  const eq = await page.locator('main').innerText();
+  expect(eq.includes('L-Acoustics X12') && eq.includes('Pack voix') && eq.includes('Grande scène'), 'lignes de matériel et sous-projets importés');
+  await tab('Général');
+  expect((await page.locator('main').innerText()).includes('Ville de Liège'), 'client importé et relié');
+  await tab('Finances & documents');
+  const fin = await page.locator('main').innerText();
+  expect(fin.includes('F-2026-0031') && fin.includes('Q-2026-12'), 'devis et facture Rentman dans les documents du projet');
+  const stored = await page.evaluate(async () => {
+    const open = () => new Promise((r) => { const q = indexedDB.open('fabevent_' + (localStorage.getItem('fabevent.workspace') || 'principal')); q.onsuccess = () => r(q.result); });
+    const d = await open();
+    const get = (t, k) => new Promise((r) => { const q = d.transaction(t).objectStore(t).get(k); q.onsuccess = () => r(q.result); q.onerror = () => r(undefined); });
+    const [cost, file, eq, sr, ap] = await Promise.all([get('costs', 'rm-k-1000'), get('files', 'rm-file-950'), get('equipment', 'rm-e-504'), get('subrentals', 'rm-sr-1100'), get('appointments', 'rm-ap-1400')]);
+    return { cost: !!cost, file: file?.name, photo: !!eq?.photo, sr: sr?.status, ap: !!ap };
+  });
+  expect(stored.cost && stored.file === 'Plan de scène.pdf' && stored.photo && stored.sr === 'confirme' && stored.ap, `coût, fichier, photo, sous-location, rendez-vous importés (${JSON.stringify(stored)})`);
+  // réimport : rien en double
+  await go('parametres');
+  await page.locator('input[aria-label="Fichier d\'export Rentman"]').setInputFiles(f);
+  await page.click('.rentman-import button:text-is("Importer")');
+  await page.waitForSelector('.rentman-import .info:has-text("Import terminé")');
+  expect((await page.locator('.rentman-import .info').innerText()).includes('déjà là'), 'réimport : fiches gardées, pas de doublon');
+  await go('projets');
+  expect(await page.locator('table.list tbody tr', { hasText: 'Fête de la musique' }).count() === 1, 'un seul projet');
 });
 
 console.log('\n  — vérification de la liste (v51) —');

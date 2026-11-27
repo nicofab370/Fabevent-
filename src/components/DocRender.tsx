@@ -137,7 +137,8 @@ export function buildDocHtml(doc: Doc, opts: { mark?: boolean } = {}): string {
     'bloc.totaux': showPrices ? r(
       <table className="totals">
         <tbody>
-          {s.discountAmount > 0 && <tr><td>{tr(doc, 'discount')} ({s.project.discount} %)</td><td className="n">− {money(s.discountAmount)}</td></tr>}
+          {(s.partDiscounts || []).map((x) => <tr key={x.label}><td>{tr(doc, 'discount')} {x.label.toLowerCase()} ({x.pct} %)</td><td className="n">− {money(x.amount)}</td></tr>)}
+          {(() => { const global = Math.round((s.discountAmount - (s.partDiscounts || []).reduce((a, x) => a + x.amount, 0)) * 100) / 100; return global > 0 ? <tr><td>{tr(doc, 'discount')} ({s.project.discount} %)</td><td className="n">− {money(global)}</td></tr> : null; })()}
           {!s.reminder && <tr><td>{tr(doc, 'totalExcl')}</td><td className="n">{money(s.totalHT)}</td></tr>}
           {!s.reminder && (s.vatBreakdown && s.vatBreakdown.length > 1
             ? s.vatBreakdown.map((b) => <tr key={b.rate}><td>{tr(doc, 'vat')} {b.rate} %</td><td className="n">{money(b.vat)}</td></tr>)

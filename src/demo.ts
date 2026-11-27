@@ -154,7 +154,7 @@ async function seedAll() {
   await item('dxr', 'Son/Diffusion', 'Enceinte Yamaha DXR12 (remplacement)', 4, 30, { weight: 19, replacementValue: 900, location: 'Rack S5' });
   await db.equipment.update(eq.x12, { alternatives: [eq.dxr] });
   await item('mg', 'Son/Console', 'Console analogique Mackie (ancienne)', 1, 20, { archived: true });
-  await item('sub', 'Son/Diffusion', 'Caisson SB18', 4, 60, { weight: 52, replacementValue: 4100, location: 'Rack S2', accessories: [{ equipmentId: eq.nl4, qty: 1, free: true }] });
+  await item('sub', 'Son/Diffusion', 'Caisson SB18', 4, 60, { weight: 52, replacementValue: 4100, location: 'Rack S2', accessories: [{ equipmentId: eq.nl4, qty: 1, free: true, optional: true }] });
   await item('ampli', 'Son/Diffusion', 'Amplificateur LA4X', 3, 70, { weight: 13, replacementValue: 5500, location: 'Rack S3', inspectionMonths: 12, trackSerials: true });
   await item('cl5', 'Son/Console', 'Console Yamaha CL5', 1, 250, { weight: 36, replacementValue: 22000, location: 'Flight F1', trackSerials: true, inspectionMonths: 12 });
   await item('qu16', 'Son/Console', 'Console Allen & Heath Qu-16', 2, 80, { weight: 12, replacementValue: 2300, location: 'Flight F2', trackSerials: true });
@@ -283,9 +283,9 @@ async function seedAll() {
         // contenu du kit : lignes enfants (gratuites), comme à l'ajout via l'app
         for (const k of e.kitItems || []) {
           const item = (await db.equipment.get(k.equipmentId))!;
-          await db.lines.put({ ...base(), projectId: p.id, subprojectId: sp.id, groupId, equipmentId: item.id, name: item.name, qty: k.qty * qty, unitPrice: 0, discount: 0, order: lo++, parentLineId: lineId, optional: opt?.optional });
+          await db.lines.put({ ...base(), projectId: p.id, subprojectId: sp.id, groupId, equipmentId: item.id, name: item.name, qty: k.qty * qty, unitPrice: 0, discount: 0, order: lo++, parentLineId: lineId, kitPart: true, optional: opt?.optional });
         }
-        for (const a of e.accessories || []) {
+        for (const a of (e.accessories || []).filter((x) => !x.optional)) {
           const acc = (await db.equipment.get(a.equipmentId))!;
           await db.lines.put({ ...base(), projectId: p.id, subprojectId: sp.id, groupId, equipmentId: acc.id, name: acc.name, qty: a.qty * qty, unitPrice: a.free ? 0 : acc.dailyPrice, discount: 0, order: lo++, parentLineId: lineId, optional: opt?.optional });
         }

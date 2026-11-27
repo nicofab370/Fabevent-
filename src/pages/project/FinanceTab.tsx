@@ -5,22 +5,21 @@ import { Empty, Field, Modal, NumInput } from '../../components/ui';
 import { invoiceSchedule, MOMENT_STATE_LABELS, projectMoments, settingsMoments, type ScheduleRow } from '../../invoicing';
 import { db } from '../../db';
 import { createDocument } from '../../documents';
-import type { DepositStatus, DocType } from '../../types';
-import { CONFIRMED, DEPOSIT_LABELS, DOC_LABELS, DOC_STATUS_LABELS, INVOICE_TYPES, MOMENT_TRIGGERS } from '../../types';
-import { fmtDate, money, patch, round2 } from '../../utils';
-import { invoicedHT, type ProjectData } from './shared';
+import type { DepositStatus, DiscountPart, DocType } from '../../types';
+import { CONFIRMED, DEPOSIT_LABELS, DISCOUNT_PARTS, DOC_LABELS, DOC_STATUS_LABELS, INVOICE_TYPES, MOMENT_TRIGGERS } from '../../types';
+import { fmtDate, lineDays, lineTotal, money, patch, round2 } from '../../utils';
+import { computeFinance, invoicedHT, isPerPiece, type ProjectData } from './shared';
 import { hrOrders } from './hrOrders';
 
 /** Onglet Finances : chiffre d'affaires, coûts et marge par catégorie, remise, documents. */
 export default function FinanceTab({ d }: { d: ProjectData }) {
   const nav = useNavigate();
-  const { project, finance: f, docs, settings } = d;
+  const { project, docs, settings } = d;
   const [busy, setBusy] = useState(false);
   const [olderOpen, setOlderOpen] = useState<Set<DocType>>(new Set());
   const [roomInvoice, setRoomInvoice] = useState(false);
   const invoicedRooms = new Set(docs.filter((x) => x.type === 'facture' && x.subprojectIds).flatMap((x) => x.subprojectIds || []));
   const invoiced = invoicedHT(docs);
-  const pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)} %` : '—');
 
   const generate = async (type: DocType) => {
     let percent: number | undefined;
@@ -35,41 +34,7 @@ export default function FinanceTab({ d }: { d: ProjectData }) {
 
   return (
     <>
-      <div className="stats">
-        <div className="stat"><b>{money(f.totalHT)}</b><span>total HT{f.discount ? ` (après remise)` : ''}</span></div>
-        <div className="stat"><b>{money(f.cost)}</b><span>coûts</span></div>
-        <div className="stat"><b style={{ color: f.margin < 0 ? 'var(--danger)' : 'var(--ok)' }}>{money(f.margin)}</b><span>marge ({pct(f.margin, f.totalHT)})</span></div>
-        <div className="stat"><b>{money(invoiced)}</b><span>déjà facturé HT · reste {money(round2(f.totalHT - invoiced))}</span></div>
-      </div>
-      <div className="card">
-        <h2>Détail par catégorie</h2>
-        <table className="list">
-          <thead><tr><th>Catégorie</th><th className="n">Chiffre d'affaires HT</th><th className="n">Coûts prévus</th><th className="n">Marge</th><th className="n">%</th><th className="n" title="Saisis le coût réel une fois les factures fournisseurs reçues">Coût réel</th></tr></thead>
-          <tbody>
-            {f.rows.map((r) => (
-              <tr key={r.label}><td>{r.label}</td><td className="n">{money(r.revenue)}</td><td className="n">{money(r.cost)}</td><td className="n">{money(round2(r.revenue - r.cost))}</td><td className="n">{pct(r.revenue - r.cost, r.revenue)}</td>
-                <td className="n"><ActualInput value={project.actualCosts?.[r.label]} placeholder={r.cost} onSave={(v) => {
-                  const actualCosts = { ...(project.actualCosts || {}) };
-                  if (v === undefined) delete actualCosts[r.label]; else actualCosts[r.label] = v;
-                  return patch(db.projects, project.id, { actualCosts: Object.keys(actualCosts).length ? actualCosts : undefined });
-                }} /></td></tr>
-            ))}
-            <tr><td><strong>Sous-total</strong></td><td className="n"><strong>{money(f.gross)}</strong></td><td className="n">{money(f.cost)}</td><td /><td /><td className="n">{money(f.actualCost)}</td></tr>
-            <tr>
-              <td>Remise globale <NumInput className="w-qty" value={project.discount} onChange={(n) => patch(db.projects, project.id, { discount: n })} /> %</td>
-              <td className="n">− {money(f.discount)}</td><td /><td /><td /><td />
-            </tr>
-            <tr><td><strong>Total HT</strong></td><td className="n"><strong>{money(f.totalHT)}</strong></td><td /><td className="n"><strong>{money(f.margin)}</strong></td><td className="n">{pct(f.margin, f.totalHT)}</td>
-              <td className="n" title="Marge réelle"><strong style={{ color: f.actualMargin < 0 ? 'var(--danger)' : undefined }}>{money(f.actualMargin)}</strong> <span className="muted">({pct(f.actualMargin, f.totalHT)})</span></td></tr>
-            <tr><td>TVA {settings.vatRate} %</td><td className="n">{money(f.vat)}</td><td /><td /><td /><td /></tr>
-            <tr><td><strong>Total TTC</strong></td><td className="n"><strong>{money(f.totalTTC)}</strong></td><td /><td /><td /><td /></tr>
-          </tbody>
-        </table>
-        <p className="muted" style={{ marginBottom: 0 }}>
-          Coûts prévus : personnel (coût de la personne affectée), sous-locations et consommables (matériel), coûts supplémentaires.
-          Coût réel : à saisir après le projet (factures des sous-traitants…) ; vide = coût prévu. Le taux de TVA se règle dans Paramètres.
-        </p>
-      </div>
+      <FinanceOverview d={d} invoiced={invoiced} />
 
       <div className="grid">
         <Schedule d={d} busy={busy} setBusy={setBusy} />
@@ -248,5 +213,144 @@ function Schedule({ d, busy, setBusy }: { d: ProjectData; busy: boolean; setBusy
         <input type="checkbox" checked={!!project.externalInvoiced} onChange={(e) => patch(db.projects, project.id, { externalInvoiced: e.target.checked || undefined })} /> Facturé en dehors de FabEvent (ne plus le rappeler)
       </label>
     </div>
+  );
+}
+
+/* ---------- Aperçu financier (tout le projet ou un sous-projet) ---------- */
+
+/** Chiffres d'une partie du projet : tout le projet, ou un sous-projet. */
+function financeOf(d: ProjectData, subId: string) {
+  const subs = subId ? d.subs.filter((s) => s.id === subId) : d.subs;
+  const ids = new Set(subs.map((s) => s.id));
+  const lines = d.lines.filter((l) => ids.has(l.subprojectId));
+  // coûts supplémentaires et rendez-vous : rattachés au projet, pas à un sous-projet
+  const costs = subId ? [] : d.costs;
+  const srCost = d.subrentals.filter((s) => s.status !== 'annule' && (!subId || s.subprojectId === subId)).reduce((a, s) => a + s.lines.reduce((b, l) => b + l.cost, 0), 0);
+  const appt = subId ? 0 : d.projectAppts.reduce((a, x) => a + (x.cost || 0), 0);
+  const f = computeFinance(d.project, subs, lines, d.projectCrew.filter((c) => ids.has(c.subprojectId)), d.projectVas.filter((v) => ids.has(v.subprojectId)), costs, d.people, d.eqMap, d.settings, srCost, appt);
+  // matériel : location / vente, avant et après les remises des lignes
+  const eq = { locBrut: 0, loc: 0, venteBrut: 0, vente: 0, venteCost: 0, locCost: round2(srCost) };
+  const active = new Map(subs.filter((s) => s.status !== 'annule').map((s) => [s.id, s]));
+  for (const l of lines) {
+    const sp = active.get(l.subprojectId);
+    if (!sp || l.optional) continue;
+    const per = isPerPiece(l, d.eqMap), days = lineDays(l, sp);
+    const t = lineTotal(l, days, d.settings, per), brut = lineTotal({ ...l, discount: 0 }, days, d.settings, per);
+    if (per) { eq.vente += t; eq.venteBrut += brut; eq.venteCost += l.qty * (d.eqMap.get(l.equipmentId!)?.costPrice || 0); }
+    else { eq.loc += t; eq.locBrut += brut; }
+  }
+  return { f, eq };
+}
+
+/** Petit anneau de progression (facturé, bénéfice). */
+function Ring({ value, danger }: { value: number; danger?: boolean }) {
+  const v = Math.max(0, Math.min(1, value)), r = 15, c = 2 * Math.PI * r;
+  return (
+    <svg className="ring" viewBox="0 0 36 36" width="40" height="40" aria-hidden="true">
+      <circle cx="18" cy="18" r={r} fill="none" stroke="var(--border)" strokeWidth="4" />
+      <circle cx="18" cy="18" r={r} fill="none" stroke={danger ? 'var(--danger)' : 'var(--accent)'} strokeWidth="4" strokeDasharray={`${v * c} ${c}`} transform="rotate(-90 18 18)" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function FinanceOverview({ d, invoiced }: { d: ProjectData; invoiced: number }) {
+  const { project, settings } = d;
+  const [subId, setSubId] = useState('');
+  const [openEq, setOpenEq] = useState(false);
+  const { f, eq } = financeOf(d, subId);
+  const whole = !subId;
+  // chiffre d'affaires avant toute remise (lignes et partie)
+  const brutOf = (r: (typeof f.rows)[number]) => (r.label === 'Matériel' ? round2(eq.locBrut + eq.venteBrut) : r.before ?? r.revenue);
+  const brut = round2(f.rows.reduce((a, r) => a + brutOf(r), 0));
+  const lineDisc = round2(brut - f.gross);
+  const totalDisc = round2(lineDisc + f.discount);
+  const pctN = (a: number, b: number) => (b ? (a / b) * 100 : 0);
+  const pctT = (a: number, b: number) => (b ? `${pctN(a, b).toFixed(1).replace('.', ',')} %` : '—');
+  const actualCost = whole ? f.actualCost : f.cost;
+  const actualMargin = round2(f.totalHT - actualCost);
+  /** remise sur une partie (matériel, personnel…) : modifiable sur tout le projet, rappelée par sous-projet */
+  const partInput = (part: DiscountPart) => whole
+    ? <span className="fin-disc"><NumInput className="w-qty" value={project.partDiscounts?.[part] || 0} aria-label={`Remise ${DISCOUNT_PARTS[part]} %`}
+        onChange={(n) => { const pd = { ...(project.partDiscounts || {}) }; if (n) pd[part] = n; else delete pd[part]; return patch(db.projects, project.id, { partDiscounts: Object.keys(pd).length ? pd : undefined }); }} /> %</span>
+    : `${project.partDiscounts?.[part] || 0} %`;
+  const row = (key: string, label: React.ReactNode, cost: number, real: React.ReactNode, b: number, total: number, kid = false, part?: DiscountPart) => (
+    <tr key={key} className={kid ? 'fin-kid' : undefined}>
+      <td>{label}</td>
+      <td className="n">{money(cost)}</td>
+      <td className="n">{real}</td>
+      <td className="n">{money(b)}</td>
+      <td className="n muted" title={part ? `Remise sur ${DISCOUNT_PARTS[part].toLowerCase()} seulement (avant la remise globale) ; remise effective, lignes comprises : ${b ? pctT(b - total, b) : '—'}` : undefined}>
+        {part ? partInput(part) : b && round2(b - total) ? pctT(b - total, b) : '—'}
+      </td>
+      <td className="n">{money(total)}</td>
+      <td className="n" style={{ color: total - cost < 0 ? 'var(--danger)' : undefined }}>{money(round2(total - cost))}</td>
+    </tr>
+  );
+  return (
+    <>
+      {d.subs.length > 1 && (
+        <div className="chips fin-scope" aria-label="Aperçu de">
+          <button type="button" className={'chip' + (whole ? ' on' : '')} onClick={() => setSubId('')}>Tout le projet</button>
+          {d.subs.map((s) => <button type="button" key={s.id} className={'chip' + (subId === s.id ? ' on' : '')} onClick={() => setSubId(s.id)}>{s.name}{s.status === 'annule' ? ' (annulé)' : ''}</button>)}
+        </div>
+      )}
+      <div className="stats fin-kpis">
+        <div className="stat"><b>{money(f.totalHT)}</b><span>total HT{whole ? '' : ' du sous-projet'}{f.discount ? ' (après remise)' : ''}</span></div>
+        {whole && <div className="stat fin-ring"><Ring value={f.totalHT ? invoiced / f.totalHT : 0} /><div><b>{money(invoiced)}</b><span>facturé ({pctT(invoiced, f.totalHT)}) · reste {money(round2(f.totalHT - invoiced))}</span></div></div>}
+        <div className="stat"><b>{money(f.cost)}</b><span>coûts prévus{whole && f.actualCost !== f.cost ? ` · réels ${money(f.actualCost)}` : ''}</span></div>
+        <div className="stat fin-ring"><Ring value={Math.abs(pctN(f.margin, f.totalHT)) / 100} danger={f.margin < 0} /><div><b style={{ color: f.margin < 0 ? 'var(--danger)' : 'var(--ok)' }}>{pctT(f.margin, f.totalHT)}</b><span>bénéfice prévu · marge {money(f.margin)}</span></div></div>
+        {whole && <div className="stat fin-ring"><Ring value={Math.abs(pctN(actualMargin, f.totalHT)) / 100} danger={actualMargin < 0} /><div><b style={{ color: actualMargin < 0 ? 'var(--danger)' : undefined }}>{pctT(actualMargin, f.totalHT)}</b><span>bénéfice réel · {money(actualMargin)}</span></div></div>}
+        <div className="stat"><b>{money(totalDisc)}</b><span>remise totale ({pctT(totalDisc, brut)})</span></div>
+      </div>
+      <div className="card fin-overview">
+        <h2>Aperçu financier{whole ? '' : ` — ${d.subs.find((s) => s.id === subId)?.name || ''}`}</h2>
+        <div className="table-wrap">
+          <table className="list fin-table">
+            <thead><tr><th>Catégorie</th><th className="n">Coûts prévus</th><th className="n" title="Saisis le coût réel une fois les factures fournisseurs reçues">Coûts réels</th><th className="n" title="Avant les remises des lignes">Chiffre d'affaires</th><th className="n">Remise</th><th className="n">Total HT</th><th className="n">Bénéfice</th></tr></thead>
+            <tbody>
+              {f.rows.map((r) => {
+                const real = whole
+                  ? <ActualInput value={project.actualCosts?.[r.label]} placeholder={r.cost} onSave={(v) => {
+                    const actualCosts = { ...(project.actualCosts || {}) };
+                    if (v === undefined) delete actualCosts[r.label]; else actualCosts[r.label] = v;
+                    return patch(db.projects, project.id, { actualCosts: Object.keys(actualCosts).length ? actualCosts : undefined });
+                  }} />
+                  : <span className="muted">—</span>;
+                const label = r.label === 'Matériel'
+                  ? <button type="button" className="link-btn fin-toggle" aria-expanded={openEq} onClick={() => setOpenEq(!openEq)}><Icon name={openEq ? 'chevron-down' : 'chevron-right'} />Matériel</button>
+                  : r.label;
+                return [
+                  row(r.label, label, r.cost, real, brutOf(r), r.revenue, false, r.part),
+                  ...(r.label === 'Matériel' && openEq ? [
+                    row('loc', 'Location', eq.locCost, <span className="muted">—</span>, round2(eq.locBrut), round2(eq.loc), true),
+                    row('vente', 'Vente', round2(eq.venteCost), <span className="muted">—</span>, round2(eq.venteBrut), round2(eq.vente), true),
+                  ] : []),
+                ];
+              })}
+              <tr className="fin-total"><td><strong>Total</strong></td><td className="n">{money(f.cost)}</td><td className="n">{whole ? money(f.actualCost) : '—'}</td><td className="n">{money(brut)}</td><td className="n muted">{lineDisc ? pctT(lineDisc, brut) : '—'}</td><td className="n"><strong>{money(f.gross)}</strong></td><td className="n">{money(round2(f.gross - f.cost))}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div className="fin-bottom">
+          <p className="muted">
+            Coûts prévus : personnel (coût de la personne affectée), sous-locations et consommables, coûts supplémentaires, rendez-vous.
+            Coûts réels : à saisir après le projet (vide = coût prévu).
+            {!whole && ' Vue d’un sous-projet : les coûts supplémentaires, les rendez-vous et les coûts réels sont comptés sur tout le projet.'}
+          </p>
+          <table className="fin-summary">
+            <tbody>
+              <tr><td>Sous-total</td><td className="n">{money(f.gross)}</td></tr>
+              <tr><td>Remise globale{f.discount ? <div className="muted" style={{ fontSize: 12 }}>bénéfice après remise {money(f.margin)}</div> : null}</td>
+                <td className="n">{whole
+                  ? <span className="fin-disc"><NumInput className="w-qty" value={project.discount} onChange={(n) => patch(db.projects, project.id, { discount: n })} aria-label="Remise globale %" /> %</span>
+                  : `${project.discount || 0} %`}{f.discount ? <div className="muted">− {money(f.discount)}</div> : null}</td></tr>
+              <tr className="fin-strong"><td>Total HT</td><td className="n">{money(f.totalHT)}</td></tr>
+              <tr><td>TVA {settings.vatRate} %</td><td className="n">{money(f.vat)}</td></tr>
+              <tr className="fin-strong"><td>Total TVA comprise</td><td className="n">{money(f.totalTTC)}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </>
   );
 }

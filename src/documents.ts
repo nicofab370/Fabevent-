@@ -3,7 +3,7 @@ import { newToken } from './mailer';
 import type { Contact, Doc, DocSnapshot, DocType, Lang, ProjectStatus, Settings, SnapshotSub, VatRegime } from './types';
 import { VAT_MENTIONS_I18N } from './i18n';
 import { DEFAULT_VAT_MENTIONS, structuredCommunication } from './payment';
-import { INVOICE_TYPES, VENUE_INFO_LABELS, type VenueInfo } from './types';
+import { DISCOUNT_PARTS, INVOICE_TYPES, VENUE_INFO_LABELS, type DiscountPart, type VenueInfo } from './types';
 import { contentsText } from './codes';
 import { deptOf, ownAddress, placeAddress, placeName, projectPerson, spotOf } from './places';
 import { crewAmount, crewCostProfile, crewWindow, factorFor, lineDays, lineTotal, round2, save, sortPeriods } from './utils';
@@ -170,12 +170,23 @@ async function buildSnapshot(projectId: string, type: DocType, only?: { include?
     label: c.label, qty: c.qty || 1, unitPrice: c.price!, total: round2((c.qty || 1) * c.price!),
     supplier: c.supplierName?.trim() || (c.supplierId ? cMap.get(c.supplierId)?.company?.trim() : '') || undefined,
   }));
+  // remises sur une partie seulement (matériel, personnel, transport, frais), avant la remise globale
+  const partBase: Record<DiscountPart, number> = {
+    materiel: snapSubs.reduce((a, sp) => a + sp.equipment.filter((l) => !l.optional).reduce((b, l) => b + l.total, 0), 0),
+    personnel: snapSubs.reduce((a, sp) => a + sp.crew.filter((c) => c.billable).reduce((b, c) => b + c.total, 0), 0),
+    transport: snapSubs.reduce((a, sp) => a + sp.vehicles.filter((v) => v.billable).reduce((b, v) => b + v.price, 0), 0),
+    frais: extras.reduce((a, x) => a + x.total, 0),
+  };
+  const partDiscounts = (Object.keys(DISCOUNT_PARTS) as DiscountPart[])
+    .map((k) => ({ label: DISCOUNT_PARTS[k], pct: project.partDiscounts?.[k] || 0, amount: round2(partBase[k] * (project.partDiscounts?.[k] || 0) / 100) }))
+    .filter((x) => x.pct > 0 && x.amount > 0);
+  const partsTotal = round2(partDiscounts.reduce((a, x) => a + x.amount, 0));
   // assurance du matériel loué (sur les salles du document)
   const insPct = project.insurancePct ?? s.insurancePct ?? 0;
   const rentalHT = snapSubs.reduce((a, sp) => a + sp.equipment.filter((l) => !l.optional && l.unit === 'jour').reduce((b, l) => b + l.total, 0), 0);
   if (insPct > 0 && rentalHT > 0) extras.push({ label: `Assurance du matériel (${insPct} %)`, qty: 1, unitPrice: round2(rentalHT * insPct / 100), total: round2(rentalHT * insPct / 100) });
   const gross = round2(snapSubs.reduce((a, sp) => a + sp.subtotal, 0) + extras.reduce((a, x) => a + x.total, 0));
-  const discountAmount = round2(gross * (project.discount || 0) / 100);
+  const discountAmount = round2(partsTotal + (gross - partsTotal) * (project.discount || 0) / 100);
   const totalHT = round2(gross - discountAmount);
   const customFields = (s.customFields || []).filter((f) => f.entity === 'projet' || f.entity === 'contact').map((f) => {
     const v = f.entity === 'projet' ? project.custom?.[f.id] : client?.custom?.[f.id];
@@ -206,7 +217,7 @@ async function buildSnapshot(projectId: string, type: DocType, only?: { include?
     project: { number: project.number, name: project.name, venue: project.venue, start: project.start, end: project.end, notes: project.notes, discount: project.discount, externalRef: project.externalRef },
     subprojects: snapSubs,
     extras: isPacking || !extras.length ? undefined : extras,
-    totalHT, discountAmount, vatRate, vat, vatBreakdown, totalTTC: round2(totalHT + vat), vatRegime: regime, vatMention, lang, customFields,
+    totalHT, discountAmount, partDiscounts: partDiscounts.length ? partDiscounts : undefined, vatRate, vat, vatBreakdown, totalTTC: round2(totalHT + vat), vatRegime: regime, vatMention, lang, customFields,
     issuedAt: issued.toISOString(),
     validUntil: isQuote ? new Date(issued.getTime() + s.quoteValidityDays * 86400000).toISOString() : undefined,
     dueDate: INVOICE_TYPES.includes(type) ? new Date(issued.getTime() + (client?.paymentDays ?? s.paymentDays) * 86400000).toISOString() : undefined,

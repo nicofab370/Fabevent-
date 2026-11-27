@@ -1,5 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useState } from 'react';
+import { catalogChanges, resolveCatalogChanges } from '../../catalogChanges';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Empty, Field, Modal, NumInput, StatusBadge } from '../../components/ui';
 import { db } from '../../db';
@@ -53,6 +54,8 @@ export default function EquipmentTab({ d }: { d: ProjectData }) {
 
   return (
     <>
+      <CatalogChangesBanner d={d} />
+      <OptionalAccessories d={d} />
       <div className="info" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         <span style={{ flex: 1, minWidth: 260 }}>
           Organise le matériel en <strong>groupes</strong> (par type : son, lumière… ; par emplacement : scène, bar… ; ou par jour).
@@ -138,11 +141,13 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
     await patch(db.lines, l.id, changes);
     const children = lines.filter((c) => c.parentLineId === l.id);
     // les accessoires suivent la quantité et le groupe de leur ligne
+    // contenu du kit et accessoires suivent la quantité, dans les proportions de la ligne (pas celles du catalogue,
+    // qui a pu changer : la mise à jour se fait à la demande, voir CatalogChanges)
     if (changes.qty !== undefined && l.equipmentId) {
       const acc = eqMap.get(l.equipmentId)?.accessories || [];
       for (const c of children) {
-        const a = acc.find((x) => x.equipmentId === c.equipmentId);
-        if (a) await save(db.lines, { ...c, qty: a.qty * changes.qty });
+        const per = l.qty > 0 ? c.qty / l.qty : acc.find((x) => x.equipmentId === c.equipmentId)?.qty;
+        if (per !== undefined) await save(db.lines, { ...c, qty: Math.round(per * changes.qty * 100) / 100 });
       }
     }
     if ('groupId' in changes) for (const c of children) await save(db.lines, { ...c, groupId: changes.groupId });
@@ -197,12 +202,18 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
                       {ordered.map((l) => {
                         const eq = l.equipmentId ? eqMap.get(l.equipmentId) : undefined;
                         const [b0, b1] = lineBlock(l, sp);
-                        // élément du contenu d'un kit : sa réservation est portée par la ligne du kit, c'est elle qu'on retire du calcul
-                        const parentKit = l.parentLineId ? lines.find((x) => x.id === l.parentLineId && !!x.equipmentId && !!eqMap.get(x.equipmentId)?.isKit) : undefined;
-                        const avail = eq && !eq.accessoryOnly ? availableQty(eq, av.equipment, av.res, b0, b1, parentKit ? parentKit.id : l.id, d.depot) : null;
+                        // chaque ligne (contenu d'un kit compris) porte sa propre réservation : c'est elle qu'on retire du calcul
+                        const avail = eq && !eq.accessoryOnly ? availableQty(eq, av.equipment, av.res, b0, b1, l.id, d.depot) : null;
                         // kit : ce qui manque dans son contenu (le kit n'est pas « manquant » en entier pour autant)
                         const kitShort = eq && isVirtualKit(eq) && !l.optional
-                          ? eq.kitItems.map((k) => { const c = eqMap.get(k.equipmentId); const need = k.qty * l.qty; const left = c ? availableQty(c, av.equipment, av.res, b0, b1, l.id, d.depot) - need : -need; return { name: c?.name || '?', miss: -left }; }).filter((x) => x.miss > 0)
+                          ? eq.kitItems.map((k) => {
+                              const c = eqMap.get(k.equipmentId);
+                              // le contenu est réservé par ses lignes (sinon, ancien projet, par la ligne du kit)
+                              const part = lines.find((x) => x.parentLineId === l.id && x.equipmentId === k.equipmentId);
+                              const need = part ? part.qty : k.qty * l.qty;
+                              const left = c ? availableQty(c, av.equipment, av.res, b0, b1, part ? part.id : l.id, d.depot) - need : -need;
+                              return { name: c?.name || '?', miss: -left };
+                            }).filter((x) => x.miss > 0)
                           : [];
                         const perPiece = isPerPiece(l, eqMap);
                         return (
@@ -247,7 +258,7 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
                               return (
                                 <>
                                   <span className={'avail ' + (left >= 0 ? 'ok' : 'ko')} title={`Disponible ${avail} sur la période ; ${l.optional ? 'option : non décomptée' : `reste ${left} après cette ligne`}`}>
-                                    <span className="show-sm">reste </span>{left >= 0 ? left : `manque ${-left}`}
+                                    {left >= 0 && <span className="show-sm">reste </span>}{left >= 0 ? left : `manque ${-left}`}
                                   </span>
                                   <UseChips uses={uses} label={l.name} onOpen={() => setUsesOf({ eq, uses, name: l.name, range: fmtRange(b0, b1), stock: stockAt(eq, d.depot, av.res), here: l.optional ? undefined : l.qty, avail: left })} />
                                 </>
@@ -255,7 +266,7 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
                             })()}</td>
                             <td className="hide-sm"><NumInput className="w-price" value={l.unitPrice} onChange={(n) => updLine(l, { unitPrice: n })} aria-label="Prix unitaire" /></td>
                             <td className="hide-sm"><NumInput className="w-qty" value={l.discount} onChange={(n) => updLine(l, { discount: n })} aria-label="Remise" /></td>
-                            <td className="n">{money(lineTotal(l, lineDays(l, sp), settings, perPiece))}</td>
+                            {(() => { const total = lineTotal(l, lineDays(l, sp), settings, perPiece); return <td className={'n eq-total' + (!total && l.parentLineId ? ' zero' : '')}>{money(total)}</td>; })()}
                             <td className="nowrap">
                               <button className="ghost" onClick={() => setEditLine(l)} title="Prix, option, groupe, horaire propre et remarques" aria-label="Détails de la ligne"><Icon name="more" /></button>
                               <button className="ghost" onClick={() => removeLine(l)} aria-label="Retirer"><Icon name="x" /></button>
@@ -299,7 +310,7 @@ function LineModal({ sp, line, accessories, eq, allEquipment, onClose }: { sp: S
     if (on && !cur) {
       const accEq = allEquipment.find((x) => x.id === a.equipmentId);
       const t = nowIso();
-      await db.lines.put({ id: uid(), createdAt: t, updatedAt: t, projectId: line.projectId, subprojectId: line.subprojectId, groupId: l.groupId || line.groupId, equipmentId: a.equipmentId, name: accEq?.name || '?', qty: a.qty * line.qty, unitPrice: a.free ? 0 : accEq?.dailyPrice || 0, discount: 0, order: line.order + 0.5, parentLineId: line.id, periodIds: l.periodIds?.length ? l.periodIds : undefined });
+      await db.lines.put({ id: uid(), createdAt: t, updatedAt: t, projectId: line.projectId, subprojectId: line.subprojectId, groupId: l.groupId || line.groupId, equipmentId: a.equipmentId, name: accEq?.name || '?', qty: a.qty * line.qty, unitPrice: a.free ? 0 : accEq?.dailyPrice || 0, catalogPrice: a.free ? undefined : accEq?.dailyPrice, discount: 0, order: line.order + 0.5, parentLineId: line.id, periodIds: l.periodIds?.length ? l.periodIds : undefined });
     } else if (!on && cur) {
       await db.lines.delete(cur.id);
     }
@@ -421,7 +432,12 @@ function GroupModal({ sp, group, onClose }: { sp: Subproject; group: Partial<Equ
 }
 
 /** Ajoute des articles (et leurs accessoires automatiques) à une salle, dans un groupe éventuel. */
-export async function addEquipmentToSub(sp: Subproject, equipment: Equipment[], existing: EquipmentLine[], items: Record<string, number>, groupId?: string, discount = 0, accPick?: Record<string, string[]>) {
+/** Accessoires facultatifs à proposer après un ajout (fenêtre « Accessoires proposés »). */
+export interface AccessoryAsk { lineId: string; equipmentId: string; qty: number }
+export const accessoryAsks = new EventTarget();
+
+export async function addEquipmentToSub(sp: Subproject, equipment: Equipment[], existing: EquipmentLine[], items: Record<string, number>, groupId?: string, discount = 0) {
+  const asks: AccessoryAsk[] = [];
   const eqMap = new Map(equipment.map((e) => [e.id, e]));
   let order = existing.length;
   const t = nowIso();
@@ -439,21 +455,23 @@ export async function addEquipmentToSub(sp: Subproject, equipment: Equipment[], 
     } else {
       total = n;
       lineId = uid();
-      await db.lines.put({ id: lineId, createdAt: t, updatedAt: t, projectId: sp.projectId, subprojectId: sp.id, groupId, equipmentId: eqId, name: eq.name, qty: n, unitPrice: eq.dailyPrice, discount, order: order++ });
+      await db.lines.put({ id: lineId, createdAt: t, updatedAt: t, projectId: sp.projectId, subprojectId: sp.id, groupId, equipmentId: eqId, name: eq.name, qty: n, unitPrice: eq.dailyPrice, catalogPrice: eq.dailyPrice, discount, order: order++ });
     }
-    // contenu du kit (lignes enfants scannables une à une) + accessoires proposés à cocher ; par défaut tous, sinon seulement ceux cochés
-    const accSel = accPick?.[eqId];
+    // contenu du kit (lignes enfants scannables une à une) + accessoires automatiques ; les facultatifs sont proposés après
     // kit fixe : son contenu n'est détaillé (pour le vérifier à la sortie et au retour) que si demandé sur le kit
     const kitKids = isVirtualKit(eq) || (isFixedKit(eq) && eq.kitCheck) ? eq.kitItems || [] : [];
-    const children = [...kitKids.map((k) => ({ equipmentId: k.equipmentId, qty: k.qty, free: true })), ...(eq.accessories || []).filter((x) => !accSel || accSel.includes(x.equipmentId))];
+    const children = [...kitKids.map((k) => ({ equipmentId: k.equipmentId, qty: k.qty, free: true, part: true })), ...(eq.accessories || []).filter((x) => !x.optional).map((x) => ({ ...x, part: false }))];
+    const optional = (eq.accessories || []).filter((x) => x.optional && !existing.some((l) => l.parentLineId === lineId && l.equipmentId === x.equipmentId));
+    if (optional.length) asks.push({ lineId, equipmentId: eqId, qty: total });
     for (const a of children) {
       const acc = eqMap.get(a.equipmentId);
       if (!acc) continue;
       const child = existing.find((l) => l.parentLineId === lineId && l.equipmentId === a.equipmentId);
       if (child) await save(db.lines, { ...child, qty: a.qty * total });
-      else await db.lines.put({ id: uid(), createdAt: t, updatedAt: t, projectId: sp.projectId, subprojectId: sp.id, groupId, equipmentId: acc.id, name: acc.name, qty: a.qty * total, unitPrice: a.free ? 0 : acc.dailyPrice, discount: 0, order: order++, parentLineId: lineId });
+      else await db.lines.put({ id: uid(), createdAt: t, updatedAt: t, projectId: sp.projectId, subprojectId: sp.id, groupId, equipmentId: acc.id, name: acc.name, qty: a.qty * total, unitPrice: a.free ? 0 : acc.dailyPrice, catalogPrice: a.free ? undefined : acc.dailyPrice, discount: 0, order: order++, parentLineId: lineId, kitPart: a.part || undefined });
     }
   }
+  if (asks.length) accessoryAsks.dispatchEvent(new CustomEvent<AccessoryAsk[]>('ask', { detail: asks }));
 }
 
 /**
@@ -489,12 +507,8 @@ function EquipmentPicker({ sp, groupId, initialQ = '', depot, depots = [], disco
   const selected = equipment.filter((e) => (qty[e.id] || 0) > 0);
   const count = selected.reduce((a, e) => a + (qty[e.id] || 0), 0);
   const bump = (id: string, d: number) => setQty((x) => ({ ...x, [id]: Math.max(0, (x[id] || 0) + d) }));
-  /** accessoires proposés cochables (défaut : tous) */
-  const [accPick, setAccPick] = useState<Record<string, string[]>>({});
-  const [accOpen, setAccOpen] = useState('');
-  const selAcc = (e: Equipment) => accPick[e.id] ?? (e.accessories || []).map((a) => a.equipmentId);
   const commit = async (close: boolean) => {
-    await addEquipmentToSub(sp, equipment, existing, qty, target || undefined, discount, accPick);
+    await addEquipmentToSub(sp, equipment, existing, qty, target || undefined, discount);
     if (close) return onClose();
     setAdded(`${count} article(s) ajouté(s)`);
     setQty({});
@@ -595,27 +609,6 @@ function EquipmentPicker({ sp, groupId, initialQ = '', depot, depots = [], disco
                 </div>
               </div>
               {openUses === e.id && <div className="pick-uses"><UsageBreakdown eq={e} uses={uses} stock={stockAt(e, where || depot, res)} here={n || undefined} avail={a - n} hereLabel="cet ajout" /></div>}
-              {!!e.accessories?.length && (
-                <div className="pick-acc">
-                  <button type="button" className="link-btn small" aria-expanded={accOpen === e.id || n > 0} onClick={(ev) => { ev.stopPropagation(); setAccOpen(accOpen === e.id ? '' : e.id); }}>
-                    {accOpen === e.id && n === 0 ? '−' : '+'} Accessoires facultatifs ({e.accessories.length}) — {selAcc(e).length} coché(s)
-                  </button>
-                  {(accOpen === e.id || n > 0) && (
-                    <div className="pick-acc-list">
-                      {e.accessories.map((a) => {
-                        const acc = equipment.find((x) => x.id === a.equipmentId);
-                        return (
-                          <label key={a.equipmentId} className="check-row" title={acc ? `${a.qty} × ${acc.name} ajouté(s) avec ${e.name}${a.free ? ' (offert)' : ''}` : ''}>
-                            <input type="checkbox" checked={selAcc(e).includes(a.equipmentId)} onClick={(ev) => ev.stopPropagation()}
-                              onChange={(ev) => { const cur = selAcc(e); setAccPick((x) => ({ ...x, [e.id]: ev.target.checked ? [...cur, a.equipmentId] : cur.filter((y) => y !== a.equipmentId) })); }} />
-                            {a.qty} × {acc?.name || '?'}{a.free ? ' (offert)' : ''}
-                          </label>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
               </div>
             );
           })}
@@ -704,5 +697,115 @@ function QuickAdd({ equipment, units, availOf, onAdd, onBrowse }: {
       {onBrowse && <button type="button" className="secondary small" title="Choisir dans une fenêtre avec filtres (catégories, disponibilité, étiquettes)" onClick={() => { onBrowse(term); setQ(''); }}>Filtres…</button>}
       {msg && <span className="avail ok">{msg}</span>}
     </div>
+  );
+}
+
+/**
+ * Le catalogue a changé depuis l'ajout du matériel (prix, nom, contenu d'un kit) : rien n'est changé tout seul
+ * dans le projet ; on voit les différences et on choisit ce qu'on met à jour (ou ce qu'on ignore).
+ */
+function CatalogChangesBanner({ d }: { d: ProjectData }) {
+  const changes = catalogChanges(d.lines, d.av.equipment);
+  const [open, setOpen] = useState(false);
+  const [sel, setSel] = useState<Set<string> | null>(null);
+  const [busy, setBusy] = useState(false);
+  if (!changes.length) return null;
+  const picked = sel ?? new Set(changes.filter((c) => !c.manual).map((c) => c.key));
+  const run = async (mode: 'appliquer' | 'ignorer') => {
+    setBusy(true);
+    try { await resolveCatalogChanges(changes.filter((c) => picked.has(c.key)), mode, d.lines, d.av.equipment); setSel(null); }
+    finally { setBusy(false); }
+  };
+  const KIND = { prix: 'Prix', nom: 'Nom', contenu: 'Contenu du kit' };
+  return (
+    <>
+      <div className="info catalog-changes">
+        <span><Icon name="warning" /> <strong>Le catalogue a changé</strong> depuis l'ajout de ce matériel ({changes.length} différence{changes.length > 1 ? 's' : ''} : {Array.from(new Set(changes.map((c) => KIND[c.kind].toLowerCase()))).join(', ')}). Rien n'a été modifié dans ce projet.</span>
+        <button type="button" className="secondary small" onClick={() => setOpen(true)}>Voir et mettre à jour…</button>
+      </div>
+      {open && (
+        <Modal title="Changements du catalogue" onClose={() => setOpen(false)} wide>
+          <p className="muted" style={{ marginTop: 0 }}>Coche ce que tu veux reprendre dans ce projet. « Ignorer » garde le projet tel quel et ne propose plus ce changement. Les documents déjà créés (devis, factures) ne changent pas.</p>
+          <table className="list">
+            <thead><tr><th style={{ width: 32 }}><input type="checkbox" aria-label="Tout cocher" checked={picked.size === changes.length} onChange={(e) => setSel(new Set(e.target.checked ? changes.map((c) => c.key) : []))} /></th><th>Ligne</th><th>Changement</th></tr></thead>
+            <tbody>
+              {changes.map((c) => (
+                <tr key={c.key}>
+                  <td><input type="checkbox" aria-label={`Choisir : ${c.line} (${KIND[c.kind]})`} checked={picked.has(c.key)} onChange={(e) => { const n = new Set(picked); if (e.target.checked) n.add(c.key); else n.delete(c.key); setSel(n); }} /></td>
+                  <td><strong>{c.line}</strong><div className="muted" style={{ fontSize: 11 }}>{KIND[c.kind]}</div></td>
+                  <td>{c.text}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="form-actions">
+            <button type="button" className="secondary" disabled={busy || !picked.size} onClick={() => run('ignorer')}>Ignorer la sélection</button>
+            <button type="button" disabled={busy || !picked.size} onClick={() => run('appliquer')}>{busy ? '…' : `Mettre à jour ${picked.size} ligne(s)`}</button>
+          </div>
+        </Modal>
+      )}
+    </>
+  );
+}
+
+/**
+ * Après l'ajout d'un article qui a des accessoires facultatifs : fenêtre « Accessoires proposés »,
+ * rien de coché par défaut ; les accessoires choisis sont ajoutés sous la ligne de l'article.
+ */
+function OptionalAccessories({ d }: { d: ProjectData }) {
+  const [asks, setAsks] = useState<AccessoryAsk[]>([]);
+  const [pick, setPick] = useState<Record<string, number>>({});
+  useEffect(() => {
+    const on = (ev: Event) => setAsks((x) => [...x, ...(ev as CustomEvent<AccessoryAsk[]>).detail]);
+    accessoryAsks.addEventListener('ask', on);
+    return () => accessoryAsks.removeEventListener('ask', on);
+  }, []);
+  if (!asks.length) return null;
+  const eqMap = new Map(d.av.equipment.map((e) => [e.id, e]));
+  const key = (a: AccessoryAsk, accId: string) => `${a.lineId}|${accId}`;
+  const close = () => { setAsks([]); setPick({}); };
+  const add = async () => {
+    const t = nowIso();
+    for (const a of asks) {
+      const line = await db.lines.get(a.lineId);
+      const eq = eqMap.get(a.equipmentId);
+      if (!line || !eq) continue;
+      for (const acc of (eq.accessories || []).filter((x) => x.optional)) {
+        const n = pick[key(a, acc.equipmentId)];
+        if (!n) continue;
+        const accEq = eqMap.get(acc.equipmentId);
+        await db.lines.put({ id: uid(), createdAt: t, updatedAt: t, projectId: line.projectId, subprojectId: line.subprojectId, groupId: line.groupId, equipmentId: acc.equipmentId, name: accEq?.name || '?',
+          qty: n, unitPrice: acc.free ? 0 : accEq?.dailyPrice || 0, catalogPrice: acc.free ? undefined : accEq?.dailyPrice, discount: 0, order: line.order + 0.5, parentLineId: line.id, periodIds: line.periodIds, optional: line.optional });
+      }
+    }
+    close();
+  };
+  const chosen = Object.values(pick).filter((n) => n > 0).length;
+  return (
+    <Modal title="Accessoires proposés" onClose={close}>
+      <p className="muted" style={{ marginTop: 0 }}>Ces accessoires facultatifs vont avec ce que tu viens d'ajouter. Coche ceux à ajouter (ils se mettent sous l'article).</p>
+      {asks.map((a) => {
+        const eq = eqMap.get(a.equipmentId);
+        return (
+          <div key={a.lineId} className="acc-ask">
+            <strong>{a.qty} × {eq?.name}</strong>
+            {(eq?.accessories || []).filter((x) => x.optional).map((acc) => {
+              const k = key(a, acc.equipmentId), accEq = eqMap.get(acc.equipmentId), n = pick[k] || 0;
+              return (
+                <label key={k} className="check-row acc-ask-row">
+                  <input type="checkbox" checked={n > 0} onChange={(e) => setPick({ ...pick, [k]: e.target.checked ? acc.qty * a.qty : 0 })} aria-label={`Ajouter ${accEq?.name || '?'}`} />
+                  <span>{accEq?.name || '?'} <span className="muted">{acc.free ? '(offert)' : accEq ? `· ${money(accEq.dailyPrice)}` : ''}</span></span>
+                  {n > 0 && <NumInput className="w-qty" step="1" min={1} value={n} onChange={(v) => setPick({ ...pick, [k]: v || 1 })} aria-label={`Quantité ${accEq?.name || ''}`} />}
+                </label>
+              );
+            })}
+          </div>
+        );
+      })}
+      <div className="form-actions">
+        <button type="button" className="secondary" onClick={close}>Non merci</button>
+        <button type="button" disabled={!chosen} onClick={add}>Ajouter {chosen || ''} accessoire{chosen > 1 ? 's' : ''}</button>
+      </div>
+    </Modal>
   );
 }
