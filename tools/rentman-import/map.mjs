@@ -151,6 +151,9 @@ export function mapRentman(rm, now = new Date().toISOString()) {
       costPrice: num(pick(e, 'purchase_price')) || undefined,
       replacementValue: num(pick(e, 'new_price', 'replacement_value', 'value')) || undefined,
       weight: num(pick(e, 'weight')) || undefined,
+      // dimensions (cm) et consommation (W), si renseignées dans Rentman
+      dims: (() => { const d = { l: num(pick(e, 'length', 'depth')), w: num(e.width), h: num(e.height) }; return d.l && d.w && d.h ? d : undefined; })(),
+      power: num(pick(e, 'power', 'power_consumption', 'wattage')) || undefined,
       kind: sale ? 'vente' : undefined,
       isKit: !!kit?.length, kitItems: kit || [], accessories: accOf.get(e.id),
       trackSerials: unitsOf.has(e.id) || undefined,

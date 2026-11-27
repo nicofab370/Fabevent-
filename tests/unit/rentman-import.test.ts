@@ -30,7 +30,7 @@ describe('import Rentman → FabEvent', () => {
   it('matériel : kit, vente, unités numérotées (quantité = unités)', () => {
     expect(one('equipment', 'rm-e-502')).toMatchObject({ isKit: true, kitItems: [{ equipmentId: 'rm-e-500', qty: 2 }] });
     expect(one('equipment', 'rm-e-503').kind).toBe('vente');
-    expect(one('equipment', 'rm-e-501')).toMatchObject({ trackSerials: true, quantity: 2, weight: 20 });
+    expect(one('equipment', 'rm-e-501')).toMatchObject({ trackSerials: true, quantity: 2, weight: 20, dims: { l: 43, w: 37, h: 54 } });
     expect(one('units', 'rm-u-901').status).toBe('hs');
   });
   it('projet : client, lieu, interlocuteur, dates locales, statut des sous-projets', () => {

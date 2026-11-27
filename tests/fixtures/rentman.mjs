@@ -10,7 +10,7 @@ export const RENTMAN = {
   folders: [{ id: 1, name: 'Son', parent: null }, { id: 2, name: 'Micros', parent: '/folders/1' }, { id: 3, name: 'Sans fil', parent: '/folders/2' }],
   equipment: [
     { id: 500, name: 'Shure SM58', code: 'SM58', folder: '/folders/2', quantity: 0, current_quantity: 12, price: 5, weight: 0.3, new_price: 120 },
-    { id: 501, name: 'L-Acoustics X12', code: 'X12', folder: '/folders/1', quantity: 8, price: 45, weight: 20 },
+    { id: 501, name: 'L-Acoustics X12', code: 'X12', folder: '/folders/1', quantity: 8, price: 45, weight: 20, length: 43, width: 37, height: 54, power: 0 },
     { id: 502, name: 'Pack voix', code: 'PV', folder: '/folders/1', price: 20 },
     { id: 503, name: 'Gaffer', code: 'GAF', rental_sales: 'sale', price: 9, quantity: 0 },
     { id: 504, name: 'Câble XLR 10 m', code: 'XLR10', folder: '/folders/1', price: 2, image: '/files/951' },
