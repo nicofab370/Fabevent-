@@ -3214,7 +3214,10 @@ await step('Diagnostic : API qui renvoie la page HTML de l’app → message exp
   await page.evaluate(() => { try { localStorage.setItem('fabevent.workspace', 'principal'); localStorage.setItem('fab.sync.url', 'http://localhost:9999/api/sync.php'); } catch {} });
   await stubSignedIn(ctx);
   await page.goto(U);
+  // reconnexion automatique (session du serveur simulé) puis rechargement
+  await page.waitForFunction(() => !!localStorage.getItem('fab.session.principal'), null, { timeout: 15000 });
   await page.waitForSelector('.sidebar nav');
+  await page.waitForTimeout(800);
   // API stubbée en HTML (cas réécriture SPA : api/ absent) → diagnostic attendu
   await ctx.route('**/api/sync.php**', (route) => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>FabEvent</title><p>app</p>' }));
   await go('parametres');

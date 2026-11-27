@@ -108,6 +108,8 @@ export default function App() {
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
   }, []);
 
+  // avec le serveur : rien ne s'affiche avant de savoir si l'on est connecté (pas d'application entrevue)
+  if (anyUsers === undefined && serverOn()) return null;
   if (locked) return <Login />;
 
   return (
