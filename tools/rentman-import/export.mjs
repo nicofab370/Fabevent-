@@ -116,13 +116,13 @@ for (const [name, paths] of Object.entries(COLLECTIONS)) {
 }
 
 /* diagnostic (noms de champs seulement, aucune donnée) : quels champs de quantité Rentman renvoie, et combien ne sont pas à 0 */
-for (const [name, list] of [['equipment', rm.equipment], ['projectequipment', rm.projectequipment]]) {
+for (const [name, list] of [['equipment', rm.equipment], ['stockmovements', rm.stockmovements], ['serialnumbers', rm.serialnumbers], ['projectequipment', rm.projectequipment]]) {
   const seen = {};
-  for (const row of list || []) for (const [k, v] of Object.entries(row)) if (/quant|stock|amount/i.test(k) && (typeof v === 'number' || /^-?\d+([.,]\d+)?$/.test(String(v)))) {
+  for (const row of list || []) for (const [k, v] of Object.entries(row)) if (/quant|stock|amount|count|number|mutation|change|total/i.test(k) && !/price|cost|value|_id$|^id$/i.test(k) && (typeof v === 'number' || /^-?\d+([.,]\d+)?$/.test(String(v)))) {
     seen[k] ??= [0, 0]; seen[k][0]++; if (Number(String(v).replace(',', '.')) !== 0) seen[k][1]++;
   }
   const txt = Object.entries(seen).map(([k, [n, nz]]) => `${k} (${nz}/${n} non nuls)`).join(', ');
-  console.log(`Champs de quantité de /${name} : ${txt || 'aucun'}`);
+  console.log(`Champs de quantité de /${name} (${(list || []).length} fiches) : ${txt || 'aucun'}`);
 }
 
 const { data, files, report } = mapRentman(rm);

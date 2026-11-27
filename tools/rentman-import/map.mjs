@@ -131,8 +131,8 @@ export function mapRentman(rm, now = new Date().toISOString()) {
   for (const u of rm.serialnumbers || []) { const e = refId(u.equipment); if (e) unitsOf.set(e, (unitsOf.get(e) || 0) + 1); }
   // stock calculé à partir des mouvements de stock (achats, pertes, corrections…), si la fiche de l'article n'en donne pas
   const moved = new Map();
-  for (const m of rm.stockmovements || []) { const e = refId(m.equipment); if (e) moved.set(e, (moved.get(e) || 0) + num(pick(m, 'amount', 'quantity'))); }
-  const QTY = ['current_quantity', 'current_quantity_excl_cases', 'quantity', 'quantity_total', 'stock', 'stock_quantity', 'total_quantity', 'amount'];
+  for (const m of rm.stockmovements || []) { const e = refId(m.equipment); if (e) moved.set(e, (moved.get(e) || 0) + num(pick(m, 'amount', 'quantity', 'quantity_change', 'change', 'mutation'))); }
+  const QTY = ['current_quantity', 'current_quantity_excl_cases', 'quantity', 'quantity_total', 'stock', 'stock_quantity', 'total_quantity', 'total_stock', 'stock_total', 'in_stock', 'quantity_in_stock', 'amount'];
   let fromMoves = 0, zero = 0;
   const equipment = (rm.equipment || []).map((e) => {
     const kit = kitItems.get(e.id);
