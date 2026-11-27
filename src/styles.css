@@ -959,3 +959,4 @@ table.list tr.limiting td:first-child, table.list tr.kit-child.limiting td:nth-c
 .fin-summary .fin-strong td { font-weight: 700; border-top: 1px solid var(--border); }
 .fin-disc { display: inline-flex; align-items: center; gap: 4px; }
 @media screen and (max-width: 640px) { .fin-summary { width: 100%; min-width: 0; } }
+@media screen and (max-width: 640px) { .fin-toggle { min-height: 32px; } }
