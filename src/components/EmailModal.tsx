@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { db } from '../db';
 import { buildEml, canShareFiles, mailtoUrl, shareFiles, type Attachment, type MailDraft } from '../email';
-import { fillVars, mailServer, replyAddress, MAIL_KINDS, newTemplate, sendMail, splitAddrs, templatesFor, toTemplate, type MailServer } from '../mailer';
+import { fillVars, mailServer, replyAddress, MAIL_KINDS, newTemplate, sendMail, splitAddrs, templatesFor, toTemplate, withSignature, type MailMeta, type MailServer } from '../mailer';
 import { requestLogin } from '../serverAuth';
 import { safeFileName } from '../pdf';
 import type { MailKind } from '../types';
@@ -101,7 +101,7 @@ function AddressBook({ book, selected, onClose }: { book: BookEntry[]; selected:
  * - sinon : partage natif, brouillon .eml, ou fichiers + messagerie.
  * Modèles de mail par type (kind), destinataires depuis le carnet d'adresses.
  */
-export function EmailModal({ initial, prepare, onSent, onClose, kind, vars, hints }: {
+export function EmailModal({ initial, prepare, onSent, onClose, kind, vars, hints, meta }: {
   initial: MailDraft;
   /** fabrique les pièces jointes (PDF…) à l'ouverture */
   prepare: () => Promise<Attachment[]>;
@@ -114,11 +114,13 @@ export function EmailModal({ initial, prepare, onSent, onClose, kind, vars, hint
   vars?: Record<string, string | undefined>;
   /** adresses liées au contexte (client, lieu, équipe du projet…) : proposées en premier dans les destinataires */
   hints?: string[];
+  /** rattachement au registre des mails (projet, document, contact, technicien) */
+  meta?: MailMeta;
 }) {
   const settings = useSettings();
   const book = useAddressBook();
   const own = kind ? (settings.mailTemplates || []).filter((t) => t.kind === kind) : [];
-  const [m, setM] = useState(initial);
+  const [m, setM] = useState(() => ({ ...initial, body: withSignature(initial.body, settings) }));
   const [cc, setCc] = useState('');
   const [copyMe, setCopyMe] = useState(true);
   const [files, setFiles] = useState<Attachment[] | null>(null);
@@ -142,7 +144,7 @@ export function EmailModal({ initial, prepare, onSent, onClose, kind, vars, hint
     if (applied.current || !own.length || !vars) return;
     applied.current = true;
     setTpl(own[0].id);
-    setM((x) => ({ ...x, subject: fillVars(own[0].subject, vars), body: fillVars(own[0].body, vars) }));
+    setM((x) => ({ ...x, subject: fillVars(own[0].subject, vars), body: withSignature(fillVars(own[0].body, vars), settings) }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [own.length]);
 
@@ -207,7 +209,7 @@ export function EmailModal({ initial, prepare, onSent, onClose, kind, vars, hint
           <button disabled={!ready || busy || !splitAddrs(m.to).length} onClick={async () => {
             setBusy(true); setError('');
             try {
-              const r = await sendMail({ ...m, cc, bcc: copyMe && me ? me : '', replyTo: me }, files!);
+              const r = await sendMail({ ...m, cc, bcc: copyMe && me ? me : '', replyTo: me }, files!, { kind, ...meta });
               finish(`Envoyé à ${r.to.join(', ')}${cc ? ` (copie : ${cc})` : ''}`, 'direct');
             } catch (e) { setError('Envoi impossible : ' + (e as Error).message); } finally { setBusy(false); }
           }}>{busy ? 'Envoi…' : <><Icon name="send" />{`Envoyer${files?.length ? ` avec ${files.length} pièce(s) jointe(s)` : ''}`}</>}</button>

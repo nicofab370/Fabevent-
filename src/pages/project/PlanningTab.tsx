@@ -7,6 +7,7 @@ import { FIRM, PERIOD_LABELS, STATUS_LABELS } from '../../types';
 import { shiftBetween, shiftDate, shiftProject, type Shift } from '../../projectOps';
 import { blockPeriod, confirmDeleteSubproject, fmtDate, fmtRange, nowIso, patch, save, sortPeriods, syncPeriods, toLocalInput, uid, usageDays } from '../../utils';
 import type { ProjectData } from './shared';
+import { importantBetween, importantLabel } from '../../importantDays';
 import { ownAddress, placeAddress, placeName, spotOf } from '../../places';
 import { Icon } from '../../components/Icon';
 import { AppointmentModal } from '../Calendar';
@@ -53,13 +54,15 @@ export default function PlanningTab({ d, onEditSub }: { d: ProjectData; onEditSu
             </div>
             {ps.length === 0 ? <p className="muted">Pas de créneaux détaillés : {fmtRange(sp.start, sp.end)}</p> : (
               <table className="list">
-                <thead><tr><th>Créneau</th><th>Type</th><th>Début</th><th>Fin</th><th className="n">Durée</th></tr></thead>
+                <thead><tr><th>Créneau</th><th>Type</th><th>Début</th><th>Fin</th><th className="n">Durée</th><th title="Affiché sur les devis et factures">Client</th><th title="Affiché sur le bon de sortie et la feuille de route">Interne</th></tr></thead>
                 <tbody>
                   {ps.map((p) => (
                     <tr key={p.id}>
                       <td><span className={'period k-' + p.kind} style={{ background: 'transparent' }}><strong>{p.name}</strong></span></td>
                       <td>{PERIOD_LABELS[p.kind]}</td><td>{fmtDate(p.start)}</td><td>{fmtDate(p.end)}</td>
                       <td className="n">{Math.round((Date.parse(p.end) - Date.parse(p.start)) / 360000) / 10} h</td>
+                      <td><input type="checkbox" aria-label={`${p.name} : afficher sur les documents du client`} checked={!p.hideExternal} onChange={(e) => save(db.subprojects, { ...sp, periods: (sp.periods || []).map((x) => (x.id === p.id ? { ...x, hideExternal: !e.target.checked || undefined } : x)) })} /></td>
+                      <td><input type="checkbox" aria-label={`${p.name} : afficher sur les documents internes`} checked={!p.hideInternal} onChange={(e) => save(db.subprojects, { ...sp, periods: (sp.periods || []).map((x) => (x.id === p.id ? { ...x, hideInternal: !e.target.checked || undefined } : x)) })} /></td>
                     </tr>
                   ))}
                 </tbody>
@@ -167,8 +170,12 @@ export function SubprojectModal({ sp, project, onClose }: { sp: Partial<Subproje
     setPeriods([...moved, added]);
   };
 
+  const settingsImp = useLiveQuery(() => db.settings.get('main'), []);
+  const sortedP = sortPeriods(periods);
+  const imp = settingsImp ? importantBetween(sortedP[0]?.start || d.prepStart || d.start || '', sortedP[sortedP.length - 1]?.end || d.returnEnd || d.end || '', settingsImp) : [];
   return (
     <Modal title={d.id ? `Sous-projet : ${d.name}` : 'Nouveau sous-projet'} onClose={onClose} wide>
+      {imp.length > 0 && <div className="warn-banner"><Icon name="umbrella" /> Jour(s) important(s) dans la période : {importantLabel(imp)}. Rien n'est bloqué.</div>}
       <form className="form" onSubmit={async (e) => {
         e.preventDefault();
         if (periods.some((p) => p.end < p.start)) return alert('Chaque créneau doit finir après son début.');

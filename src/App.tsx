@@ -5,7 +5,8 @@ import { useAlerts } from './alerts';
 import { hasUsers, logout, useUser } from './auth';
 import { Login } from './components/Login';
 import { GlobalSearch } from './components/GlobalSearch';
-import { pathAllowed, ROLE_DEFAULT } from './roles';
+import { pathAllowed, roleHome, setCustomRoles } from './roles';
+import { useSettings } from './components/ui';
 import { ROLE_LABELS } from './types';
 import { currentWorkspace, db } from './db';
 import { patch, save } from './utils';
@@ -44,6 +45,12 @@ import { Icon, type IconName } from './components/Icon';
 import { OpenTabs } from './components/OpenTabs';
 import { useScrollMemory } from './scrollMemory';
 import { UndoButton } from './components/UndoButton';
+import NotificationsPage, { NotificationBell } from './components/Notifications';
+import { checkNotifications } from './notify';
+import { QuickAvailability } from './components/QuickAvailability';
+import TasksPage from './pages/TasksPage';
+import EmailsPage from './pages/EmailsPage';
+import PurchaseOrders from './pages/PurchaseOrders';
 
 const NAV: [string, string, IconName][] = [
   ['/', 'Tableau de bord', 'grid'],
@@ -60,7 +67,10 @@ const NAV: [string, string, IconName][] = [
   ['/equipe', 'Équipe', 'user'],
   ['/attribution', 'Attribution', 'user-check'],
   ['/vehicules', 'Véhicules', 'truck'],
+  ['/taches', 'Tâches', 'checklist'],
   ['/comptabilite', 'Export comptable', 'receipt'],
+  ['/bons-de-commande', 'Bons de commande', 'file'],
+  ['/emails', 'Emails envoyés', 'mail'],
   ['/rapports', 'Rapports', 'chart'],
   ['/import', 'Import', 'upload'],
   ['/modeles', 'Modèles de documents', 'file'],
@@ -84,6 +94,8 @@ export default function App() {
     ? !me || !me.id || sync.status === 'auth'
     : (anyUsers && !me) || loginRequested());
   const role = me?.role;
+  const appSettings = useSettings();
+  setCustomRoles(appSettings.customRoles, me);
   /** badge d'alerte par entrée du menu */
   const badge: Record<string, [number, string]> = {
     '/penuries': [alerts.penuries, 'manques réels de matériel à venir'],
@@ -91,6 +103,8 @@ export default function App() {
     '/maintenance': [alerts.controles, 'contrôles périodiques à faire dans les 30 jours'],
     '/equipe': [alerts.postes, 'postes prévus sans technicien'],
     '/attribution': [alerts.postes, 'postes prévus sans technicien'],
+    '/taches': [alerts.taches, 'tâches en retard'],
+    '/bons-de-commande': [alerts.bons, 'bons de commande à approuver'],
   };
   // devis accepté en ligne avec des options choisies : les lignes passent en « non optionnelles » (facturées), une seule fois
   const pendingOpts = useLiveQuery(() => db.docs.filter((d) => d.type === 'devis' && d.status === 'accepte' && (d.acceptedOptions || []).length > 0 && !d.optionsApplied).toArray(), []) || [];
@@ -101,6 +115,14 @@ export default function App() {
     })();
   }, [pendingOpts]);
   useEffect(() => setMenu(false), [loc.pathname]);
+  // notifications : vérifiées au démarrage puis toutes les heures (devis expirés, factures échues, devis en ligne…)
+  useEffect(() => {
+    if (locked) return;
+    const run = () => { void checkNotifications().catch(() => undefined); };
+    const t0 = setTimeout(run, 3000);
+    const t = setInterval(run, 3600_000);
+    return () => { clearTimeout(t0); clearInterval(t); };
+  }, [locked]);
   useEffect(() => {
     const on = () => setOnline(true), off = () => setOnline(false);
     window.addEventListener('online', on);
@@ -126,6 +148,7 @@ export default function App() {
             </NavLink>
           ))}
         </nav>
+        <div className="side-tools"><NotificationBell /><QuickAvailability /></div>
         <UndoButton />
         <SyncBadge online={online} />
         {me && anyUsers === true && <button className="side-user" onClick={async () => { await serverLogout(); logout(); location.reload(); }} title="Se déconnecter">{me.name} · {ROLE_LABELS[me.role].split(' (')[0]} — se déconnecter</button>}
@@ -135,11 +158,13 @@ export default function App() {
       <div className="topbar">
         <button className="ghost" onClick={() => setMenu(!menu)} aria-label="Menu"><Icon name="menu" /></button>
         <div className="brand">Fab<span>Event</span></div>
+        <QuickAvailability compact />
+        <NotificationBell compact />
         <UndoButton compact />
       </div>
       <main className="main">
         <OpenTabs />
-        {role && role !== 'admin' && !pathAllowed(loc.pathname, role) ? <Navigate to={ROLE_DEFAULT[role]} replace /> : null}
+        {role && role !== 'admin' && !pathAllowed(loc.pathname, role) ? <Navigate to={roleHome(role)} replace /> : null}
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/projets" element={<Projects />} />
@@ -171,6 +196,10 @@ export default function App() {
           <Route path="/inventaire" element={<Inventory />} />
           <Route path="/import" element={<ImportPage />} />
           <Route path="/parametres" element={<SettingsPage />} />
+          <Route path="/notifications" element={<NotificationsPage />} />
+          <Route path="/taches" element={<TasksPage />} />
+          <Route path="/emails" element={<EmailsPage />} />
+          <Route path="/bons-de-commande" element={<PurchaseOrders />} />
           <Route path="*" element={<p>Page introuvable.</p>} />
         </Routes>
       </main>

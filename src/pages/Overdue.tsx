@@ -16,7 +16,7 @@ export function useOverdue() {
   const overdue = docs
     .filter((d) => (d.type === 'facture' || d.type === 'acompte') && d.status !== 'paye' && d.status !== 'brouillon' && (d.snapshot.dueDate || '') .slice(0, 10) < today)
     .map((d) => {
-      const due = d.snapshot.totalTTC - (d.snapshot.deposits || []).reduce((a, x) => a + x.ttc, 0) - (credited.get(d.number) || 0);
+      const due = d.snapshot.totalTTC - (d.snapshot.deposits || []).reduce((a, x) => a + x.ttc, 0) - (credited.get(d.number) || 0) - (d.payments || []).reduce((a, x) => a + x.amount, 0);
       const reminders = docs.filter((r) => r.type === 'rappel' && r.snapshot.reminder?.invoiceNumber === d.number).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
       const days = Math.floor((Date.now() - Date.parse(d.snapshot.dueDate!)) / 86400000);
       return { doc: d, due: Math.round(due * 100) / 100, reminders, days };

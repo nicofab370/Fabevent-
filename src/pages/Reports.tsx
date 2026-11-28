@@ -7,6 +7,7 @@ import { db } from '../db';
 import { INVOICE_TYPES } from '../types';
 import { isVirtualKit, lineDays, lineTotal, money, round2 } from '../utils';
 import { Icon } from '../components/Icon';
+import { ReportStats } from './ReportStats';
 
 const MONTHS = ['Janv.', 'Févr.', 'Mars', 'Avr.', 'Mai', 'Juin', 'Juil.', 'Août', 'Sept.', 'Oct.', 'Nov.', 'Déc.'];
 
@@ -43,7 +44,7 @@ export default function Reports() {
     const days = lineDays(l, sp);
     const eq = equipment.find((e) => e.id === l.equipmentId);
     const cur = stats.get(l.equipmentId) || { revenue: 0, unitDays: 0 };
-    cur.revenue += lineTotal(l, days, settings, eq?.kind === 'vente');
+    cur.revenue += lineTotal(l, days, settings, eq?.kind === 'vente', eq?.factorGroupId);
     cur.unitDays += l.qty * days;
     stats.set(l.equipmentId, cur);
   }
@@ -64,6 +65,7 @@ export default function Reports() {
         <strong>{year}</strong>
         <button className="secondary" onClick={() => setYear(year + 1)} aria-label="Suivant"><Icon name="chevron-right" /></button>
       </PageHead>
+      <ReportStats year={year} />
       <div className="stats">
         <div className="stat"><b>{money(yearTotal)}</b><span>chiffre d'affaires facturé HT</span></div>
         <div className="stat"><b>{counted.length}</b><span>pièces émises</span></div>

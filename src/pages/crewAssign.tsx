@@ -28,8 +28,8 @@ function candidates(c: CrewAssignment, ctx: CrewContext) {
   const answers = new Map(requestsFor(c.id, ctx.requests || []).map((x) => [x.r.personId, x.state]));
   const rank = (id: string) => (answers.get(id) === 'oui' ? 0 : answers.get(id) === 'non' ? 2 : 1);
   return ctx.people
-    .filter((p) => !p.pending || p.id === c.personId)
-    .map((p) => ({ p, issue: personIssue(p.id, c.start, c.end, c.id, ctx.allCrew, ctx.subs, ctx.unav), cost: crewCostShown({ rateUnit: c.rateUnit }, crewCostProfile(c, p)), answer: answers.get(p.id) }))
+    .filter((p) => (!p.pending && !p.inactive) || p.id === c.personId)
+    .map((p) => ({ p, issue: ((i) => (i === 'déjà planifié' && p.multiBooking ? '' : i))(personIssue(p.id, c.start, c.end, c.id, ctx.allCrew, ctx.subs, ctx.unav)), cost: crewCostShown({ rateUnit: c.rateUnit }, crewCostProfile(c, p)), answer: answers.get(p.id) }))
     .sort((a, b) => rank(a.p.id) - rank(b.p.id) || (a.issue ? 1 : 0) - (b.issue ? 1 : 0) || a.cost.value - b.cost.value || a.p.name.localeCompare(b.p.name));
 }
 

@@ -1,5 +1,6 @@
 import { db } from '../../db';
 import type { ProjectStatus } from '../../types';
+import { STATUS_LABELS } from '../../types';
 import { patch, save } from '../../utils';
 import type { ProjectData } from './shared';
 
@@ -20,6 +21,10 @@ export async function setProjectStatus(d: ProjectData, status: ProjectStatus) {
       }
     }
   });
+  if (status !== project.status) {
+    const { notify } = await import('../../notify');
+    await notify('statut', `statut:${project.id}:${status}:${Date.now()}`, `${project.number} ${project.name} : ${STATUS_LABELS[project.status]} → ${STATUS_LABELS[status]}.`, '/projets/' + project.id);
+  }
 }
 
 /**

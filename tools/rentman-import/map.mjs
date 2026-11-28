@@ -78,6 +78,12 @@ export function mapRentman(rm, now = new Date().toISOString()) {
   }
   const contacts = (rm.contacts || []).map((c) => {
     const isLoc = locations.has(c.id) && !customers.has(c.id);
+    // adresse postale / de facturation : reprise seulement si elle diffère de l'adresse de visite
+    const addr = (c, k) => {
+      const a = { address: str([c[`${k}_street`], c[`${k}_number`]].filter(Boolean).join(' ')), postalCode: str(c[`${k}_postalcode`]), city: str(c[`${k}_city`]), country: str(c[`${k}_country`])?.toUpperCase().slice(0, 2) };
+      const same = a.address === str([c.visit_street, c.visit_number].filter(Boolean).join(' ')) && a.city === str(c.visit_city);
+      return a.address && !same ? a : undefined;
+    };
     const isSup = !isLoc && suppliers.has(c.id) && !customers.has(c.id);
     const lang = String(pick(c, 'language', 'lang') || '').toLowerCase().slice(0, 2);
     const discEq = pct(pick(c, 'discount_rental', 'default_discount', 'discount'));
@@ -94,6 +100,11 @@ export function mapRentman(rm, now = new Date().toISOString()) {
       paymentDays: num(pick(c, 'payment_term', 'paymentterm', 'invoice_term', 'payment_days')) || undefined,
       language: ['fr', 'nl', 'en'].includes(lang) ? lang : undefined,
       discounts: discEq > 0 ? { equipment: discEq } : undefined,
+      email2: str(c.email_2), phone2: str(c.phone_2), website: str(c.website), iban: str(c.bank_account), bic: str(c.bic),
+      accountingCode: str(c.accounting_code), purchaseNumber: str(c.purchase_number),
+      warning: str(c.contact_warning), autoProjectNote: str([pick(c, 'projectnote_title'), pick(c, 'projectnote')].filter(Boolean).join(' — ')),
+      postalAddress: addr(c, 'mailing'), billingAddress: addr(c, 'invoice'),
+      distanceKm: isLoc ? num(c.distance) || undefined : undefined, travelMinutes: isLoc ? num(c.travel_time) || undefined : undefined,
       tags: ['rentman'],
     };
   });
@@ -159,7 +170,16 @@ export function mapRentman(rm, now = new Date().toISOString()) {
       trackSerials: unitsOf.has(e.id) || undefined,
       barcode: str(Array.isArray(e.qrcodes) ? e.qrcodes[0] : pick(e, 'qrcodes', 'barcode')),
       location: str(pick(e, 'location_in_warehouse', 'warehouse_location')),
-      notes: str(pick(e, 'remark', 'notes')),
+      notes: str([pick(e, 'internal_remark', 'remark', 'notes'), e.external_remark].filter(Boolean).join('\n')),
+      defaultGroup: str(e.defaultgroup && typeof e.defaultgroup === 'string' && !String(e.defaultgroup).startsWith('/') ? e.defaultgroup : undefined),
+      packedPer: num(e.packed_per) > 1 ? num(e.packed_per) : undefined,
+      originCountry: str(e.country_of_origin)?.toUpperCase().slice(0, 2),
+      unit: str(e.unit && !String(e.unit).startsWith('/') ? e.unit : undefined),
+      hideInPicker: e.in_planner === false || undefined,
+      criticalStock: num(e.critical_stock_level) || undefined,
+      isSurface: e.surface_article === true || undefined,
+      factorGroupId: refId(e.factor_group) ? id('fg', refId(e.factor_group)) : undefined,
+      
       archived: e.active === false || e.in_archive === true || undefined,
       tags: ['rentman'],
     };
@@ -192,6 +212,9 @@ export function mapRentman(rm, now = new Date().toISOString()) {
     id: id('p', p.id), ...base(p), name: str(pick(p, 'displayname')) || [p.firstname, p.lastname].filter(Boolean).join(' ') || `Technicien Rentman ${p.id}`,
     email: str(pick(p, 'email', 'email_1')), phone: str(pick(p, 'phone', 'mobilephone', 'phone_1')), city: str(pick(p, 'city', 'visit_city', 'street_city')),
     role: str(pick(p, 'function', 'job_title', 'jobtitle')), vatNumber: str(pick(p, 'vat_code', 'vat_number')),
+    drivingLicense: str(p.driving_license), birthDate: str(p.birthdate)?.slice(0, 10), emergencyContact: str(p.emergency_contact), company: str(p.company_name), iban: str(p.bank),
+    contract: str(p.contract) || str(p.contract_date) ? { type: str(p.contract), start: str(p.contract_date)?.slice(0, 10) } : undefined,
+    inactive: p.active === false || undefined,
     notes: str([pick(p, 'remark', 'notes'), [pick(p, 'street'), pick(p, 'number', 'housenumber')].filter(Boolean).join(' '), pick(p, 'postalcode', 'zipcode')].filter(Boolean).join(' · ')),
     dailyRate: num(pick(p, 'day_rate', 'dayrate', 'default_rate')), costRate: num(pick(p, 'day_cost', 'cost_rate', 'purchase_rate')) || undefined,
     hourlyRate: num(pick(p, 'hourly_rate', 'hour_rate')) || undefined,
@@ -221,6 +244,17 @@ export function mapRentman(rm, now = new Date().toISOString()) {
   }
   const subStatus = (s) => mapStatus(statuses.get(refId(s.status))?.name ?? s.status_name ?? s.status);
   const subprojects = [];
+  // chargé de projet (membre de l'équipe) et tâches des projets
+  const accountManagers = new Map((rm.crewmembers || []).map((c) => [c.id, str(pick(c, 'displayname')) || [c.firstname, c.lastname].filter(Boolean).join(' ')]));
+  const tasksOf = new Map();
+  for (const t of rm.tasks || []) {
+    const [tt, rid] = refType(t.item) || [];
+    const pid = (tt === 'projects' || String(t.itemtype).toLowerCase() === 'project') ? (rid || refId(t.item)) : null;
+    if (!pid) continue;
+    const done = !!t.completed_at || /done|completed|klaar|termin/i.test(String(t.status || ''));
+    tasksOf.set(pid, [...(tasksOf.get(pid) || []), { id: id('t', t.id), text: str(pick(t, 'name', 'displayname')) || 'Tâche', done, doneAt: done ? localIso(t.completed_at) || undefined : undefined,
+      due: localTime(t.deadline)?.slice(0, 10), priority: /high|hoog|haute/i.test(String(t.priority || '')) ? 'haute' : /low|laag|basse/i.test(String(t.priority || '')) ? 'basse' : undefined }]);
+  }
   const projects = (rm.projects || []).map((p) => {
     let subs = subsOf.get(p.id) || [];
     // projet sans sous-projet dans l'API : un sous-projet par défaut
@@ -258,6 +292,8 @@ export function mapRentman(rm, now = new Date().toISOString()) {
       partDiscounts: Object.keys(partDiscounts).length ? partDiscounts : undefined, insurancePct: pct(pick(p, 'insurance_rate', 'insurance')) || undefined,
       typeName: str(ptype && pick(ptype, 'name', 'displayname')),
       externalRef: str(p.reference), color: str(p.color), notes: str(pick(p, 'remark', 'description')),
+      manager: str(p.account_manager_name) || accountManagers.get(refId(p.account_manager)),
+      tasks: tasksOf.get(p.id),
       tags: ['rentman'],
     };
   });
@@ -461,8 +497,10 @@ export function mapRentman(rm, now = new Date().toISOString()) {
     const status = kind === 'devis'
       ? (bool(o.accepted) || /accept|signed|akkoord|getekend/.test(st) ? 'accepte' : /refus|declin|afgewezen/.test(st) ? 'refuse' : 'envoye')
       : (bool(pick(o, 'paid', 'is_paid')) || /paid|payé|betaald/.test(st) ? 'paye' : 'envoye');
+    const payments = kind === 'facture' ? (rm.payments || []).filter((x) => refId(x.invoice) === o.id && num(x.amount)).map((x) => ({ id: id('pay', x.id), date: (localIso(x.moment) || now).slice(0, 10), amount: round2(num(x.amount)), method: str(x.payment_import_source) || undefined, note: str(x.description) })) : [];
     docs.push({
       id: id(kind === 'devis' ? 'dq' : 'di', o.id), ...base(o), projectId, type, number, version: 1, status, note: 'Importé de Rentman',
+      payments: payments.length ? payments : undefined,
       snapshot: {
         company: null, project: { number: p.number, name: p.name, venue: p.venue, start: p.start, end: p.end, discount: 0, externalRef: p.externalRef },
         subprojects: [], simpleLines: [{ label: `${p.name} (Rentman ${number})`, ht }],
@@ -493,7 +531,17 @@ export function mapRentman(rm, now = new Date().toISOString()) {
   }
   if (otherFiles) warn(`${otherFiles} fichier(s) rattaché(s) à autre chose qu'un projet, un membre de l'équipe ou un article : non repris`);
 
-  const settings = (projectTypes.length || depots.length) ? [{ id: 'rm-settings', projectTypes, depots }] : [];
+  // grilles de coefficients (groupes de facteurs : de N jours à M jours → coefficient) et comptes comptables
+  const factorGroups = (rm.factorgroups || []).map((g) => {
+    const rows = (rm.factors || []).filter((f) => refId(f.factor_group) === g.id).sort((a, b) => num(a.from_days) - num(b.from_days));
+    const factors = [];
+    for (const f of rows) for (let d = Math.max(1, num(f.from_days)); d <= Math.min(60, num(f.to_days) || num(f.from_days)); d++) factors[d - 1] = num(f.factor);
+    const list = factors.map((x, i) => x ?? factors[i - 1] ?? 1);
+    const last = list.length > 1 ? round2(list[list.length - 1] - list[list.length - 2]) : 0.5;
+    return { id: id('fg', g.id), name: str(pick(g, 'name', 'displayname')) || `Grille ${g.id}`, factors: list.length ? list : [1], extraPerDay: last > 0 ? last : 0.5 };
+  });
+  const ledgers = (rm.ledgercodes || []).filter((l) => str(l.code)).map((l) => ({ id: id('lg', l.id), name: str(pick(l, 'displayname', 'name')) || str(l.code), code: str(l.code), side: l.is_debit && !l.is_credit ? 'debit' : 'credit' }));
+  const settings = (projectTypes.length || depots.length || factorGroups.length || ledgers.length) ? [{ id: 'rm-settings', projectTypes, depots, factorGroups, ledgers }] : [];
   const data = { contacts, categories, equipment, units, people, vehicles, projects, subprojects, lines, crew, vehicleAssignments, costs, subrentals, repairs, unavailability, appointments, docs, settings };
   for (const [k, v] of Object.entries(data)) report.counts[k] = v.length;
   // liens vers des fiches absentes (droits de la clé API, collection non lue…)
@@ -515,7 +563,7 @@ export function mapRentman(rm, now = new Date().toISOString()) {
   data.unavailability = unavailability.filter((u) => pIds.has(u.personId));
   for (const e of equipment) if (e.accessories) { e.accessories = e.accessories.filter((a) => eqIds.has(a.equipmentId)); if (!e.accessories.length) e.accessories = undefined; }
   report.counts.repairs = data.repairs.length; report.counts.unavailability = data.unavailability.length;
-  report.counts.settings = projectTypes.length + depots.length;
+  report.counts.settings = projectTypes.length + depots.length + factorGroups.length + ledgers.length;
   report.counts.files = files.filter((f) => !f.photoOf).length; report.counts.photos = files.filter((f) => f.photoOf).length;
   return { data, files, report };
 }

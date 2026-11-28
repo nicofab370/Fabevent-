@@ -62,6 +62,11 @@ const COLLECTIONS = {
   quotes: '/quotes',
   invoices: '/invoices',
   files: '/files',
+  factorgroups: '/factorgroups',
+  factors: '/factors',
+  ledgercodes: '/ledgercodes',
+  tasks: '/tasks',
+  payments: '/payments',
 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

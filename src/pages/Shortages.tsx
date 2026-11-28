@@ -6,7 +6,9 @@ import { CsvButton, exportCsv } from '../components/extra';
 import { useAvailability } from '../data';
 import { db } from '../db';
 import type { Conflict } from '../utils';
-import { fmtRange, toLocalInput } from '../utils';
+import { fmtDate, fmtRange, toLocalInput } from '../utils';
+import { consumableUses } from '../notify';
+import { projectedStock } from '../stock';
 import type { Subproject } from '../types';
 import { FIRM } from '../types';
 
@@ -22,6 +24,33 @@ export function shortageLabel(c: Conflict, sp?: Subproject): string {
 }
 
 /** Tous les manques de matériel à venir, tous projets confondus. */
+/** Consommables à racheter : stock projeté sous le seuil critique, avec la date où il sera franchi. */
+export function useConsumablesToBuy() {
+  const eq = useLiveQuery(() => db.equipment.toArray(), []) || [];
+  const uses = useLiveQuery(() => consumableUses(), [eq.length]) || new Map();
+  const today = new Date().toISOString().slice(0, 10);
+  return eq.filter((e) => e.kind === 'vente' && !e.archived && e.criticalStock)
+    .map((e) => ({ e, p: projectedStock(e, today, uses.get(e.id)) }))
+    .filter((x) => x.p.reachDate)
+    .sort((a, b) => a.p.reachDate!.localeCompare(b.p.reachDate!));
+}
+
+function ConsumablesToBuy() {
+  const list = useConsumablesToBuy();
+  if (!list.length) return null;
+  return (
+    <div className="card">
+      <h2>Consommables à racheter ({list.length})</h2>
+      <table className="list">
+        <thead><tr><th>Article</th><th className="n">Stock</th><th className="n">Seuil</th><th className="n">Au plus bas</th><th>Seuil atteint le</th></tr></thead>
+        <tbody>{list.map(({ e, p }) => (
+          <tr key={e.id}><td><a href={'#/materiel/' + e.id}>{e.name}</a></td><td className="n">{p.now}</td><td className="n">{e.criticalStock}</td><td className="n">{p.min}</td><td>{fmtDate(p.reachDate!, false)}</td></tr>
+        ))}</tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function Shortages() {
   const nav = useNavigate();
   const av = useAvailability();
@@ -40,6 +69,7 @@ export default function Shortages() {
       <PageHead title="Pénuries">
         <CsvButton onClick={() => exportCsv('penuries', ['Article', 'Manque', 'Type', 'Projet', 'Sous-projet', 'Du', 'Au'], rows)} />
       </PageHead>
+      <ConsumablesToBuy />
       <div className="info">
         <strong>Manque réel</strong> : même sans compter les demandes et projets en attente, le stock ne suffit pas — sous-loue, transfère ou remplace.
         <br /><strong>Concurrence entre options</strong> : le stock suffit pour les projets confirmés, mais pas pour toutes les options en même temps. Le premier projet confirmé sera servi.

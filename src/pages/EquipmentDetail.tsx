@@ -13,6 +13,7 @@ import { EquipmentForm } from './EquipmentList';
 import { InspectionModal, RepairModal } from './Maintenance';
 import PrintLabelModal from '../components/PrintLabelModal';
 import { Icon } from '../components/Icon';
+import { ConsumableStock } from '../components/ConsumableStock';
 import { useUser } from '../auth';
 import { canDeleteEquipment, canEditEquipment } from '../roles';
 
@@ -216,6 +217,8 @@ export default function EquipmentDetail() {
           <ul>{eq.accessories!.map((a, i) => <li key={i}>{a.qty} × <Link to={'/materiel/' + a.equipmentId}>{allMap.get(a.equipmentId)?.name || '?'}</Link> {a.free ? '(gratuit)' : '(facturé)'}</li>)}</ul>
         </div>
       )}
+      <ConsumableStock eq={eq} />
+      {(eq.suppliers || []).length > 0 && <SupplierList eq={eq} />}
       {(eq.alternatives || []).length > 0 && (
         <div className="card"><h2>Articles de remplacement</h2>{eq.alternatives!.map((id) => <Link key={id} to={'/materiel/' + id} style={{ marginRight: 12 }}>{allMap.get(id)?.name || '?'}</Link>)}</div>
       )}
@@ -316,5 +319,14 @@ export default function EquipmentDetail() {
         </Modal>
       )}
     </>
+  );
+}
+
+function SupplierList({ eq }: { eq: Equipment }) {
+  const contacts = useLiveQuery(() => db.contacts.bulkGet((eq.suppliers || []).map((x) => x.contactId)), [eq.id, eq.updatedAt]) || [];
+  return (
+    <div className="card"><h2>Fournisseurs</h2>
+      <ul>{(eq.suppliers || []).map((sp, i) => <li key={i}>{contacts[i] ? <Link to={'/contacts?q=' + encodeURIComponent(contacts[i]!.company)}>{contacts[i]!.company}</Link> : '?'}{sp.price ? ` — ${money(sp.price)}` : ''}{sp.ref ? ` · réf. ${sp.ref}` : ''}</li>)}</ul>
+    </div>
   );
 }

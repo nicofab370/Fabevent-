@@ -83,7 +83,7 @@ export function computeFinance(
   for (const l of lines) {
     const sp = active.get(l.subprojectId);
     if (!sp || l.optional) continue;
-    const t = lineTotal(l, lineDays(l, sp), s, isPerPiece(l, eqMap));
+    const t = lineTotal(l, lineDays(l, sp), s, isPerPiece(l, eqMap), l.equipmentId ? eqMap.get(l.equipmentId)?.factorGroupId : undefined);
     eqRev += t;
     if (!isPerPiece(l, eqMap)) rentalRev += t;
     if (isPerPiece(l, eqMap)) consCost += l.qty * (eqMap.get(l.equipmentId!)?.costPrice || 0);

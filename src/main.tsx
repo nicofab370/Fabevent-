@@ -15,9 +15,11 @@ import { ensureSerialCodes } from './autoCodes';
 import { applyDoneTransfers } from './transferApply';
 import { startAutoTooltips } from './tooltips';
 import { installTableSort } from './tableSort';
+import { installTableColumns } from './tableColumns';
 
 installUndo();
 installTableSort();
+installTableColumns();
 
 registerSW({ immediate: true });
 

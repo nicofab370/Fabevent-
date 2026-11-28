@@ -286,6 +286,21 @@ FabEvent, autonome), hors ligne d'abord, numéros de facture sans doublon : voir
 
 **Données** : import CSV (exports Rentman), plusieurs bases, sauvegarde et restauration.
 
+**Repris de Rentman (version 68)** :
+- **Notifications** (cloche) : devis expirés, factures échues, devis accepté, refusé, consulté ou commenté en ligne, statut changé, nouvelle note, stock critique, contrat ou document du personnel qui expire, tâche en retard, bon de commande à approuver. Envoi par email possible (Paramètres → Notifications).
+- **Devis en ligne** : vues du client, historique, mot de passe, mise hors ligne, demande de modification, commentaire à l'acceptation, texte d'accueil, devis expiré bloqué (sauf réglage).
+- **Paiements partiels** datés, avec leur mode ; la facture passe « payée » d'elle-même.
+- **Contacts** : avertissement affiché quand on choisit le contact, note ajoutée à chaque nouveau projet, adresses postale et de facturation (reprise sur les factures et dans Peppol), email et téléphone 2, site, IBAN, BIC, n° comptable, bon de commande permanent, remises par partie, assurance, recherche dans l'annuaire Peppol, dossiers, formule d'appel des interlocuteurs.
+- **Équipe** : partage groupé du planning sur une période (point jaune et astérisques sur ce qui a changé), contrat, contact d'urgence, permis, société, dépôt habituel, inactif, planifiable plusieurs fois en même temps, historique des missions, indisponibilités répétées chaque semaine, catégories de documents.
+- **Postes** copiés sur plusieurs créneaux, listes de postes sur chaque créneau du même type, créneaux visibles ou non sur les documents du client et internes.
+- **Matériel** : stock critique et mouvements programmés (page Pénuries : consommables à racheter), fournisseurs et leurs prix, pays d'origine, rangé par N (caisses et volume de transport), unité, article de surface (prix au m²), intensité, masqué à l'ajout, groupe par défaut, prix cible, grille de coefficients, compte comptable.
+- **Projets** : chargé de projet (filtre), tâches avec personne, priorité et échéance relative (page Tâches), suggestions « souvent loué avec », liste du carnet ATA, conditions supplémentaires, contrat de location.
+- **Vérification rapide de disponibilité** (sablier), **jours importants** (planning et créneaux), **tableau de bord à widgets** (plusieurs tableaux, finances, chiffre d'affaires, agenda, tâches), **statistiques configurables** (par type, client, chargé de projet, statut, catégorie, fournisseur ; enregistrables, CSV).
+- **Bons de commande** avec approbation (montant approuvé, nouvelle approbation si dépassé, jamais supprimés), **registre des emails envoyés** (page et fiches), copies cachées par type, signature commune.
+- **Paramètres** : séries de numéros par type de projet, grilles de coefficients, comptes comptables (ventilation par compte dans l'export comptable), modes de paiement, rôles personnalisés (pages et droits), webhooks (Zapier, Make).
+- **Listes** : colonnes au choix (clic droit sur un titre), périodes prédéfinies (semaine prochaine, ce mois…).
+- **Import Rentman** : avertissements et notes des contacts, adresses, grilles de coefficients, comptes, tâches, paiements, champs du matériel et de l'équipe. Inventaire des champs utilisés : option « inventaire » du workflow d'export.
+
 ## Feuille de route
 
 1. Serveur de synchronisation : plusieurs appareils, collègues avec droits, agenda en abonnement automatique,

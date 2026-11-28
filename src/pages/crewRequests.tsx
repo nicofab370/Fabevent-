@@ -148,7 +148,7 @@ function AskModal({ projectId, crewIds, onClose }: { projectId: string; crewIds:
       const m = { to: p.email || '', subject: fillVars(subject, vars), body: fillVars(body, vars) };
       if (!p.email) { out.push({ person: p, ok: false, msg: `pas d'adresse email${p.phone ? ` — appelle au ${p.phone}` : ''} (réponse à noter à la main)` }); continue; }
       if (canSend) {
-        try { await sendMail({ ...m, replyTo: replyAddress(settings) }, []); out.push({ person: p, ok: true, msg: 'mail envoyé avec le lien de réponse' }); }
+        try { await sendMail({ ...m, replyTo: replyAddress(settings) }, [], { kind: 'dispo', personId: p.id }); out.push({ person: p, ok: true, msg: 'mail envoyé avec le lien de réponse' }); }
         catch (e) { out.push({ person: p, ok: false, msg: (e as Error).message, mailto: mailtoUrl(m) }); }
       } else out.push({ person: p, ok: false, msg: 'à envoyer avec ta messagerie (réponse à noter à la main)', mailto: mailtoUrl(m) });
     }

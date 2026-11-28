@@ -117,7 +117,34 @@ export interface Contact extends Base {
   billingDepartmentId?: ID;
   /** personne à l'attention de qui les factures sont envoyées */
   billingPersonId?: ID;
+  /** avertissement affiché en évidence quand on choisit ce contact (ex. « paie en retard, exiger un acompte ») */
+  warning?: string;
+  /** note ajoutée automatiquement à chaque nouveau projet de ce client */
+  autoProjectNote?: string;
+  email2?: string;
+  phone2?: string;
+  website?: string;
+  iban?: string;
+  bic?: string;
+  /** numéro du client dans la comptabilité */
+  accountingCode?: string;
+  /** n° de bon de commande permanent du client (repris sur ses projets) */
+  purchaseNumber?: string;
+  /** adresse postale et adresse de facturation, si différentes de l'adresse principale (visite) */
+  postalAddress?: PostalAddress;
+  billingAddress?: PostalAddress;
+  /** remises par défaut sur les autres parties du projet (%) */
+  partDiscounts?: Partial<Record<DiscountPart, number>>;
+  /** taux d'assurance propre au client (% de la location) */
+  insurancePct?: number;
+  /** temps de trajet depuis le dépôt (min) et distance (km), pour un lieu */
+  travelMinutes?: number;
+  distanceKm?: number;
+  /** dossier de classement (Clients réguliers, Fournisseurs son…) */
+  folder?: string;
 }
+
+export interface PostalAddress { address?: string; postalCode?: string; city?: string; country?: string }
 
 /** Endroit d'un lieu : bâtiment, scène, salle, entrée… (adresse propre ou celle du lieu). */
 export interface VenueSpot {
@@ -148,6 +175,8 @@ export interface ContactPerson {
   role?: string;
   email?: string;
   phone?: string;
+  /** formule d'appel (Madame, Monsieur, Cher service…) utilisée dans les mails : {formule} */
+  title?: string;
 }
 
 export interface Category extends Base {
@@ -156,6 +185,10 @@ export interface Category extends Base {
   parentId?: ID;
   /** lettre(s) dans les codes du matériel : S son, V vidéo, L lumière, IT informatique, R rigging… */
   letter?: string;
+  /** compte comptable des articles de la catégorie (sinon celui de la location ou de la vente) */
+  ledger?: ID;
+  /** grille de coefficients des articles de la catégorie (sinon la grille par défaut) */
+  factorGroupId?: ID;
 }
 
 interface KitItem {
@@ -267,6 +300,32 @@ export interface Equipment extends Base {
   stockLog?: { at: string; delta: number; text: string; projectId?: ID }[];
   location?: string;
   notes?: string;
+  /** seuil de réapprovisionnement (consommables) */
+  criticalStock?: number;
+  /** mouvements de stock programmés (livraison attendue, sortie prévue…) */
+  plannedStock?: { id: ID; date: string; delta: number; text: string }[];
+  /** fournisseurs de l'article et leur prix (sous-location ou achat) */
+  suppliers?: { contactId: ID; price?: number; ref?: string }[];
+  /** pays d'origine (code ISO, pour le carnet ATA) */
+  originCountry?: string;
+  /** rangé par N dans une caisse : sert au nombre de caisses et au volume de transport */
+  packedPer?: number;
+  /** unité de mesure (pièce par défaut) */
+  unit?: string;
+  /** article de surface : prix au m², la quantité est calculée à partir de largeur × hauteur */
+  isSurface?: boolean;
+  /** intensité (A) */
+  amps?: number;
+  /** caché dans la fenêtre d'ajout d'un projet (reste utilisable en entrepôt) */
+  hideInPicker?: boolean;
+  /** groupe d'équipement par défaut dans un projet (Son, Lumière…) */
+  defaultGroup?: string;
+  /** prix cible interne (informatif) */
+  targetPrice?: number;
+  /** compte comptable propre à l'article */
+  ledger?: ID;
+  /** grille de coefficients propre à l'article */
+  factorGroupId?: ID;
 }
 
 /**
@@ -383,6 +442,10 @@ export interface Project extends Base {
   actualCosts?: Record<string, number>;
   /** éditions successives d'un même évènement : identifiant du projet de la 1re édition */
   editionOf?: ID;
+  /** chargé de projet (utilisateur ou personne de l'équipe) */
+  manager?: string;
+  /** conditions supplémentaires imprimées sur les devis (sinon celles du type de projet) */
+  extraTermsId?: ID;
 }
 
 export interface Task {
@@ -390,6 +453,19 @@ export interface Task {
   text: string;
   done: boolean;
   due?: string;
+  /** personne chargée de la tâche (nom), vide = tout le monde */
+  assignee?: string;
+  priority?: 'basse' | 'normale' | 'haute';
+  doneAt?: string;
+  /** échéance relative au projet : N jours avant (négatif) ou après le début / la fin ; suit les dates du projet */
+  rel?: { days: number; base: 'start' | 'end' };
+}
+
+/** Tâche hors projet (page Tâches). */
+export interface FreeTask extends Base, Omit<Task, 'id'> {
+  /** élément concerné (matériel, contact…), lien de la page */
+  link?: string;
+  linkLabel?: string;
 }
 
 /** Groupe d'équipement (par type, emplacement ou jour) rattaché à des créneaux de la salle. */
@@ -407,6 +483,9 @@ export interface ProjectFile {
   personId?: ID;
   /** date d'expiration (permis, habilitation…) */
   expires?: string;
+  /** catégorie (permis, certificat, contrat…) et date de début de validité */
+  category?: string;
+  validFrom?: string;
   name: string;
   type: string;
   size: number;
@@ -435,6 +514,9 @@ export interface Period {
   kind: PeriodKind;
   start: string;
   end: string;
+  /** masqué sur les documents du client / sur les documents internes (bon de sortie, feuille de route) */
+  hideExternal?: boolean;
+  hideInternal?: boolean;
 }
 
 /** Sous-projet = une salle / zone du projet, avec son matériel et ses horaires. */
@@ -558,6 +640,23 @@ export interface Person extends Base {
   calToken?: string;
   /** modifications envoyées via « ma fiche », à relire (valeurs d'avant) */
   sheetReview?: { at: string; prev: Record<string, unknown> };
+  emergencyContact?: string;
+  birthDate?: string;
+  drivingLicense?: string;
+  /** contrat : type (CDD, intermittent, freelance…), heures, début et fin */
+  contract?: { type?: string; hours?: number; start?: string; end?: string };
+  /** société du technicien (nom, compte bancaire) */
+  company?: string;
+  iban?: string;
+  /** peut être planifié sur plusieurs postes en même temps */
+  multiBooking?: boolean;
+  /** dépôt habituel */
+  depotId?: ID;
+  /** inactif : masqué des choix de planification */
+  inactive?: boolean;
+  folder?: string;
+  /** planning envoyé la dernière fois (lignes « date | projet | poste | horaires »), pour marquer ce qui a changé */
+  lastPlanning?: { at: string; lines: string[] };
 }
 
 export interface CrewAssignment extends Base {
@@ -612,6 +711,8 @@ export interface User extends Base {
   salt: string;
   passHash: string;
   role: Role;
+  /** rôle personnalisé (Paramètres) : ses pages et ses droits remplacent ceux du rôle de base */
+  customRoleId?: ID;
   /** sous-traitant : personne de l'équipe liée (il ne voit que ses postes) */
   personId?: ID;
   active: boolean;
@@ -652,7 +753,7 @@ export interface CrewPreset {
   posts: { function: string; qty: number; rate: number; rateUnit?: 'jour' | 'heure'; periodKind?: PeriodKind }[];
 }
 
-export type MailKind = 'devis' | 'facture' | 'acompte' | 'avoir' | 'rappel' | 'bon_sortie' | 'feuille_route' | 'planning' | 'dispo' | 'confirmation' | 'annulation' | 'sous_location' | 'autre';
+export type MailKind = 'contrat' | 'devis' | 'facture' | 'acompte' | 'avoir' | 'rappel' | 'bon_sortie' | 'feuille_route' | 'planning' | 'dispo' | 'confirmation' | 'annulation' | 'sous_location' | 'autre';
 export interface MailTemplate {
   id: ID;
   kind: MailKind;
@@ -778,7 +879,7 @@ export interface VehicleAssignment extends Base {
   notes?: string;
 }
 
-export type DocType = 'devis' | 'facture' | 'acompte' | 'avoir' | 'rappel' | 'bon_sortie' | 'feuille_route';
+export type DocType = 'devis' | 'facture' | 'acompte' | 'avoir' | 'rappel' | 'bon_sortie' | 'feuille_route' | 'contrat';
 export const INVOICE_TYPES: DocType[] = ['facture', 'acompte', 'avoir'];
 export const DOC_LABELS: Record<DocType, string> = {
   devis: 'Devis',
@@ -788,6 +889,7 @@ export const DOC_LABELS: Record<DocType, string> = {
   rappel: 'Rappel de paiement',
   bon_sortie: 'Bon de sortie',
   feuille_route: 'Feuille de route',
+  contrat: 'Contrat de location',
 };
 export type DocStatus = 'brouillon' | 'envoye' | 'accepte' | 'refuse' | 'paye';
 export const DOC_STATUS_LABELS: Record<DocStatus, string> = {
@@ -822,6 +924,11 @@ export interface SnapshotLine {
   contents?: string;
   /** ligne enfant d'un kit : affichée en retrait, prix inclus dans le kit */
   kid?: boolean;
+  /** code du compte comptable de la ligne (export comptable) */
+  ledger?: string;
+  /** pays d'origine et poids unitaire (liste du carnet ATA) */
+  origin?: string;
+  weight?: number;
 }
 
 export interface SnapshotSub {
@@ -971,6 +1078,86 @@ export interface Doc extends Base {
   /** ordre d'affichage des sous-projets dans ce document (ids, ou noms pour les anciens documents) ; absent = ordre du projet */
   subOrder?: ID[];
   snapshot: DocSnapshot;
+  /** devis en ligne : ouvertures de la page par le client */
+  views?: { at: string }[];
+  /** historique du document : créé, envoyé, ouvert, accepté, refusé, remarque, hors ligne… */
+  history?: { at: string; event: string; by?: string }[];
+  /** mot de passe demandé par la page publique du devis */
+  publicPassword?: string;
+  /** devis mis hors ligne : le lien public ne s'ouvre plus */
+  publicDisabled?: boolean;
+  /** demandes de modification envoyées par le client depuis la page publique */
+  clientRemarks?: { at: string; text: string }[];
+  /** notes internes (jamais montrées au client) */
+  internalNotes?: string;
+  /** paiements reçus (factures, acomptes) ; la facture passe « payée » quand le total est atteint */
+  payments?: Payment[];
+  /** options du document : contenu des kits masqué, nom du fichier, sujet du mail, texte d'introduction propre */
+  collapseKits?: boolean;
+  fileName?: string;
+  mailSubject?: string;
+  introText?: string;
+}
+
+export interface Payment { id: ID; date: string; amount: number; method?: string; note?: string }
+
+/** Notification (cloche) : événement à voir, envoyé aussi par email si demandé. */
+export type NotifKind = 'devis_expire' | 'facture_echue' | 'devis_signe' | 'devis_refuse' | 'devis_remarque' | 'devis_vu' | 'statut' | 'note'
+  | 'stock_critique' | 'contrat_fin' | 'document_expire' | 'tache' | 'bon_commande';
+export const NOTIF_LABELS: Record<NotifKind, string> = {
+  devis_expire: 'Devis expiré', facture_echue: 'Facture échue', devis_signe: 'Devis accepté en ligne', devis_refuse: 'Devis refusé en ligne',
+  devis_remarque: 'Demande de modification d\'un devis', devis_vu: 'Devis consulté', statut: 'Statut modifié', note: 'Nouvelle note',
+  stock_critique: 'Stock critique', contrat_fin: 'Contrat qui se termine', document_expire: 'Document du personnel expiré', tache: 'Tâche en retard',
+  bon_commande: 'Bon de commande à approuver',
+};
+export interface Notification extends Base {
+  kind: NotifKind;
+  title: string;
+  text: string;
+  /** page à ouvrir (#/projets/…) */
+  link?: string;
+  read?: boolean;
+  /** clé unique : une même alerte n'est jamais créée deux fois */
+  key: string;
+  emailedAt?: string;
+}
+
+/** Mail envoyé depuis FabEvent (registre de communication). */
+export interface MailLog extends Base {
+  to: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject: string;
+  kind?: string;
+  projectId?: ID;
+  docId?: ID;
+  contactId?: ID;
+  personId?: ID;
+  ok: boolean;
+  error?: string;
+  attachments?: string[];
+}
+
+export type PurchaseStatus = 'brouillon' | 'a_approuver' | 'approuve' | 'envoye' | 'termine' | 'refuse' | 'annule';
+export const PURCHASE_LABELS: Record<PurchaseStatus, string> = {
+  brouillon: 'Brouillon', a_approuver: 'À approuver', approuve: 'Approuvé', envoye: 'Envoyé', termine: 'Terminé', refuse: 'Refusé', annule: 'Annulé',
+};
+/** Bon de commande à un fournisseur (coûts, sous-locations ou achat hors projet), avec approbation. */
+export interface PurchaseOrder extends Base {
+  number: string;
+  supplierId?: ID;
+  supplierName?: string;
+  projectId?: ID;
+  status: PurchaseStatus;
+  lines: { id: ID; text: string; qty: number; unitPrice: number; costId?: ID; subrentalId?: ID }[];
+  /** montant HT approuvé : au-delà, une nouvelle approbation est demandée */
+  approvedAmount?: number;
+  approvedBy?: string;
+  approvedAt?: string;
+  history?: { at: string; event: string; by?: string }[];
+  notes?: string;
+  /** date de livraison attendue */
+  due?: string;
 }
 
 export interface CompanyInfo {
@@ -1020,7 +1207,7 @@ export interface Settings {
   footer: string;
   appUrl: string;
   counters: Record<string, number>;
-  projectTypes?: { name: string; color: string; moments?: ID[] }[];
+  projectTypes?: { name: string; color: string; moments?: ID[]; termsId?: ID; seriesId?: ID }[];
   /** QR des étiquettes = lien vers la fiche (lisible avec l'appareil photo de n'importe quel téléphone) */
   qrLink?: boolean;
   /** modèles d'étiquettes créés par l'utilisateur (planches A4, rouleaux) */
@@ -1051,7 +1238,52 @@ export interface Settings {
   /** modèles de mail par type d'envoi */
   mailTemplates?: MailTemplate[];
   templates?: DocTemplates;
+  /** jours importants (fériés, salons…) : signalés dans les plannings, rien n'est bloqué */
+  importantDays?: ImportantDay[];
+  /** notifications : types désactivés et adresse qui les reçoit aussi par email */
+  notifOff?: NotifKind[];
+  notifEmail?: string;
+  /** devis en ligne : mot de passe demandé d'office, texte d'accueil, signature d'un devis expiré permise */
+  quotePassword?: boolean;
+  quoteWelcome?: string;
+  quoteAllowExpired?: boolean;
+  /** grilles de coefficients supplémentaires (la grille « factors » reste la grille par défaut) */
+  factorGroups?: FactorGroup[];
+  /** comptes comptables (grand livre) et compte par défaut de chaque partie */
+  ledgers?: Ledger[];
+  ledgerDefaults?: Partial<Record<'location' | 'vente' | 'personnel' | 'transport' | 'frais' | 'assurance', ID>>;
+  /** modes de paiement (virement, carte…) */
+  paymentMethods?: string[];
+  /** conditions supplémentaires nommées, choisies par type de projet ou par projet */
+  extraTerms?: { id: ID; name: string; text: string }[];
+  /** séries de numéros nommées (préfixe + compteur) choisies par type de projet */
+  numberSeries?: NumberSeries[];
+  /** paramètres des mails : copie cachée par type, signature commune, facture UBL jointe d'office */
+  mailBcc?: { all?: string; invoices?: string; quotes?: string; crew?: string };
+  mailSignature?: string;
+  attachUbl?: boolean;
+  /** rôles personnalisés : pages autorisées et droits */
+  customRoles?: CustomRole[];
+  /** webhooks : appel d'une adresse (Zapier, Make…) à chaque événement choisi */
+  webhooks?: { id: ID; url: string; events: WebhookEvent[] }[];
+  /** formules d'appel proposées sur les personnes de contact */
+  salutations?: string[];
 }
+
+export interface ImportantDay { id: ID; date: string; name: string; yearly?: boolean }
+export interface FactorGroup { id: ID; name: string; factors: number[]; extraPerDay: number }
+export interface Ledger { id: ID; name: string; code: string; side: 'credit' | 'debit' }
+export interface NumberSeries { id: ID; name: string; prefix: string; next: number; types: ('devis' | 'facture' | 'contrat' | 'bon_commande')[] }
+export type WebhookEvent = 'projet_confirme' | 'document_emis' | 'devis_accepte' | 'facture_payee';
+export const WEBHOOK_LABELS: Record<WebhookEvent, string> = {
+  projet_confirme: 'Projet confirmé', document_emis: 'Document émis', devis_accepte: 'Devis accepté', facture_payee: 'Facture payée',
+};
+export type Permission = 'factures' | 'prix' | 'projets' | 'planifier' | 'configuration' | 'approuver' | 'supprimer';
+export const PERMISSION_LABELS: Record<Permission, string> = {
+  factures: 'Éditer les factures', prix: 'Voir et modifier les prix', projets: 'Créer et modifier les projets', planifier: 'Planifier le personnel',
+  configuration: 'Accès aux paramètres', approuver: 'Approuver les bons de commande', supprimer: 'Supprimer des fiches',
+};
+export interface CustomRole { id: ID; name: string; base: Role; paths: string[]; perms: Permission[] }
 
 /** Ligne d'une checklist libre (bon importé ou liste saisie à la main). */
 export interface FreeLine {

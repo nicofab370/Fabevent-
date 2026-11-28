@@ -15,6 +15,8 @@ import { buildUbl, peppolProblems } from '../ubl';
 import { download, fmtDate, fmtRange, money, orderedSubprojects, parseNumber, save, subKey } from '../utils';
 import { newToken, quoteLink } from '../mailer';
 import { Icon } from '../components/Icon';
+import { DocOptions, InternalNotes, OnlineQuotePanel, PaymentsPanel, withEvent } from '../components/DocExtras';
+import { fireWebhook } from '../webhooks';
 
 export default function DocumentView() {
   const { id } = useParams();
@@ -88,18 +90,19 @@ export default function DocumentView() {
   };
   /** PDF du document tel qu'affiché (figé), pour l'email ou le téléchargement */
   const makePdf = async (): Promise<Attachment> => ({
-    name: `${safeFileName(title)}.pdf`, type: 'application/pdf', blob: await htmlToPdf(ref.current?.innerHTML || '', DOC_CSS),
+    name: `${safeFileName(doc.fileName || title)}.pdf`, type: 'application/pdf', blob: await htmlToPdf(ref.current?.innerHTML || '', DOC_CSS),
   });
   const attachments = async (): Promise<Attachment[]> => {
     const list = [await makePdf()];
     // facture : le XML Peppol (UBL) est joint s'il est complet
-    if (isInvoice && !peppolProblems(doc).length) list.push({ name: `${doc.number}.xml`, type: 'application/xml', blob: new Blob([buildUbl(doc)], { type: 'application/xml' }) });
+    const st = await db.settings.get('main');
+    if (isInvoice && st?.attachUbl !== false && !peppolProblems(doc).length) list.push({ name: `${doc.number}.xml`, type: 'application/xml', blob: new Blob([buildUbl(doc)], { type: 'application/xml' }) });
     return list;
   };
   const mailDraft = () => ({
     // feuille de route / bon de sortie : envoyés aux techniciens concernés, jamais au client
     to: (doc.type === 'feuille_route' || doc.type === 'bon_sortie') ? crewEmails.join(', ') : doc.snapshot.contactEmail || doc.snapshot.department?.email || doc.snapshot.client?.email || '',
-    subject: `${title} — ${doc.snapshot.project.name}`,
+    subject: doc.mailSubject || `${title} — ${doc.snapshot.project.name}`,
     body: `Bonjour${doc.contactPerson ? ' ' + doc.contactPerson.split(' ')[0] : ''},\n\nVeuillez trouver ci-joint notre ${DOC_LABELS[doc.type].toLowerCase()} ${doc.number} pour « ${doc.snapshot.project.name} ».\n\nCordialement,\n${doc.snapshot.company.name}`,
   });
 
@@ -111,6 +114,8 @@ export default function DocumentView() {
       dates: sn.project.start ? fmtRange(sn.project.start, sn.project.end) : '', montant: money(sn.totalTTC), echeance: sn.dueDate ? fmtDate(sn.dueDate, false) : '',
       societe: sn.company.name, contact: sn.contacts?.map((c) => `${c.name}${c.phone ? ' ' + c.phone : ''}`).join(', '),
       lien: doc.type === 'devis' && doc.publicToken ? quoteLink(doc.publicToken) : '',
+      lien_devis: doc.publicToken ? quoteLink(doc.publicToken) : '', mot_de_passe: doc.publicPassword || '',
+      formule: doc.snapshot.client?.persons?.find((p) => p.name === doc.contactPerson)?.title || '',
     };
   };
 
@@ -122,9 +127,10 @@ export default function DocumentView() {
           <Link to={'/projets/' + doc.projectId + '?onglet=finances'} state={{ restore: true }}><button className="secondary" title="Revenir au projet, à l'endroit où tu étais dans Finances & documents"><Icon name="arrow-left" />Projet</button></Link>
           <select value={doc.status} style={{ width: 'auto' }} onChange={async (e) => {
             const status = e.target.value as DocStatus;
-            await save(db.docs, { ...doc, status });
+            await save(db.docs, withEvent({ ...doc, status }, 'statut : ' + DOC_STATUS_LABELS[status]));
             // devis accepté = projet confirmé (le matériel passe en réservation ferme)
-            if (doc.type === 'devis' && status === 'accepte') await setStatusDeep(doc.projectId, 'confirme', ['demande', 'brouillon', 'option']);
+            if (doc.type === 'devis' && status === 'accepte') { await setStatusDeep(doc.projectId, 'confirme', ['demande', 'brouillon', 'option']); void fireWebhook('devis_accepte', { number: doc.number, project: doc.snapshot.project.name }); }
+            if (status === 'paye') void fireWebhook('facture_payee', { number: doc.number, total: doc.snapshot.totalTTC });
           }}>
             {Object.entries(DOC_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
@@ -137,7 +143,11 @@ export default function DocumentView() {
           <button className="secondary" onClick={() => setMailing(true)}>Envoyer par email</button>
           {doc.type === 'devis' && <button className="secondary" title="Lien public : le client accepte ou refuse le devis en ligne (arrive ici, statut « accepté » + projet confirmé)" onClick={async () => {
             let tok = doc.publicToken;
-            if (!tok) { tok = newToken(24); await save(db.docs, { ...doc, publicToken: tok }); }
+            if (!tok) {
+              tok = newToken(24);
+              const settings = await db.settings.get('main');
+              await save(db.docs, withEvent({ ...doc, publicToken: tok, publicPassword: settings?.quotePassword ? newToken(8).toLowerCase() : undefined }, 'publie'));
+            }
             const u = quoteLink(tok);
             setQuoteUrl(u);
             if (u) await navigator.clipboard?.writeText(u).then(() => setQMsg('Lien d\'acceptation copié.'), () => setQMsg('Sélectionne le lien et copie-le.'));
@@ -177,10 +187,17 @@ export default function DocumentView() {
         </div>
       )}
       {doc.type === 'devis' && quoteUrl === '' && qMsg && <div className="no-print" style={{ marginBottom: 10 }}><div className="info">{qMsg}</div></div>}
+      <div className="doc-side no-print">
+        <OnlineQuotePanel doc={doc} />
+        <PaymentsPanel doc={doc} />
+        <InternalNotes doc={doc} />
+        <DocOptions doc={doc} />
+      </div>
       <div className="doc-wrap" ref={ref}><DocRender doc={doc} /></div>
       {mailing && (
         <EmailModal initial={mailDraft()} prepare={attachments} onClose={() => setMailing(false)} kind={doc.type} vars={mailVars()} hints={hints}
-          onSent={() => { if (doc.status === 'brouillon') save(db.docs, { ...doc, status: 'envoye' }); }} />
+          meta={{ projectId: doc.projectId, docId: doc.id, contactId: doc.snapshot.client?.id }}
+          onSent={async () => { const fresh = await db.docs.get(doc.id); if (fresh) await save(db.docs, withEvent({ ...fresh, status: fresh.status === 'brouillon' ? 'envoye' : fresh.status }, 'envoye')); }} />
       )}
       {ordering && (
         <Modal title="Ordre des salles dans ce document" onClose={() => setOrdering(false)}>

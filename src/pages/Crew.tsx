@@ -10,6 +10,8 @@ import { agendaLink, mySheetLink, newToken, signupLink } from '../mailer';
 import { syncEnabled, syncNow } from '../sync';
 import { FileViewer } from '../components/FileViewer';
 import { Icon } from '../components/Icon';
+import { PlanningSend } from './PlanningSend';
+import { MailHistory } from './EmailsPage';
 
 type Draft = Partial<Person> & { name: string; dailyRate: number; external: boolean };
 
@@ -24,7 +26,7 @@ export default function Crew() {
   const [q, setQ] = useState(() => new URLSearchParams(window.location.hash.split('?')[1] || '').get('q') || '');
   const qn = q.trim().toLowerCase();
   // inscrits via le formulaire, pas encore validés : à part
-  const people = everyone.filter((p) => !p.pending && (!qn || [p.name, p.email, p.role, p.phone].join(' ').toLowerCase().includes(qn)));
+  const people = everyone.filter((p) => !p.pending && (!qn || [p.name, p.email, p.role, p.phone, p.folder].join(' ').toLowerCase().includes(qn)));
   const pending = everyone.filter((p) => p.pending);
   // fiches modifiées par les techniciens via leur lien « ma fiche », à relire
   const reviews = everyone.filter((p) => p.sheetReview);
@@ -36,6 +38,10 @@ export default function Crew() {
   const [edit, setEdit] = useState<Draft | null>(null);
   const [unavFor, setUnavFor] = useState<Person | null>(null);
   const [docsFor, setDocsFor] = useState<Person | null>(null);
+  const [historyFor, setHistoryFor] = useState<Person | null>(null);
+  const [sharing, setSharing] = useState(false);
+  const [showInactive, setShowInactive] = useState(false);
+  const [folder, setFolder] = useState('');
   const companies = useLiveQuery(() => db.contacts.where('type').anyOf('soustraitant', 'fournisseur').sortBy('company'), []) || [];
   const files = useLiveQuery(() => db.files.where('personId').above('').toArray(), []) || [];
   const soon = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
@@ -59,7 +65,9 @@ export default function Crew() {
     download(`agenda-${person.name.replace(/\s+/g, '-')}.ics`, buildIcs(`FabEvent — ${person.name}`, events), 'text/calendar;charset=utf-8');
   };
 
-  const sel = useSelection(people.map((p) => p.id));
+  const folders = Array.from(new Set(everyone.map((p) => p.folder).filter((f): f is string => !!f))).sort();
+  const shown = people.filter((p) => (showInactive || !p.inactive) && (!folder || p.folder === folder));
+  const sel = useSelection(shown.map((p) => p.id));
   const csv = (list = people) => exportCsv('equipe.csv', ['Nom', 'Fonction', 'Statut', 'Société', 'Téléphone', 'Email', 'Coût / jour', 'Coût / heure'],
     list.map((p) => [p.name, p.role, p.external ? 'Sous-traitant' : 'Interne', companies.find((c) => c.id === p.contactId)?.company, p.phone, p.email, p.costRate, p.hourlyCost]));
   const roles = Array.from(new Set(everyone.flatMap((p) => [p.role, ...(p.skills || [])]).filter((x): x is string => !!x))).sort((a, b) => a.localeCompare(b, 'fr'));
@@ -69,8 +77,11 @@ export default function Crew() {
       <PageHead title="Équipe & sous-traitants">
         <input placeholder="Rechercher une personne…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Rechercher une personne" />
         <CsvButton onClick={() => csv()} />
+        <button className="secondary" onClick={() => setSharing(true)}><Icon name="send" />Partager le planning</button>
         <button onClick={() => setEdit({ name: '', dailyRate: 0, external: false })}>+ Nouvelle personne</button>
       </PageHead>
+      {sharing && <PlanningSend people={people.filter((p) => !p.inactive)} onClose={() => setSharing(false)} />}
+      {historyFor && <PersonHistory person={historyFor} onClose={() => setHistoryFor(null)} />}
       {sheetMsg && <div className="info">{sheetMsg}</div>}
       {pending.length > 0 && (
         <div className="card signup-pending">
@@ -126,7 +137,21 @@ export default function Crew() {
           ) : <button className="small" onClick={async () => { const s2 = await db.settings.get('main'); if (s2) await db.settings.put({ ...s2, signupKey: newToken(24) }); }}>Ouvrir le formulaire d'inscription</button>}
       </div>
       <div className="card">
+        <div className="toolbar">
+          {folders.length > 0 && (
+            <select value={folder} onChange={(e) => setFolder(e.target.value)} aria-label="Dossier">
+              <option value="">Tous les dossiers</option>
+              {folders.map((f) => <option key={f}>{f}</option>)}
+            </select>
+          )}
+          {everyone.some((p) => p.inactive) && <label className="check-row"><input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} /> Afficher les inactifs</label>}
+        </div>
         <BulkBar sel={sel} noun="personne(s)">
+          <BulkSet label="Ranger dans le dossier" options={[...folders.map((f) => [f, f] as [string, string]), ['__new', 'Nouveau dossier…'], ['__none', 'Sans dossier']]} onApply={async (f) => {
+            const name = f === '__new' ? prompt('Nom du dossier :')?.trim() : f === '__none' ? '' : f;
+            if (name === undefined || name === null) return;
+            for (const id of sel.ids) await db.people.update(id, { folder: name || undefined, updatedAt: new Date().toISOString() });
+          }} />
           {roles.length > 0 && <BulkSet label="Changer la fonction" options={roles.map((r) => [r, r])} onApply={async (role) => {
             for (const id of sel.ids) await db.people.update(id, { role, updatedAt: new Date().toISOString() });
           }} />}
@@ -140,17 +165,20 @@ export default function Crew() {
             sel.clear();
           }}>Supprimer</button>
         </BulkBar>
-        {people.length === 0 ? <Empty>Ajoute tes techniciens (salariés, intermittents, sous-traitants).</Empty> : (
+        {shown.length === 0 ? <Empty>Ajoute tes techniciens (salariés, intermittents, sous-traitants).</Empty> : (
           <div className="table-wrap">
             <table className="list">
               <thead><tr><SelectAllTh sel={sel} /><th>Nom</th><th>Fonction</th><th>Statut</th><th>Téléphone</th><th className="n">Coût/j</th><th className="n">Coût/h</th><th>Prochaines missions</th><th /></tr></thead>
               <tbody>
-                {people.map((p) => {
+                {shown.map((p) => {
                   const next = assignmentsOf(p.id).filter((c) => c.end >= nowS);
                   return (
                     <tr key={p.id}>
                       <SelectTd sel={sel} id={p.id} label={p.name} />
-                      <td><a href="#" onClick={(e) => { e.preventDefault(); setEdit(p); }}><strong>{p.name}</strong></a></td>
+                      <td><a href="#" onClick={(e) => { e.preventDefault(); setEdit(p); }}><strong>{p.name}</strong></a>
+                        {p.inactive && <span className="badge" style={{ marginLeft: 4 }}>inactif</span>}
+                        {p.contract?.end && p.contract.end >= nowS.slice(0, 10) && p.contract.end <= soon && <div className="avail ko" style={{ fontSize: 11 }}>contrat jusqu'au {new Date(p.contract.end).toLocaleDateString('fr-BE')}</div>}
+                        {p.folder && <div className="muted" style={{ fontSize: 11 }}>{p.folder}</div>}</td>
                       <td>{p.role}{p.skills?.filter((x) => x !== p.role).length ? <div className="muted" style={{ fontSize: 11 }}>{p.skills.filter((x) => x !== p.role).join(', ')}</div> : null}</td>
                       <td><span className="badge">{p.external ? 'Sous-traitant' : 'Interne'}</span>{p.contactId && <div className="muted" style={{ fontSize: 11 }}>{companies.find((c) => c.id === p.contactId)?.company}</div>}</td>
                       <td>{p.phone}</td>
@@ -166,6 +194,7 @@ export default function Crew() {
                           return mine.length ? <span className={late ? 'avail ko' : ''}> ({mine.length}{late ? ` · ${late} à renouveler` : ''})</span> : null;
                         })()}</button>{' '}
                         <button className="secondary small" onClick={() => setUnavFor(p)}>Indispos{unav.filter((u) => u.personId === p.id && u.end >= nowS).length ? ` (${unav.filter((u) => u.personId === p.id && u.end >= nowS).length})` : ''}</button>{' '}
+                        <button className="secondary small" onClick={() => setHistoryFor(p)}>Historique</button>{' '}
                         <button className="secondary small" onClick={() => exportIcs(p)}>Agenda .ics</button>{' '}
                         <button className="secondary small" title="Lien personnel « ma fiche » : le technicien met à jour lui-même ses coordonnées, fonctions et tarif (elles arrivent ici à relire)" onClick={async () => {
                           const tok = p.sheetToken || newToken(24);
@@ -245,6 +274,27 @@ export default function Crew() {
                 </select>
               </Field>
             )}
+            <Field label="Contact d'urgence"><input value={edit.emergencyContact || ''} onChange={(e) => setEdit({ ...edit, emergencyContact: e.target.value || undefined })} placeholder="Nom et téléphone" /></Field>
+            <Field label="Date de naissance"><input type="date" value={edit.birthDate || ''} onChange={(e) => setEdit({ ...edit, birthDate: e.target.value || undefined })} /></Field>
+            <Field label="Permis de conduire"><input value={edit.drivingLicense || ''} onChange={(e) => setEdit({ ...edit, drivingLicense: e.target.value || undefined })} placeholder="B, C, BE…" /></Field>
+            <Field label="Société du technicien"><input value={edit.company || ''} onChange={(e) => setEdit({ ...edit, company: e.target.value || undefined })} /></Field>
+            <Field label="N° TVA"><input value={edit.vatNumber || ''} onChange={(e) => setEdit({ ...edit, vatNumber: e.target.value || undefined })} /></Field>
+            <Field label="IBAN"><input value={edit.iban || ''} onChange={(e) => setEdit({ ...edit, iban: e.target.value || undefined })} /></Field>
+            <Field label="Type de contrat"><input value={edit.contract?.type || ''} list="contract-types" onChange={(e) => setEdit({ ...edit, contract: { ...edit.contract, type: e.target.value || undefined } })} placeholder="CDI, CDD, intermittent, freelance…" />
+              <datalist id="contract-types">{['CDI', 'CDD', 'Intermittent', 'Freelance', 'Étudiant', 'Intérim'].map((x) => <option key={x} value={x} />)}</datalist></Field>
+            <Field label="Heures du contrat (par semaine)"><NumInput value={edit.contract?.hours || 0} onChange={(n) => setEdit({ ...edit, contract: { ...edit.contract, hours: n || undefined } })} /></Field>
+            <Field label="Début du contrat"><input type="date" value={edit.contract?.start || ''} onChange={(e) => setEdit({ ...edit, contract: { ...edit.contract, start: e.target.value || undefined } })} /></Field>
+            <Field label="Fin du contrat (alerte 30 jours avant)"><input type="date" value={edit.contract?.end || ''} onChange={(e) => setEdit({ ...edit, contract: { ...edit.contract, end: e.target.value || undefined } })} /></Field>
+            <Field label="Dépôt habituel">
+              <select value={edit.depotId || ''} onChange={(e) => setEdit({ ...edit, depotId: e.target.value || undefined })}>
+                <option value="">—</option>
+                {(settings.depots || []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Dossier"><input value={edit.folder || ''} list="crew-folders" onChange={(e) => setEdit({ ...edit, folder: e.target.value || undefined })} placeholder="Intermittents, Freelances fréquents…" />
+              <datalist id="crew-folders">{folders.map((f) => <option key={f} value={f} />)}</datalist></Field>
+            <Field label=" "><label className="check-row"><input type="checkbox" checked={!!edit.multiBooking} onChange={(e) => setEdit({ ...edit, multiBooking: e.target.checked || undefined })} /> Peut être planifié sur plusieurs postes en même temps</label></Field>
+            <Field label=" "><label className="check-row"><input type="checkbox" checked={!!edit.inactive} onChange={(e) => setEdit({ ...edit, inactive: e.target.checked || undefined })} /> Inactif (n'est plus proposé pour les postes)</label></Field>
             <Field label="Notes" full><textarea value={edit.notes || ''} onChange={(e) => setEdit({ ...edit, notes: e.target.value })} /></Field>
             {edit.calToken && <p className="field full muted" style={{ margin: 0 }}>Agenda en ligne actif. <button type="button" className="secondary small" onClick={() => setEdit({ ...edit, calToken: undefined })} title="L'ancien lien ne marchera plus ; « Lien agenda » en crée un nouveau">Désactiver le lien d'agenda</button></p>}
             <div className="form-actions">
@@ -268,6 +318,8 @@ function UnavailabilityModal({ person, list, onClose }: { person: Person; list: 
   const [start, setStart] = useState(toLocalInput(new Date()).slice(0, 10) + 'T00:00');
   const [end, setEnd] = useState(toLocalInput(new Date()).slice(0, 10) + 'T23:59');
   const [reason, setReason] = useState('');
+  const [weekly, setWeekly] = useState(false);
+  const [until, setUntil] = useState('');
   return (
     <Modal title={`Indisponibilités — ${person.name}`} onClose={onClose}>
       {list.length === 0 ? <Empty>Aucune indisponibilité.</Empty> : (
@@ -282,12 +334,19 @@ function UnavailabilityModal({ person, list, onClose }: { person: Person; list: 
       <form className="form" style={{ marginTop: 12 }} onSubmit={async (e) => {
         e.preventDefault();
         if (end < start) return alert('La fin doit être après le début.');
-        await save(db.unavailability, { personId: person.id, start, end, reason: reason || undefined });
+        // répétée chaque semaine jusqu'à une date : une indisponibilité par semaine
+        const stop = weekly && until ? until + 'T23:59' : start;
+        const len = Date.parse(end) - Date.parse(start);
+        for (let t = Date.parse(start), i = 0; toLocalInput(new Date(t)) <= stop && i < 260; t += 7 * 86400000, i++) {
+          await save(db.unavailability, { personId: person.id, start: toLocalInput(new Date(t)), end: toLocalInput(new Date(t + len)), reason: (reason || '') + (weekly && until ? ' (chaque semaine)' : '') || undefined });
+        }
         setReason('');
       }}>
         <Field label="Du"><input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
         <Field label="Au"><input type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
         <Field label="Motif" full><input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Congés, autre prestation…" /></Field>
+        <Field label=" "><label className="check-row"><input type="checkbox" checked={weekly} onChange={(e) => setWeekly(e.target.checked)} /> Se répète chaque semaine</label></Field>
+        {weekly && <Field label="jusqu'au"><input type="date" value={until} required onChange={(e) => setUntil(e.target.value)} /></Field>}
         <div className="form-actions"><button type="submit">+ Ajouter</button></div>
       </form>
     </Modal>
@@ -297,6 +356,7 @@ function UnavailabilityModal({ person, list, onClose }: { person: Person; list: 
 /** Documents d'une personne (permis, habilitations, contrat…) avec date d'expiration. */
 function PersonDocs({ person, files, onClose }: { person: Person; files: ProjectFile[]; onClose: () => void }) {
   const [expires, setExpires] = useState('');
+  const [category, setCategory] = useState('');
   const today = new Date().toISOString().slice(0, 10);
   const soon = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
   const [viewing, setViewing] = useState<ProjectFile | null>(null);
@@ -309,7 +369,8 @@ function PersonDocs({ person, files, onClose }: { person: Person; files: Project
           <tbody>
             {files.sort((a, b) => (a.expires || '9').localeCompare(b.expires || '9')).map((f) => (
               <tr key={f.id}>
-                <td><a href="#" onClick={(e) => { e.preventDefault(); open(f); }}>{f.name}</a></td>
+                <td><a href="#" onClick={(e) => { e.preventDefault(); open(f); }}>{f.name}</a>
+                  <div><input aria-label={`Catégorie de ${f.name}`} list="doc-cats" value={f.category || ''} placeholder="Catégorie" onChange={(e) => db.files.put({ ...f, category: e.target.value || undefined })} style={{ width: 150, fontSize: 12 }} /></div></td>
                 <td>
                   <input type="date" value={f.expires || ''} onChange={(e) => db.files.put({ ...f, expires: e.target.value || undefined })} style={{ width: 150 }} />
                   {f.expires && f.expires < today && <span className="avail ko"> expiré</span>}
@@ -322,19 +383,53 @@ function PersonDocs({ person, files, onClose }: { person: Person; files: Project
         </table>
       )}
       <div className="toolbar" style={{ marginTop: 12, alignItems: 'center' }}>
+        <input list="doc-cats" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Catégorie" aria-label="Catégorie du document" style={{ width: 150 }} />
+        <datalist id="doc-cats">{['Permis', 'Certificat', 'Habilitation', 'Contrat', 'Pièce d\'identité', 'Médical'].map((x) => <option key={x} value={x} />)}</datalist>
         <span className="muted">Expire le</span>
         <input type="date" value={expires} onChange={(e) => setExpires(e.target.value)} style={{ width: 160 }} />
         <label className="btn secondary" style={{ background: 'var(--soft)', color: 'var(--text)', border: '1px solid var(--border)' }}>
           + Ajouter un document
           <input type="file" hidden multiple onChange={async (e) => {
             for (const file of Array.from(e.target.files || [])) {
-              await db.files.put({ id: uid(), projectId: '', personId: person.id, name: file.name, type: file.type, size: file.size, blob: file, createdAt: new Date().toISOString(), expires: expires || undefined });
+              await db.files.put({ id: uid(), projectId: '', personId: person.id, name: file.name, type: file.type, size: file.size, blob: file, createdAt: new Date().toISOString(), expires: expires || undefined, category: category || undefined });
             }
             e.target.value = '';
           }} />
         </label>
       </div>
       <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>Le tableau de bord signale les documents qui expirent dans les 30 jours.</p>
+    </Modal>
+  );
+}
+
+/** Historique des missions d'une personne (passées et à venir), avec le total d'heures par année. */
+function PersonHistory({ person, onClose }: { person: Person; onClose: () => void }) {
+  const crew = useLiveQuery(() => db.crew.where({ personId: person.id }).toArray(), [person.id]) || [];
+  const projects = useLiveQuery(() => db.projects.toArray(), []) || [];
+  const unav = useLiveQuery(() => db.unavailability.where({ personId: person.id }).toArray(), [person.id]) || [];
+  const pMap = new Map(projects.map((p) => [p.id, p]));
+  const list = [...crew].sort((a, b) => b.start.localeCompare(a.start));
+  const nowS = toLocalInput(new Date());
+  return (
+    <Modal title={`Historique — ${person.name}`} onClose={onClose} wide>
+      <p className="muted">{list.length} poste(s) · {new Set(list.map((c) => c.projectId)).size} projet(s) · {unav.length} indisponibilité(s)</p>
+      <MailHistory personId={person.id} email={person.email} />
+      {list.length === 0 ? <Empty>Aucune mission.</Empty> : (
+        <table className="list">
+          <thead><tr><th>Dates</th><th>Projet</th><th>Fonction</th><th /></tr></thead>
+          <tbody>{list.map((c) => {
+            const p = pMap.get(c.projectId);
+            return (
+              <tr key={c.id}>
+                <td className="nowrap">{fmtRange(c.start, c.end)}</td>
+                <td>{p ? <a href={'#/projets/' + p.id} onClick={onClose}>{p.number} {p.name}</a> : '—'}</td>
+                <td>{c.function}{c.final === false && <span className="badge st-option" style={{ marginLeft: 4 }}>provisoire</span>}</td>
+                <td>{c.end < nowS ? <span className="muted">passé</span> : <span className="avail ok">à venir</span>}</td>
+              </tr>
+            );
+          })}</tbody>
+        </table>
+      )}
     </Modal>
   );
 }

@@ -208,5 +208,8 @@ export function stripScripts(html: string): string {
 function clientAddress(doc: Doc): { address?: string; postalCode?: string; city?: string } {
   const d = doc.snapshot.department;
   if (d && (d.address || d.city)) return d;
-  return doc.snapshot.client || {};
+  const c = doc.snapshot.client;
+  // factures, acomptes, avoirs, rappels : adresse de facturation du client si elle est différente
+  if (c?.billingAddress?.address && (INVOICE_DOC.includes(doc.type) || doc.type === 'rappel')) return c.billingAddress;
+  return c || {};
 }

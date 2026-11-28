@@ -47,6 +47,7 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
   const previewCats = newCat.trim() ? [...cats, { id: '__new', name: newCat, parentId: newParent || undefined, letter: newParent ? undefined : cleanLetter(newLetter) || letterSuggest } as Category] : cats;
   const all = useLiveQuery(() => db.equipment.orderBy('name').toArray(), []) || [];
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setE({ ...e, [k]: v });
+  const supplierList = useLiveQuery(() => db.contacts.where('type').anyOf('fournisseur', 'soustraitant').sortBy('company'), []) || [];
 
   const submit = async (ev: React.FormEvent) => {
     ev.preventDefault();
@@ -175,6 +176,54 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
         </div>
       </Field>
       <Field label="Consommation électrique max. (W)"><NumInput value={e.power || 0} step="1" min={0} onChange={(n) => set('power', n || undefined)} aria-label="Consommation (W)" /></Field>
+      <Field label="Intensité (A)"><NumInput value={e.amps || 0} onChange={(n) => set('amps', n || undefined)} aria-label="Intensité (A)" /></Field>
+      <Field label="Unité de mesure"><input value={e.unit || ''} list="units-list" onChange={(x) => set('unit', x.target.value || undefined)} placeholder="pièce" />
+        <datalist id="units-list">{['pièce', 'kg', 'm', 'm²', 'litre', 'rouleau', 'boîte', 'set'].map((u) => <option key={u} value={u} />)}</datalist></Field>
+      <Field label="Rangé par (nombre par caisse, pour le transport)"><NumInput step="1" min={0} value={e.packedPer || 0} onChange={(n) => set('packedPer', n > 1 ? Math.round(n) : undefined)} aria-label="Rangé par" /></Field>
+      <Field label="Pays d'origine (carnet ATA)"><input value={e.originCountry || ''} maxLength={2} onChange={(x) => set('originCountry', x.target.value.toUpperCase() || undefined)} placeholder="CN, US, DE…" /></Field>
+      <Field label="Groupe par défaut dans un projet"><input value={e.defaultGroup || ''} onChange={(x) => set('defaultGroup', x.target.value || undefined)} placeholder="Son, Lumière, Vidéo…" /></Field>
+      {!lockPrices && <Field label="Prix cible interne (€, informatif)"><NumInput value={e.targetPrice || 0} onChange={(n) => set('targetPrice', n || undefined)} aria-label="Prix cible" /></Field>}
+      {e.kind === 'vente' && <Field label="Stock critique (seuil de réapprovisionnement)"><NumInput step="1" min={0} value={e.criticalStock || 0} onChange={(n) => set('criticalStock', n || undefined)} aria-label="Stock critique" /></Field>}
+      {(settings.factorGroups || []).length > 0 && e.kind !== 'vente' && (
+        <Field label="Grille de coefficients">
+          <select value={e.factorGroupId || ''} onChange={(x) => set('factorGroupId', x.target.value || undefined)}>
+            <option value="">Celle de la catégorie, sinon la grille par défaut</option>
+            {settings.factorGroups!.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+          </select>
+        </Field>
+      )}
+      {(settings.ledgers || []).some((l) => l.side === 'credit') && (
+        <Field label="Compte comptable">
+          <select value={e.ledger || ''} onChange={(x) => set('ledger', x.target.value || undefined)}>
+            <option value="">Celui de la catégorie, sinon le compte par défaut</option>
+            {settings.ledgers!.filter((l) => l.side === 'credit').map((l) => <option key={l.id} value={l.id}>{l.code} {l.name}</option>)}
+          </select>
+        </Field>
+      )}
+      <Field label=" ">
+        <label className="check-row" title="Écran LED, moquette, praticables… : la quantité est la surface (largeur × hauteur) demandée à l'ajout"><input type="checkbox" checked={!!e.isSurface} onChange={(x) => set('isSurface', x.target.checked || undefined)} /> Article de surface (prix au m²)</label>
+      </Field>
+      <Field label=" ">
+        <label className="check-row" title="Caché dans la fenêtre d'ajout du matériel d'un projet ; reste utilisable en entrepôt"><input type="checkbox" checked={!!e.hideInPicker} onChange={(x) => set('hideInPicker', x.target.checked || undefined)} /> Masquer à l'ajout dans un projet</label>
+      </Field>
+      <div className="field full">
+        <span>Fournisseurs (pour une sous-location ou un achat)</span>
+        {(e.suppliers || []).map((sp, i) => {
+          const upd = (patch: Partial<typeof sp>) => set('suppliers', (e.suppliers || []).map((x, j) => (j === i ? { ...x, ...patch } : x)));
+          return (
+            <div key={i} className="rate-row">
+              <select value={sp.contactId} onChange={(x) => upd({ contactId: x.target.value })} aria-label="Fournisseur">
+                <option value="">—</option>
+                {supplierList.map((c) => <option key={c.id} value={c.id}>{c.company}</option>)}
+              </select>
+              <label>prix <NumInput value={sp.price || 0} onChange={(n) => upd({ price: n || undefined })} aria-label="Prix du fournisseur" /></label>
+              <input value={sp.ref || ''} onChange={(x) => upd({ ref: x.target.value || undefined })} placeholder="Réf. fournisseur" aria-label="Référence fournisseur" />
+              <button type="button" className="ghost" aria-label="Retirer ce fournisseur" onClick={() => set('suppliers', (e.suppliers || []).filter((_, j) => j !== i))}><Icon name="x" /></button>
+            </div>
+          );
+        })}
+        <div><button type="button" className="secondary small" onClick={() => set('suppliers', [...(e.suppliers || []), { contactId: supplierList[0]?.id || '' }])}><Icon name="plus" />Fournisseur</button></div>
+      </div>
       <Field label="Emplacement dépôt"><input value={e.location || ''} onChange={(x) => set('location', x.target.value)} placeholder="ex. Rack A3" /></Field>
       <Field label="Type d'article" full>
         <select value={!e.isKit ? '' : e.kitType === 'fixe' ? 'fixe' : 'virtuel'} aria-label="Type d'article"

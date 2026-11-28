@@ -6,6 +6,7 @@
  *   GET ?vat=BE0417497106  → {ok, valid, name, address}   (session FabEvent requise : pas de relais ouvert à tous)
  *   GET ?spec=Shure SM58   → fiche technique trouvée sur le web : {results: [{source, url, title, weight, dims, power, price, images}]}
  *   GET ?img=<url>         → image d'un résultat, relayée (le navigateur ne peut pas la lire directement chez un autre site)
+ *   GET ?peppol=<nom ou n°> → annuaire public Peppol (directory.peppol.eu) : {results: [{id, name, country}]}
  */
 ini_set('display_errors', '0');
 require __DIR__ . '/_fabevent.php';
@@ -22,6 +23,27 @@ if (isset($_GET['spec']) || isset($_GET['img'])) {
     if ($q === '') fe_json(400, ['error' => 'q', 'detail' => 'Indique la marque et le modèle.']);
     @set_time_limit(40);
     fe_json(200, ['ok' => true] + fe_specs($q));
+}
+
+if (isset($_GET['peppol'])) {
+    $q = trim(mb_substr((string)$_GET['peppol'], 0, 120));
+    if ($q === '') fe_json(400, ['error' => 'q', 'detail' => 'Indique le nom ou le n° d\'entreprise.']);
+    $ch = curl_init('https://directory.peppol.eu/search/1.0/json?rpc=20&q=' . rawurlencode($q));
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 15, CURLOPT_CONNECTTIMEOUT => 6,
+        CURLOPT_HTTPHEADER => ['Accept: application/json'], CURLOPT_USERAGENT => 'FabEvent']);
+    $raw = curl_exec($ch);
+    $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    $j = is_string($raw) ? json_decode($raw, true) : null;
+    if ($code !== 200 || !is_array($j)) fe_json(502, ['error' => 'peppol', 'detail' => 'Annuaire Peppol indisponible pour l\'instant.']);
+    $out = [];
+    foreach ((array)($j['matches'] ?? []) as $m) {
+        $id = preg_replace('/^iso6523-actorid-upis::/', '', (string)($m['participantID']['value'] ?? ''));
+        $ent = (array)(($m['entities'] ?? [])[0] ?? []);
+        $name = (string)((($ent['name'] ?? [])[0]['name']) ?? '');
+        if ($id !== '') $out[] = ['id' => $id, 'name' => $name, 'country' => (string)($ent['countryCode'] ?? '')];
+    }
+    fe_json(200, ['ok' => true, 'results' => array_slice($out, 0, 20)]);
 }
 
 $vat = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', (string)($_GET['vat'] ?? '')));

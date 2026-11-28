@@ -1,9 +1,10 @@
+import { addToPurchaseOrder } from '../PurchaseOrders';
 import { useState } from 'react';
 import { DOC_CSS } from '../../components/DocRender';
 import { Empty, NumInput } from '../../components/ui';
 import { db } from '../../db';
 import type { ProjectCost } from '../../types';
-import { escHtml as esc, fmtDate, money, round2, save } from '../../utils';
+import { escHtml as esc, fmtDate, money, round2, save, uid } from '../../utils';
 import { printHtml, type ProjectData } from './shared';
 import { Icon } from '../../components/Icon';
 
@@ -75,7 +76,11 @@ export default function CostsTab({ d }: { d: ProjectData }) {
                     {c.vatIncl && <div className="muted" style={{ fontSize: 11 }}>{money(c.price || 0)} HT</div>}</>}</td>
                   <td className="n">{c.billable ? money((c.qty || 1) * (c.price || 0)) : '—'}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
-                    <button className="secondary small" onClick={() => purchaseOrder(c)}>Bon de commande</button>
+                    <button className="secondary small" onClick={() => purchaseOrder(c)}>Bon de commande</button>{' '}
+                    <button className="secondary small" title="Ajouter ce coût au bon de commande du fournisseur (suivi et approbation dans Bons de commande)" onClick={async () => {
+                      const po = await addToPurchaseOrder({ supplierId: c.supplierId, supplierName: supplierOf(c) || undefined, projectId: c.projectId, lines: [{ id: uid(), text: c.label, qty: c.qty || 1, unitPrice: round2(c.amount / (c.qty || 1)), costId: c.id }] });
+                      alert(`Ajouté au bon de commande ${po.number} (menu Bons de commande).`);
+                    }}>Ajouter au bon</button>
                     <button className="ghost" onClick={() => db.costs.delete(c.id)} aria-label="Retirer"><Icon name="x" /></button>
                   </td>
                 </tr>

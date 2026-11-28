@@ -21,7 +21,7 @@ export const RENTMAN_LABELS: Record<Label, string> = {
   categories: 'catégories', contacts: 'contacts (clients, lieux, fournisseurs)', equipment: 'articles', units: 'unités numérotées', people: 'personnes (équipe)',
   vehicles: 'véhicules', projects: 'projets', subprojects: 'sous-projets', lines: 'lignes de matériel', crew: 'postes', vehicleAssignments: 'véhicules des projets',
   costs: 'coûts supplémentaires', subrentals: 'sous-locations', repairs: 'réparations', unavailability: 'indisponibilités', appointments: 'rendez-vous',
-  docs: 'devis et factures', settings: 'types de projet et dépôts', files: 'fichiers', photos: 'photos du matériel',
+  docs: 'devis et factures', settings: 'types de projet, dépôts, grilles de coefficients et comptes', files: 'fichiers', photos: 'photos du matériel',
 };
 
 interface RentmanFileItem { id: string; name: string; type: string; size: number; base64: string; createdAt?: string; projectId?: string; personId?: string; photoOf?: string }
@@ -37,7 +37,7 @@ export interface RentmanFile {
   parts?: number;
   report?: { counts?: Record<string, number>; warnings?: string[]; skipped?: string[] };
   data: Partial<Record<Table, { id: string }[]>> & {
-    settings?: { projectTypes?: Settings['projectTypes']; depots?: Settings['depots'] }[];
+    settings?: { projectTypes?: Settings['projectTypes']; depots?: Settings['depots']; factorGroups?: Settings['factorGroups']; ledgers?: Settings['ledgers'] }[];
     files?: RentmanFileItem[];
   };
 }
@@ -125,10 +125,13 @@ export async function importRentman(file: RentmanFile, opts: { update: boolean }
     if (patch) {
       const s = await getSettings();
       const types = [...(s.projectTypes || [])], depots = [...(s.depots || [])];
+      const groups = [...(s.factorGroups || [])], ledgers = [...(s.ledgers || [])];
       let added = 0, kept = 0;
+      for (const g of patch.factorGroups || []) { if (groups.some((x) => x.id === g.id)) kept++; else { groups.push(g); added++; } }
+      for (const l of patch.ledgers || []) { if (ledgers.some((x) => x.id === l.id || x.code === l.code)) kept++; else { ledgers.push(l); added++; } }
       for (const t of patch.projectTypes || []) { if (types.some((x) => x.name.toLowerCase() === t.name.toLowerCase())) kept++; else { types.push(t); added++; } }
       for (const d of patch.depots || []) { if (depots.some((x) => x.id === d.id || x.name.toLowerCase() === d.name.toLowerCase())) kept++; else { depots.push(d); added++; } }
-      if (added) await db.settings.put({ ...s, projectTypes: types, depots });
+      if (added) await db.settings.put({ ...s, projectTypes: types, depots, factorGroups: groups.length ? groups : undefined, ledgers: ledgers.length ? ledgers : undefined });
       out.push({ table: 'settings', added, updated: 0, kept });
     }
 
