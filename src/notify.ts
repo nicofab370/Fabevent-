@@ -70,6 +70,8 @@ export async function checkNotifications(now = new Date()) {
   running = true;
   try {
     const today = day(now);
+    const { applyPlannedStock } = await import('./components/ConsumableStock');
+    await applyPlannedStock(today);
     const docs = await db.docs.toArray();
     for (const d of docs) {
       await docEvents(d);

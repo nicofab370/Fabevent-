@@ -921,6 +921,11 @@ export interface SnapshotLine {
   contents?: string;
   /** ligne enfant d'un kit : affichée en retrait, prix inclus dans le kit */
   kid?: boolean;
+  /** code du compte comptable de la ligne (export comptable) */
+  ledger?: string;
+  /** pays d'origine et poids unitaire (liste du carnet ATA) */
+  origin?: string;
+  weight?: number;
 }
 
 export interface SnapshotSub {

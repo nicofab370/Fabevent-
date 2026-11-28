@@ -48,6 +48,30 @@ export default function Accounting() {
     download(`journal-ventes_${from}_${to}.csv`, csv, 'text/csv;charset=utf-8');
   };
 
+  /** Ventilation HT par compte comptable : matériel selon le compte de chaque ligne, le reste selon les comptes par défaut. */
+  const exportLedgers = async () => {
+    const st = await db.settings.get('main');
+    const code = (k: 'personnel' | 'transport' | 'frais' | 'assurance') => { const id = st?.ledgerDefaults?.[k]; return (id && st?.ledgers?.find((x) => x.id === id)?.code) || k; };
+    const head = ['Date', 'Type', 'N° pièce', 'Client', 'Compte', 'Montant HT'];
+    const rows: unknown[][] = [];
+    for (const d of list) {
+      const s = d.snapshot;
+      const raw = new Map<string, number>();
+      const add = (k: string, v: number) => raw.set(k, (raw.get(k) || 0) + v);
+      for (const sp of s.subprojects) {
+        for (const l of sp.equipment) if (!l.optional && !l.kid) add(l.ledger || 'materiel', l.total);
+        for (const c of sp.crew) if (c.billable) add(code('personnel'), c.total);
+        for (const v of sp.vehicles) if (v.billable) add(code('transport'), v.price);
+      }
+      const sum = [...raw.values()].reduce((a, x) => a + x, 0);
+      const k = sum ? s.totalHT / sum : 0;
+      if (!raw.size || !sum) raw.set(code('frais'), s.totalHT);
+      for (const [acc, v] of raw) rows.push([fmtDate(s.issuedAt, false), DOC_LABELS[d.type], d.number, s.client?.company || '', acc, num(sum ? v * k : v)]);
+    }
+    const csv = '\ufeff' + [head, ...rows].map((r) => r.map(cell).join(';')).join('\r\n');
+    download(`ventilation-comptes_${from}_${to}.csv`, csv, 'text/csv;charset=utf-8');
+  };
+
   if (printAll) {
     return (
       <>
@@ -71,6 +95,7 @@ export default function Accounting() {
         <input type="month" value={to} onChange={(e) => setTo(e.target.value)} style={{ width: 'auto' }} />
         <button onClick={() => setPrintAll(true)} disabled={!list.length}>Toutes les factures en PDF</button>
         <button className="secondary" onClick={exportCsv} disabled={!list.length}>Journal des ventes (CSV)</button>
+        <button className="secondary" onClick={exportLedgers} disabled={!list.length} title="Montants HT par compte du grand livre (Paramètres → Comptes comptables)">Ventilation par compte (CSV)</button>
       </PageHead>
       <div className="info">
         Pour ton comptable (Billy.tech) : « Toutes les factures en PDF » regroupe factures, acomptes et avoirs de la période

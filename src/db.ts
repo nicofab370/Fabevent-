@@ -226,6 +226,21 @@ export async function nextNumber(kind: 'P' | 'D' | 'F' | 'AV' | 'BS' | 'FR' | 'S
   });
 }
 
+/** Numéro suivant d'une série nommée (Paramètres → Séries de numéros) : préfixe + compteur propre. */
+export async function nextSeriesNumber(seriesId: string): Promise<string | null> {
+  const sr = (await getSettings()).numberSeries?.find((x) => x.id === seriesId);
+  if (!sr) return null;
+  const key = `S-${sr.id}`;
+  const local = Math.max(((await getSettings()).counters[key] || 0) + 1, sr.next || 1);
+  const remote = numberProvider && !Dexie.currentTransaction ? await numberProvider(key, local) : null;
+  return db.transaction('rw', db.settings, async () => {
+    const s = await getSettings();
+    const n = Math.max(remote ?? 0, (s.counters[key] || 0) + 1, sr.next || 1);
+    await db.settings.put({ ...s, counters: { ...s.counters, [key]: n } });
+    return `${sr.prefix}${String(n).padStart(3, '0')}`;
+  });
+}
+
 let numberProvider: ((key: string, localNext: number) => Promise<number | null>) | null = null;
 /** Branche la numérotation sur le serveur de synchronisation. */
 export function setNumberProvider(f: typeof numberProvider) { numberProvider = f; }

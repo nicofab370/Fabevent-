@@ -5,7 +5,8 @@ import { useAlerts } from './alerts';
 import { hasUsers, logout, useUser } from './auth';
 import { Login } from './components/Login';
 import { GlobalSearch } from './components/GlobalSearch';
-import { pathAllowed, ROLE_DEFAULT } from './roles';
+import { pathAllowed, roleHome, setCustomRoles } from './roles';
+import { useSettings } from './components/ui';
 import { ROLE_LABELS } from './types';
 import { currentWorkspace, db } from './db';
 import { patch, save } from './utils';
@@ -87,6 +88,8 @@ export default function App() {
     ? !me || !me.id || sync.status === 'auth'
     : (anyUsers && !me) || loginRequested());
   const role = me?.role;
+  const appSettings = useSettings();
+  setCustomRoles(appSettings.customRoles, me);
   /** badge d'alerte par entrée du menu */
   const badge: Record<string, [number, string]> = {
     '/penuries': [alerts.penuries, 'manques réels de matériel à venir'],
@@ -153,7 +156,7 @@ export default function App() {
       </div>
       <main className="main">
         <OpenTabs />
-        {role && role !== 'admin' && !pathAllowed(loc.pathname, role) ? <Navigate to={ROLE_DEFAULT[role]} replace /> : null}
+        {role && role !== 'admin' && !pathAllowed(loc.pathname, role) ? <Navigate to={roleHome(role)} replace /> : null}
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/projets" element={<Projects />} />

@@ -235,7 +235,8 @@ function financeOf(d: ProjectData, subId: string) {
     const sp = active.get(l.subprojectId);
     if (!sp || l.optional) continue;
     const per = isPerPiece(l, d.eqMap), days = lineDays(l, sp);
-    const t = lineTotal(l, days, d.settings, per), brut = lineTotal({ ...l, discount: 0 }, days, d.settings, per);
+    const fg = l.equipmentId ? d.eqMap.get(l.equipmentId)?.factorGroupId : undefined;
+    const t = lineTotal(l, days, d.settings, per, fg), brut = lineTotal({ ...l, discount: 0 }, days, d.settings, per, fg);
     if (per) { eq.vente += t; eq.venteBrut += brut; eq.venteCost += l.qty * (d.eqMap.get(l.equipmentId!)?.costPrice || 0); }
     else { eq.loc += t; eq.locBrut += brut; }
   }

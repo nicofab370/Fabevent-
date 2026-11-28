@@ -198,6 +198,11 @@ function RoomCrew({ d, sp, pMap, mode, ctx, actionsFor }: { d: ProjectData; sp: 
   const plannedClient = crew.reduce((a, c) => a + (c.billable ? crewAmount(c, d.settings, d.project.travelMinutes, 0).billed : 0), 0);
   const presets = d.settings.crewPresets || [];
   const [presetId, setPresetId] = useState('');
+  /** liste préétablie : sur chaque créneau du même type (J1, J2…), pas seulement le premier */
+  const [presetAll, setPresetAll] = useState(false);
+  /** poste à dupliquer sur plusieurs créneaux */
+  const [dupFor, setDupFor] = useState<CrewAssignment | null>(null);
+  const [dupSel, setDupSel] = useState<string[]>([]);
   const vas = d.projectVas.filter((v) => v.subprojectId === sp.id);
   const subMap = new Map(d.av.subs.map((s) => [s.id, s]));
   const updCrew = (c: CrewAssignment, changes: Partial<CrewAssignment>) => patch(db.crew, c.id, changes);
@@ -225,6 +230,24 @@ function RoomCrew({ d, sp, pMap, mode, ctx, actionsFor }: { d: ProjectData; sp: 
 
   return (
     <div className="sub">
+      {dupFor && (
+        <Modal title={`Copier « ${dupFor.function} » sur plusieurs créneaux`} onClose={() => setDupFor(null)}>
+          <p className="muted">Le poste est recopié sur chaque créneau coché, avec les horaires de ce créneau (sans technicien).</p>
+          {periods.map((pe) => (
+            <label key={pe.id} className="check-row" style={{ display: 'flex' }}>
+              <input type="checkbox" disabled={pe.id === dupFor.periodId} checked={dupSel.includes(pe.id)} onChange={(e) => setDupSel(e.target.checked ? [...dupSel, pe.id] : dupSel.filter((x) => x !== pe.id))} />
+              {pe.name} <span className="muted">{fmtRange(pe.start, pe.end)}{pe.id === dupFor.periodId ? ' (créneau actuel)' : ''}</span>
+            </label>
+          ))}
+          <div className="toolbar" style={{ marginTop: 10 }}>
+            <button className="secondary small" onClick={() => setDupSel(periods.filter((x) => x.id !== dupFor.periodId).map((x) => x.id))}>Tout cocher</button>
+            <button disabled={!dupSel.length} onClick={async () => {
+              for (const id of dupSel) await save(db.crew, { ...dupFor, id: '', createdAt: '', personId: undefined, cost: undefined, sent: undefined, ...slot(id) });
+              setDupFor(null);
+            }}>Copier sur {dupSel.length} créneau(x)</button>
+          </div>
+        </Modal>
+      )}
       <div className="sub-head">
         <h3>{sp.name} <StatusBadge status={sp.status} />{openHere.length > 0 && <span className="open-badge"><Icon name="warning" />{openHere.length} poste(s) sans technicien</span>}</h3>
         <span className="muted">{fmtRange(bStart, bEnd)}</span>
@@ -268,6 +291,7 @@ function RoomCrew({ d, sp, pMap, mode, ctx, actionsFor }: { d: ProjectData; sp: 
                       <td>{person ? <span>{person.name}{c.final === false && <span className="badge st-option" style={{ marginLeft: 4 }}>provisoire</span>}</span> : <span className="open-flag"><Icon name="warning" />À pourvoir</span>}</td>
                       <td className="nowrap">
                         <button className="ghost small" title="Dupliquer le poste" aria-label="Dupliquer le poste" onClick={() => save(db.crew, { ...c, id: '', createdAt: '', personId: undefined, cost: undefined })}><Icon name="copy" /></button>
+                        {periods.length > 1 && <button className="ghost small" title="Copier ce poste sur plusieurs créneaux (jours)" aria-label="Copier sur plusieurs créneaux" onClick={() => { setDupFor(c); setDupSel([]); }}><Icon name="calendar" /></button>}
                         <button className="ghost" onClick={() => db.crew.delete(c.id)} aria-label="Retirer"><Icon name="x" /></button>
                       </td>
                     </tr>
@@ -345,13 +369,15 @@ function RoomCrew({ d, sp, pMap, mode, ctx, actionsFor }: { d: ProjectData; sp: 
               if (!pr) return;
               for (const it of pr.posts) {
                 // créneau : le premier du même type (montage, prestation…), sinon tout le sous-projet
-                const pe = it.periodKind ? periods.find((x) => x.kind === it.periodKind) : undefined;
-                for (let i = 0; i < Math.max(1, it.qty); i++) {
+                const same = it.periodKind ? periods.filter((x) => x.kind === it.periodKind) : [];
+                const targets = presetAll && same.length ? same : [same[0]];
+                for (const pe of targets) for (let i = 0; i < Math.max(1, it.qty); i++) {
                   await save(db.crew, { projectId: sp.projectId, subprojectId: sp.id, function: it.function, ...slot(pe?.id), rate: it.rate, rateUnit: it.rateUnit, billable: true, final: !!d.settings.crewFinalByDefault });
                 }
               }
               setPresetId('');
             }}><Icon name="plus" />Ajouter cette liste</button>
+            {periods.length > 1 && <label className="check-row" title="Par ex. les postes « prestation » sont créés pour chaque jour de prestation"><input type="checkbox" checked={presetAll} onChange={(e) => setPresetAll(e.target.checked)} /> sur chaque créneau du même type</label>}
             {crew.length > 0 && <button type="button" className="ghost small" onClick={async () => {
               const name = prompt('Nom de la liste de postes (ex. Équipe son conférence) :', sp.name)?.trim();
               if (!name) return;

@@ -62,15 +62,17 @@ export function daysBetween(start: string, end: string): number {
   return Math.max(1, Math.round((e.getTime() - s.getTime()) / 86400000) + 1);
 }
 
-/** Coefficient de location selon la durée. */
-export function factorFor(days: number, s: Settings): number {
-  const f = s.factors.length ? s.factors : [1];
+/** Coefficient de location selon la durée (grille de l'article si elle existe, sinon la grille par défaut). */
+export function factorFor(days: number, s: Settings, groupId?: string): number {
+  const g = groupId ? s.factorGroups?.find((x) => x.id === groupId) : undefined;
+  const f = (g ? g.factors : s.factors).length ? (g ? g.factors : s.factors) : [1];
+  const extra = g ? g.extraPerDay : s.factorExtraPerDay;
   if (days <= f.length) return f[days - 1];
-  return f[f.length - 1] + (days - f.length) * s.factorExtraPerDay;
+  return f[f.length - 1] + (days - f.length) * extra;
 }
 
-export function lineTotal(l: Pick<EquipmentLine, 'qty' | 'unitPrice' | 'discount' | 'factor'>, days: number, s: Settings, perPiece = false) {
-  const factor = perPiece ? 1 : l.factor ?? factorFor(days, s);
+export function lineTotal(l: Pick<EquipmentLine, 'qty' | 'unitPrice' | 'discount' | 'factor'>, days: number, s: Settings, perPiece = false, factorGroupId?: string) {
+  const factor = perPiece ? 1 : l.factor ?? factorFor(days, s, factorGroupId);
   return round2(l.qty * l.unitPrice * factor * (1 - (l.discount || 0) / 100));
 }
 

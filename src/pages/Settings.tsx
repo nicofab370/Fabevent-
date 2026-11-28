@@ -1,3 +1,4 @@
+import { MoreSettings } from './SettingsMore';
 import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Field, Modal, NumInput, PageHead, useSettings } from '../components/ui';
@@ -281,6 +282,7 @@ export default function SettingsPage() {
             <input value={s.appUrl} placeholder={location.origin + location.pathname} onChange={(e) => setS({ ...s, appUrl: e.target.value })} />
           </Field>
         </div>
+        <MoreSettings s={s} setS={setS} />
         <div className="form-actions" style={{ display: 'flex', marginTop: 12 }}>
           {msg && <span className="avail ok" style={{ alignSelf: 'center' }}>{msg}</span>}
           <button type="submit">Enregistrer</button>
@@ -402,6 +404,7 @@ export default function SettingsPage() {
 function UsersCard() {
   const me = useUser();
   const users = useLiveQuery(() => db.users.toArray(), []) || [];
+  const s = useSettings();
   const people = useLiveQuery(() => db.people.toArray().then((ps) => ps.filter((p) => !p.pending)), []) || [];
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -435,7 +438,14 @@ function UsersCard() {
           {users.map((u) => (
             <tr key={u.id}>
               <td><strong>{u.name}</strong>{u.id === me?.id && <span className="muted"> (toi)</span>}<div className="muted">{u.email}</div></td>
-              <td>{ROLE_LABELS[u.role].split(' (')[0]}{u.role === 'subcontractor' && u.personId && <div className="muted">{pMap.get(u.personId)?.name}</div>}{!u.active && <span className="badge st-annule" style={{ marginLeft: 6 }}>désactivé</span>}</td>
+              <td>{ROLE_LABELS[u.role].split(' (')[0]}{u.role === 'subcontractor' && u.personId && <div className="muted">{pMap.get(u.personId)?.name}</div>}{!u.active && <span className="badge st-annule" style={{ marginLeft: 6 }}>désactivé</span>}
+                {(s.customRoles || []).length > 0 && u.role !== 'admin' && (
+                  <div><select value={u.customRoleId || ''} aria-label={`Rôle personnalisé de ${u.name}`} style={{ width: 'auto', fontSize: 12 }}
+                    onChange={(e) => db.users.update(u.id, { customRoleId: e.target.value || undefined, updatedAt: new Date().toISOString() })}>
+                    <option value="">Rôle standard</option>
+                    {s.customRoles!.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                  </select></div>
+                )}</td>
               <td style={{ whiteSpace: 'nowrap' }}>
                 <button className="secondary small" onClick={() => setMfa({ user: u, secret: u.totpSecret || '', code: '', err: '' })} title="Double authentification (TOTP)">{u.totpOn ? 'MFA…' : 'Activer MFA'}</button>{' '}
                 {u.id !== me?.id && (

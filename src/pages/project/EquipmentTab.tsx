@@ -137,7 +137,7 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
   const weight = lines.reduce((a, l) => a + (l.equipmentId && !l.optional ? (eqMap.get(l.equipmentId)?.weight || 0) * l.qty : 0), 0);
   // volume (m³) des articles dont les dimensions sont connues
   const volume = lines.reduce((a, l) => { const d = l.equipmentId && !l.optional ? eqMap.get(l.equipmentId)?.dims : undefined; return a + (d ? (d.l * d.w * d.h) / 1e6 * l.qty : 0); }, 0);
-  const total = round2(lines.filter((l) => !l.optional).reduce((a, l) => a + lineTotal(l, lineDays(l, sp), settings, isPerPiece(l, eqMap)), 0));
+  const total = round2(lines.filter((l) => !l.optional).reduce((a, l) => a + lineTotal(l, lineDays(l, sp), settings, isPerPiece(l, eqMap), l.equipmentId ? eqMap.get(l.equipmentId)?.factorGroupId : undefined), 0));
 
   const updLine = async (l: EquipmentLine, changes: Partial<EquipmentLine>) => {
     await patch(db.lines, l.id, changes);
@@ -268,7 +268,7 @@ function RoomEquipment({ d, sp, onDrop, target, setTarget }: { d: ProjectData; s
                             })()}</td>
                             <td className="hide-sm"><NumInput className="w-price" value={l.unitPrice} onChange={(n) => updLine(l, { unitPrice: n })} aria-label="Prix unitaire" /></td>
                             <td className="hide-sm"><NumInput className="w-qty" value={l.discount} onChange={(n) => updLine(l, { discount: n })} aria-label="Remise" /></td>
-                            {(() => { const total = lineTotal(l, lineDays(l, sp), settings, perPiece); return <td className={'n eq-total' + (!total && l.parentLineId ? ' zero' : '')}>{money(total)}</td>; })()}
+                            {(() => { const total = lineTotal(l, lineDays(l, sp), settings, perPiece, l.equipmentId ? eqMap.get(l.equipmentId)?.factorGroupId : undefined); return <td className={'n eq-total' + (!total && l.parentLineId ? ' zero' : '')}>{money(total)}</td>; })()}
                             <td className="nowrap">
                               <button className="ghost" onClick={() => setEditLine(l)} title="Prix, option, groupe, horaire propre et remarques" aria-label="Détails de la ligne"><Icon name="more" /></button>
                               <button className="ghost" onClick={() => removeLine(l)} aria-label="Retirer"><Icon name="x" /></button>

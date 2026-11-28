@@ -43,7 +43,7 @@ export default function Reports() {
     const days = lineDays(l, sp);
     const eq = equipment.find((e) => e.id === l.equipmentId);
     const cur = stats.get(l.equipmentId) || { revenue: 0, unitDays: 0 };
-    cur.revenue += lineTotal(l, days, settings, eq?.kind === 'vente');
+    cur.revenue += lineTotal(l, days, settings, eq?.kind === 'vente', eq?.factorGroupId);
     cur.unitDays += l.qty * days;
     stats.set(l.equipmentId, cur);
   }

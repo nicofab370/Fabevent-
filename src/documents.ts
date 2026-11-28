@@ -1,3 +1,4 @@
+import { nextSeriesNumber } from './db';
 import { db, DEFAULT_DOC_STYLE, getSettings, nextNumber } from './db';
 import { newToken } from './mailer';
 import type { Contact, Doc, DocSnapshot, DocType, Lang, ProjectStatus, Settings, SnapshotSub, VatRegime } from './types';
@@ -78,6 +79,7 @@ async function buildSnapshot(projectId: string, type: DocType, only?: { include?
   ]);
   const pMap = new Map(people.map((p) => [p.id, p]));
   const cMap = new Map(allContacts.map((c) => [c.id, c]));
+  const catMap = new Map((await db.categories.toArray()).map((c) => [c.id, c]));
   const vMap = new Map(vehicles.map((v) => [v.id, v]));
   const eMap = new Map(equipment.map((e) => [e.id, e]));
   const isQuote = type === 'devis';
@@ -107,9 +109,11 @@ async function buildSnapshot(projectId: string, type: DocType, only?: { include?
             qty: l.qty,
             unitPrice: l.unitPrice,
             days: perPiece ? 1 : days,
-            factor: perPiece ? 1 : l.factor ?? factorFor(days, s),
+            factor: perPiece ? 1 : l.factor ?? factorFor(days, s, e?.factorGroupId),
             discount: l.discount,
-            total: lineTotal(l, days, s, perPiece),
+            total: lineTotal(l, days, s, perPiece, e?.factorGroupId),
+            ledger: (() => { const id = e?.ledger || catMap.get(e?.categoryId || '')?.ledger || s.ledgerDefaults?.[perPiece ? 'vente' : 'location']; return id ? s.ledgers?.find((x) => x.id === id)?.code : undefined; })(),
+            origin: e?.originCountry, weight: e?.weight,
             vatRate: regime === 'normal' && e?.vatRate !== undefined ? e.vatRate : undefined,
             optionGroup: l.optional ? (l.optionGroup?.trim() || undefined) : undefined,
             optId: l.id,
@@ -148,7 +152,9 @@ async function buildSnapshot(projectId: string, type: DocType, only?: { include?
         cr.filter((c) => c.billable).reduce((a, c) => a + c.total, 0) +
         vh.filter((v) => v.billable).reduce((a, v) => a + v.price, 0),
       );
-      const periods = sp.periods?.length ? sortPeriods(sp.periods).map(({ name, kind, start, end }) => ({ name, kind, start, end })) : undefined;
+      // créneaux masqués sur les documents du client (devis, factures) ou sur les documents internes (bon de sortie, feuille de route)
+      const shown = (sp.periods || []).filter((p) => !(isPacking ? p.hideInternal : p.hideExternal));
+      const periods = shown.length ? sortPeriods(shown).map(({ name, kind, start, end }) => ({ name, kind, start, end })) : undefined;
       // salle installée dans un endroit du lieu : nom de l'endroit, et son adresse si elle diffère
       const spot = spotOf(venueC, sp.spotId);
       const address = spot && ownAddress(spot) ? placeAddress(venueC, spot) : undefined;
@@ -236,7 +242,13 @@ async function buildSnapshot(projectId: string, type: DocType, only?: { include?
     })(),
     notes: (() => { const n = (project.noteList || []).filter((x) => x.on.includes(type) && x.text.trim()).map(({ title, text }) => ({ title, text })); return n.length ? n : undefined; })(),
     deposit: project.deposit?.amount && project.deposit.status !== 'aucune' && (isQuote || type === 'facture' || type === 'bon_sortie') ? project.deposit : undefined,
-    terms: s.terms?.trim() && (isQuote || (s.termsOnInvoices && (type === 'facture' || type === 'acompte'))) ? s.terms : undefined,
+    terms: (() => {
+      // conditions générales + conditions supplémentaires du projet (ou de son type de projet), sur les devis
+      const extraId = project.extraTermsId || s.projectTypes?.find((t) => t.name === project.typeName)?.termsId;
+      const extra = isQuote && extraId ? s.extraTerms?.find((t) => t.id === extraId)?.text?.trim() : '';
+      const base = s.terms?.trim() && (isQuote || (s.termsOnInvoices && (type === 'facture' || type === 'acompte'))) ? s.terms : '';
+      return [base, extra].filter(Boolean).join('\n\n') || undefined;
+    })(),
     footer: s.footer,
     hidePrices: isPacking,
     free: project.free || undefined,
@@ -324,7 +336,12 @@ export async function createDocument(projectId: string, type: DocType, opts: Doc
     number = last.number;
     version = last.version + 1;
   } else {
-    number = await nextNumber(PREFIX[type]);
+    // série de numéros du type de projet (devis, factures), sinon la numérotation habituelle
+    const st0 = await getSettings();
+    const seriesId = st0.projectTypes?.find((t) => t.name === project?.typeName)?.seriesId;
+    const sr = seriesId ? st0.numberSeries?.find((x) => x.id === seriesId) : undefined;
+    const kind = type === 'devis' ? 'devis' : INVOICE_TYPES.includes(type) ? 'facture' : '';
+    number = (sr && kind && sr.types.includes(kind as 'devis' | 'facture') ? await nextSeriesNumber(sr.id) : null) || await nextNumber(PREFIX[type]);
   }
   // virement : communication structurée belge (ou numéro de facture)
   if ((type === 'facture' || type === 'acompte') && !snapshot.payment) {

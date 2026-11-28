@@ -95,7 +95,8 @@ export default function DocumentView() {
   const attachments = async (): Promise<Attachment[]> => {
     const list = [await makePdf()];
     // facture : le XML Peppol (UBL) est joint s'il est complet
-    if (isInvoice && !peppolProblems(doc).length) list.push({ name: `${doc.number}.xml`, type: 'application/xml', blob: new Blob([buildUbl(doc)], { type: 'application/xml' }) });
+    const st = await db.settings.get('main');
+    if (isInvoice && st?.attachUbl !== false && !peppolProblems(doc).length) list.push({ name: `${doc.number}.xml`, type: 'application/xml', blob: new Blob([buildUbl(doc)], { type: 'application/xml' }) });
     return list;
   };
   const mailDraft = () => ({

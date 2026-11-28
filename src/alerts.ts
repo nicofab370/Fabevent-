@@ -2,7 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useAvailability } from './data';
 import { db } from './db';
 import { useOverdue } from './pages/Overdue';
-import { upcomingShortages } from './pages/Shortages';
+import { upcomingShortages, useConsumablesToBuy } from './pages/Shortages';
 import { RESERVING } from './types';
 import { inspectionsDue, toLocalInput } from './utils';
 
@@ -20,7 +20,8 @@ export function useAlerts(): Alerts {
   const inspections = useLiveQuery(() => db.inspections.toArray(), []) || [];
   const now = toLocalInput(new Date());
   const in30 = toLocalInput(new Date(Date.now() + 30 * 86400000)).slice(0, 10);
-  const penuries = upcomingShortages(av.conflicts(), now).filter((c) => c.level === 'ferme' && !projects.find((p) => p.id === c.projectId)?.isTemplate).length;
+  const toBuy = useConsumablesToBuy().length;
+  const penuries = toBuy + upcomingShortages(av.conflicts(), now).filter((c) => c.level === 'ferme' && !projects.find((p) => p.id === c.projectId)?.isTemplate).length;
   const enRetard = useOverdue().length;
   const subOk = new Set(av.subs.filter((s) => RESERVING.includes(s.status)).map((s) => s.id));
   const postes = crew.filter((c) => !c.personId && subOk.has(c.subprojectId)).length;

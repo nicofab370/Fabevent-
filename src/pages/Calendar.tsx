@@ -1,4 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks';
+import { importantOn } from '../importantDays';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Field, Modal, NumInput, PageHead, useSettings } from '../components/ui';
@@ -74,8 +75,10 @@ export default function Calendar() {
         {days.map((d) => {
           const key = ymd(d);
           const evs = events.filter((ev) => ev.start.slice(0, 10) <= key && ev.end.slice(0, 10) >= key);
+          const imp = importantOn(key, settings.importantDays);
           return (
-            <div key={key} className={'day' + (d.getMonth() !== cursor.getMonth() ? ' out' : '') + (key === today ? ' today' : '')}>
+            <div key={key} className={'day' + (d.getMonth() !== cursor.getMonth() ? ' out' : '') + (key === today ? ' today' : '') + (imp.length ? ' important' : '')}>
+              {imp.length > 0 && <span className="imp-day" title={imp.map((x) => x.name).join(', ')}><Icon name="umbrella" size={12} />{imp.map((x) => x.name).join(', ')}</span>}
               <span className="num" role="button" tabIndex={0} title="Ajouter un rendez-vous ou un projet ce jour" style={{ cursor: 'pointer' }}
                 onClick={() => setDayMenu(dayMenu === key ? '' : key)}
                 onKeyDown={(e) => { if (e.key === 'Enter') setDayMenu(dayMenu === key ? '' : key); }}>{d.getDate()}</span>
