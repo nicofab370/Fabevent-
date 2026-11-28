@@ -8,6 +8,10 @@ name: Export Rentman pour FabEvent
 on:
   workflow_dispatch:
     inputs:
+      inventaire:
+        description: "Seulement l'inventaire des champs utilisés (noms et nombres, aucune donnée) au lieu de l'export"
+        type: boolean
+        default: false
       fichiers:
         description: "Télécharger aussi les fichiers (documents des projets et de l'équipe, photos du matériel)"
         type: boolean
@@ -28,13 +32,26 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Inventaire des fonctions utilisées
+        if: ${{ inputs.inventaire }}
+        env:
+          RENTMAN_TOKEN: ${{ secrets.RENTMAN_TOKEN }}
+        run: node tools/rentman-import/inventory.mjs rentman-inventaire.txt
+      - uses: actions/upload-artifact@v4
+        if: ${{ inputs.inventaire }}
+        with:
+          name: rentman-inventaire
+          path: rentman-inventaire.txt
+          retention-days: 7
       - name: Export depuis Rentman
+        if: ${{ !inputs.inventaire }}
         env:
           RENTMAN_TOKEN: ${{ secrets.RENTMAN_TOKEN }}
           RENTMAN_FILES: ${{ inputs.fichiers && '1' || '0' }}
           RENTMAN_FILE_MAX_MB: ${{ inputs.taille_max_mo }}
         run: node tools/rentman-import/export.mjs fabevent-import-rentman.json
       - uses: actions/upload-artifact@v4
+        if: ${{ !inputs.inventaire }}
         with:
           name: fabevent-import-rentman
           path: fabevent-import-rentman*.json
