@@ -49,6 +49,14 @@ export default function FinanceTab({ d }: { d: ProjectData }) {
                 {Object.entries(DEPOSIT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </Field>
+            {(settings.extraTerms || []).length > 0 && (
+              <Field label="Conditions supplémentaires (devis)">
+                <select value={project.extraTermsId || ''} onChange={(e) => patch(db.projects, project.id, { extraTermsId: e.target.value || undefined })}>
+                  <option value="">{(() => { const id = settings.projectTypes?.find((t) => t.name === project.typeName)?.termsId; const t = settings.extraTerms!.find((x) => x.id === id); return t ? `Celles du type de projet (${t.name})` : 'Aucune'; })()}</option>
+                  {settings.extraTerms!.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </Field>
+            )}
             <Field label={`Assurance du matériel (% de la location${settings.insurancePct ? `, défaut ${settings.insurancePct} %` : ''})`}>
               <ActualInput value={project.insurancePct} placeholder={settings.insurancePct || 0} suffix=" %" onSave={(v) => patch(db.projects, project.id, { insurancePct: v })} />
             </Field>
@@ -79,7 +87,7 @@ export default function FinanceTab({ d }: { d: ProjectData }) {
         <h2>Devis, factures et documents</h2>
         <div className="toolbar">
           {d.subs.length > 1 && <button className="secondary" disabled={busy} onClick={() => setRoomInvoice(true)}>+ Facture d'un sous-projet</button>}
-          {(['devis', 'acompte', 'facture', 'bon_sortie', 'feuille_route'] as DocType[]).map((t) => (
+          {(['devis', 'contrat', 'acompte', 'facture', 'bon_sortie', 'feuille_route'] as DocType[]).map((t) => (
             <button key={t} disabled={busy} className={t === 'devis' ? '' : 'secondary'} onClick={() => generate(t)}>+ {DOC_LABELS[t]}</button>
           ))}
         </div>
@@ -91,7 +99,7 @@ export default function FinanceTab({ d }: { d: ProjectData }) {
           // le plus récent de chaque type ; les plus anciens sur demande
           const byType = new Map<DocType, typeof docs>();
           for (const x of [...docs].sort((a, b) => b.createdAt.localeCompare(a.createdAt))) byType.set(x.type, [...(byType.get(x.type) || []), x]);
-          const order: DocType[] = ['devis', 'acompte', 'facture', 'avoir', 'rappel', 'bon_sortie', 'feuille_route'];
+          const order: DocType[] = ['devis', 'contrat', 'acompte', 'facture', 'avoir', 'rappel', 'bon_sortie', 'feuille_route'];
           const types = [...byType.keys()].sort((a, b) => order.indexOf(a) - order.indexOf(b));
           const row = (x: (typeof docs)[number], older = false) => (
             <tr key={x.id} className={'click' + (older ? ' doc-older' : '')} onClick={() => nav('/documents/' + x.id)}>

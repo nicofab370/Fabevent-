@@ -138,7 +138,7 @@ export const quoteLink = (token: string) => { const u = serverScript('public.php
 /* ---------- modèles de mail ---------- */
 
 export const MAIL_KINDS: Record<MailKind, string> = {
-  devis: 'Devis', facture: 'Facture', acompte: 'Facture d\'acompte', avoir: 'Avoir', rappel: 'Rappel de paiement', bon_sortie: 'Bon de sortie',
+  contrat: 'Contrat de location', devis: 'Devis', facture: 'Facture', acompte: 'Facture d\'acompte', avoir: 'Avoir', rappel: 'Rappel de paiement', bon_sortie: 'Bon de sortie',
   feuille_route: 'Feuille de route', planning: 'Planning technicien', dispo: 'Demande de disponibilité', confirmation: 'Confirmation de poste',
   annulation: 'Annulation de poste', sous_location: 'Commande de sous-location', autre: 'Autre',
 };
@@ -152,6 +152,7 @@ export const MAIL_VARS: Record<string, string> = {
 
 const SIGN = '\n\nCordialement,\n{societe}';
 export const DEFAULT_TEMPLATES: Record<MailKind, Omit<MailTemplate, 'id' | 'kind'>> = {
+  contrat: { name: 'Contrat (standard)', subject: 'Contrat {numero} — {projet}', body: 'Bonjour {prenom},\n\nVeuillez trouver ci-joint le contrat de location {numero} pour « {projet} » ({dates}), à nous retourner signé.' + SIGN },
   devis: { name: 'Devis (standard)', subject: 'Devis {numero} — {projet}', body: 'Bonjour {prenom},\n\nVeuillez trouver ci-joint notre devis {numero} pour « {projet} » ({dates}).\nN\'hésitez pas à revenir vers nous pour toute question.' + SIGN },
   facture: { name: 'Facture (standard)', subject: 'Facture {numero} — {projet}', body: 'Bonjour {prenom},\n\nVeuillez trouver ci-joint notre facture {numero} pour « {projet} », d\'un montant de {montant}, payable pour le {echeance}.' + SIGN },
   acompte: { name: 'Acompte (standard)', subject: 'Facture d\'acompte {numero} — {projet}', body: 'Bonjour {prenom},\n\nVeuillez trouver ci-joint la facture d\'acompte {numero} pour « {projet} » ({montant}).' + SIGN },

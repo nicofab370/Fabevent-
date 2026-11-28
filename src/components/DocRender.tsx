@@ -112,7 +112,7 @@ export function buildDocHtml(doc: Doc, opts: { mark?: boolean } = {}): string {
   const depositsTTC = (s.deposits || []).reduce((a, d) => a + d.ttc, 0);
   const r = (el: ReactElement) => renderToStaticMarkup(el);
   const text = (v?: string) => (v ? `<div class="text">${fillTemplate(v, doc)}</div>` : '');
-  const intro = t?.intro || (s.reminder ? REMINDER_TEXTS[docLang(doc)][Math.min(3, s.reminder.level) as 1 | 2 | 3] : '');
+  const intro = doc.introText || t?.intro || (s.reminder ? REMINDER_TEXTS[docLang(doc)][Math.min(3, s.reminder.level) as 1 | 2 | 3] : '');
 
   const blocks: Record<string, string> = {
     'bloc.introduction': text(intro),
@@ -217,7 +217,7 @@ function Rooms({ doc, st }: { doc: Doc; st: DocStyle }) {
       {s.free && <p className="muted"><strong>Projet offert (gratuit)</strong> — aucun montant n'est facturé sur ce document.</p>}
       {s.partialInvoices?.map((p) => <p key={p.number} className="muted">{tr(doc, 'alreadyInvoiced')} {p.number} : {p.rooms.join(', ')} ({money(p.ht)} HT)</p>)}
       {orderedSubprojects(doc).map((sp, i) => {
-        const eqLines = sp.equipment.filter((l) => !(showPrices && st.hideZero && !l.total && !l.unitPrice));
+        const eqLines = sp.equipment.filter((l) => !(showPrices && st.hideZero && !l.total && !l.unitPrice) && !(doc.collapseKits && l.kid));
         const eqTotal = sp.equipment.filter((l) => !l.optional).reduce((a, l) => a + l.total, 0);
         return (
           <section key={i}>

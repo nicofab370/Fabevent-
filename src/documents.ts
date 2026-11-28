@@ -9,8 +9,8 @@ import { contentsText } from './codes';
 import { deptOf, ownAddress, placeAddress, placeName, projectPerson, spotOf } from './places';
 import { crewAmount, crewCostProfile, crewWindow, factorFor, lineDays, lineTotal, round2, save, sortPeriods } from './utils';
 
-const PREFIX: Record<DocType, 'D' | 'F' | 'AV' | 'BS' | 'FR' | 'RP'> = {
-  devis: 'D', facture: 'F', acompte: 'F', avoir: 'AV', rappel: 'RP', bon_sortie: 'BS', feuille_route: 'FR',
+const PREFIX: Record<DocType, 'D' | 'F' | 'AV' | 'BS' | 'FR' | 'RP' | 'CT'> = {
+  devis: 'D', facture: 'F', acompte: 'F', avoir: 'AV', rappel: 'RP', bon_sortie: 'BS', feuille_route: 'FR', contrat: 'CT',
 };
 
 /** Taux et mention selon le régime de TVA du projet (ou, à défaut, du client). */
@@ -245,8 +245,8 @@ async function buildSnapshot(projectId: string, type: DocType, only?: { include?
     terms: (() => {
       // conditions générales + conditions supplémentaires du projet (ou de son type de projet), sur les devis
       const extraId = project.extraTermsId || s.projectTypes?.find((t) => t.name === project.typeName)?.termsId;
-      const extra = isQuote && extraId ? s.extraTerms?.find((t) => t.id === extraId)?.text?.trim() : '';
-      const base = s.terms?.trim() && (isQuote || (s.termsOnInvoices && (type === 'facture' || type === 'acompte'))) ? s.terms : '';
+      const extra = (isQuote || type === 'contrat') && extraId ? s.extraTerms?.find((t) => t.id === extraId)?.text?.trim() : '';
+      const base = s.terms?.trim() && (isQuote || type === 'contrat' || (s.termsOnInvoices && (type === 'facture' || type === 'acompte'))) ? s.terms : '';
       return [base, extra].filter(Boolean).join('\n\n') || undefined;
     })(),
     footer: s.footer,
@@ -340,8 +340,8 @@ export async function createDocument(projectId: string, type: DocType, opts: Doc
     const st0 = await getSettings();
     const seriesId = st0.projectTypes?.find((t) => t.name === project?.typeName)?.seriesId;
     const sr = seriesId ? st0.numberSeries?.find((x) => x.id === seriesId) : undefined;
-    const kind = type === 'devis' ? 'devis' : INVOICE_TYPES.includes(type) ? 'facture' : '';
-    number = (sr && kind && sr.types.includes(kind as 'devis' | 'facture') ? await nextSeriesNumber(sr.id) : null) || await nextNumber(PREFIX[type]);
+    const kind = type === 'devis' ? 'devis' : type === 'contrat' ? 'contrat' : INVOICE_TYPES.includes(type) ? 'facture' : '';
+    number = (sr && kind && sr.types.includes(kind as 'devis' | 'facture' | 'contrat') ? await nextSeriesNumber(sr.id) : null) || await nextNumber(PREFIX[type]);
   }
   // virement : communication structurée belge (ou numéro de facture)
   if ((type === 'facture' || type === 'acompte') && !snapshot.payment) {

@@ -1043,3 +1043,6 @@ table.list tr.limiting td:first-child, table.list tr.kit-child.limiting td:nth-c
 .rev-bar small { font-size: 11px; color: var(--muted); margin-top: 2px; }
 .tabs.inline { display: inline-flex; margin-left: 8px; vertical-align: middle; }
 .tabs.inline button { font-size: 12px; padding: 2px 8px; }
+.col-chooser { position: fixed; z-index: 90; background: var(--panel, #fff); color: var(--text); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.18); padding: 10px 12px; display: grid; gap: 4px; max-height: 70vh; overflow: auto; min-width: 200px; }
+.col-chooser label { display: flex; gap: 6px; align-items: center; font-size: 14px; }
+.col-chooser button { margin-top: 6px; }

@@ -753,7 +753,7 @@ export interface CrewPreset {
   posts: { function: string; qty: number; rate: number; rateUnit?: 'jour' | 'heure'; periodKind?: PeriodKind }[];
 }
 
-export type MailKind = 'devis' | 'facture' | 'acompte' | 'avoir' | 'rappel' | 'bon_sortie' | 'feuille_route' | 'planning' | 'dispo' | 'confirmation' | 'annulation' | 'sous_location' | 'autre';
+export type MailKind = 'contrat' | 'devis' | 'facture' | 'acompte' | 'avoir' | 'rappel' | 'bon_sortie' | 'feuille_route' | 'planning' | 'dispo' | 'confirmation' | 'annulation' | 'sous_location' | 'autre';
 export interface MailTemplate {
   id: ID;
   kind: MailKind;
@@ -879,7 +879,7 @@ export interface VehicleAssignment extends Base {
   notes?: string;
 }
 
-export type DocType = 'devis' | 'facture' | 'acompte' | 'avoir' | 'rappel' | 'bon_sortie' | 'feuille_route';
+export type DocType = 'devis' | 'facture' | 'acompte' | 'avoir' | 'rappel' | 'bon_sortie' | 'feuille_route' | 'contrat';
 export const INVOICE_TYPES: DocType[] = ['facture', 'acompte', 'avoir'];
 export const DOC_LABELS: Record<DocType, string> = {
   devis: 'Devis',
@@ -889,6 +889,7 @@ export const DOC_LABELS: Record<DocType, string> = {
   rappel: 'Rappel de paiement',
   bon_sortie: 'Bon de sortie',
   feuille_route: 'Feuille de route',
+  contrat: 'Contrat de location',
 };
 export type DocStatus = 'brouillon' | 'envoye' | 'accepte' | 'refuse' | 'paye';
 export const DOC_STATUS_LABELS: Record<DocStatus, string> = {
@@ -1091,6 +1092,11 @@ export interface Doc extends Base {
   internalNotes?: string;
   /** paiements reçus (factures, acomptes) ; la facture passe « payée » quand le total est atteint */
   payments?: Payment[];
+  /** options du document : contenu des kits masqué, nom du fichier, sujet du mail, texte d'introduction propre */
+  collapseKits?: boolean;
+  fileName?: string;
+  mailSubject?: string;
+  introText?: string;
 }
 
 export interface Payment { id: ID; date: string; amount: number; method?: string; note?: string }

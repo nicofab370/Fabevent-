@@ -128,3 +128,36 @@ export function InternalNotes({ doc }: { doc: Doc }) {
     </div>
   );
 }
+
+/** Introduction rédigée à partir du projet : nom, dates, lieu, groupes de matériel et total (sans IA). */
+export function draftIntro(doc: Doc): string {
+  const s = doc.snapshot;
+  const groups = new Map<string, number>();
+  for (const sp of s.subprojects) for (const l of sp.equipment) if (!l.kid && !l.optional) groups.set(l.group || 'Matériel', (groups.get(l.group || 'Matériel') || 0) + 1);
+  const crew = s.subprojects.reduce((a, sp) => a + sp.crew.filter((c) => c.billable).length, 0);
+  const parts = [...groups].map(([g, n]) => `${g.toLowerCase()} (${n} poste${n > 1 ? 's' : ''})`);
+  if (crew) parts.push(`l'équipe technique (${crew} poste${crew > 1 ? 's' : ''})`);
+  const when = s.project.start ? ` du ${new Date(s.project.start).toLocaleDateString('fr-BE')}${s.project.end && s.project.end.slice(0, 10) !== s.project.start.slice(0, 10) ? ` au ${new Date(s.project.end).toLocaleDateString('fr-BE')}` : ''}` : '';
+  return `Suite à votre demande, nous avons le plaisir de vous adresser notre proposition pour « ${s.project.name} »${when}${s.project.venue ? ` à ${s.project.venue}` : ''}.`
+    + (parts.length ? `\n\nElle comprend ${parts.join(', ')}.` : '')
+    + `\n\nNous restons à votre disposition pour adapter cette offre à vos besoins.`;
+}
+
+export function DocOptions({ doc }: { doc: Doc }) {
+  const [intro, setIntro] = useState(doc.introText || '');
+  const hasKits = doc.snapshot.subprojects.some((sp) => sp.equipment.some((l) => l.kid));
+  return (
+    <div className="card no-print">
+      <h2>Options du document</h2>
+      {hasKits && <label className="check-row"><input type="checkbox" checked={!doc.collapseKits} onChange={(e) => save(db.docs, { ...doc, collapseKits: !e.target.checked || undefined })} /> Détailler le contenu des kits</label>}
+      <div className="form">
+        <Field label="Nom du fichier (PDF)"><input defaultValue={doc.fileName || ''} placeholder={`${doc.number}`} onBlur={(e) => e.target.value !== (doc.fileName || '') && save(db.docs, { ...doc, fileName: e.target.value.trim() || undefined })} /></Field>
+        <Field label="Sujet du mail"><input defaultValue={doc.mailSubject || ''} placeholder="sujet par défaut" onBlur={(e) => e.target.value !== (doc.mailSubject || '') && save(db.docs, { ...doc, mailSubject: e.target.value.trim() || undefined })} /></Field>
+        <Field label="Introduction (remplace celle du modèle)" full>
+          <textarea value={intro} onChange={(e) => setIntro(e.target.value)} onBlur={() => intro !== (doc.introText || '') && save(db.docs, { ...doc, introText: intro.trim() || undefined })} />
+        </Field>
+      </div>
+      <button className="secondary small" onClick={async () => { const t = draftIntro(doc); setIntro(t); await save(db.docs, { ...doc, introText: t }); }}>Rédiger l'introduction</button>
+    </div>
+  );
+}

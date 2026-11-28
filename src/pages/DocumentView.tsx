@@ -15,7 +15,7 @@ import { buildUbl, peppolProblems } from '../ubl';
 import { download, fmtDate, fmtRange, money, orderedSubprojects, parseNumber, save, subKey } from '../utils';
 import { newToken, quoteLink } from '../mailer';
 import { Icon } from '../components/Icon';
-import { InternalNotes, OnlineQuotePanel, PaymentsPanel, withEvent } from '../components/DocExtras';
+import { DocOptions, InternalNotes, OnlineQuotePanel, PaymentsPanel, withEvent } from '../components/DocExtras';
 import { fireWebhook } from '../webhooks';
 
 export default function DocumentView() {
@@ -90,7 +90,7 @@ export default function DocumentView() {
   };
   /** PDF du document tel qu'affiché (figé), pour l'email ou le téléchargement */
   const makePdf = async (): Promise<Attachment> => ({
-    name: `${safeFileName(title)}.pdf`, type: 'application/pdf', blob: await htmlToPdf(ref.current?.innerHTML || '', DOC_CSS),
+    name: `${safeFileName(doc.fileName || title)}.pdf`, type: 'application/pdf', blob: await htmlToPdf(ref.current?.innerHTML || '', DOC_CSS),
   });
   const attachments = async (): Promise<Attachment[]> => {
     const list = [await makePdf()];
@@ -102,7 +102,7 @@ export default function DocumentView() {
   const mailDraft = () => ({
     // feuille de route / bon de sortie : envoyés aux techniciens concernés, jamais au client
     to: (doc.type === 'feuille_route' || doc.type === 'bon_sortie') ? crewEmails.join(', ') : doc.snapshot.contactEmail || doc.snapshot.department?.email || doc.snapshot.client?.email || '',
-    subject: `${title} — ${doc.snapshot.project.name}`,
+    subject: doc.mailSubject || `${title} — ${doc.snapshot.project.name}`,
     body: `Bonjour${doc.contactPerson ? ' ' + doc.contactPerson.split(' ')[0] : ''},\n\nVeuillez trouver ci-joint notre ${DOC_LABELS[doc.type].toLowerCase()} ${doc.number} pour « ${doc.snapshot.project.name} ».\n\nCordialement,\n${doc.snapshot.company.name}`,
   });
 
@@ -191,6 +191,7 @@ export default function DocumentView() {
         <OnlineQuotePanel doc={doc} />
         <PaymentsPanel doc={doc} />
         <InternalNotes doc={doc} />
+        <DocOptions doc={doc} />
       </div>
       <div className="doc-wrap" ref={ref}><DocRender doc={doc} /></div>
       {mailing && (

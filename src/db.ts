@@ -211,7 +211,7 @@ export async function getSettings(): Promise<Settings> {
 }
 
 /** Numérotation : P-2026-001, D-2026-001, F-2026-001… */
-export async function nextNumber(kind: 'P' | 'D' | 'F' | 'AV' | 'BS' | 'FR' | 'SL' | 'TR' | 'RP'): Promise<string> {
+export async function nextNumber(kind: 'P' | 'D' | 'F' | 'AV' | 'BS' | 'FR' | 'SL' | 'TR' | 'RP' | 'CT'): Promise<string> {
   const year = new Date().getFullYear();
   const key = `${kind}-${year}`;
   const local = ((await getSettings()).counters[key] || 0) + 1;

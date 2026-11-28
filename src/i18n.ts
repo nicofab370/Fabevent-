@@ -57,9 +57,9 @@ export function tr(doc: Doc, key: TKey): string {
 }
 
 export const DOC_TITLES: Record<Lang, Record<DocType, string>> = {
-  fr: { devis: 'Devis', facture: 'Facture', acompte: "Facture d'acompte", avoir: 'Avoir', rappel: 'Rappel de paiement', bon_sortie: 'Bon de sortie', feuille_route: 'Feuille de route' },
-  nl: { devis: 'Offerte', facture: 'Factuur', acompte: 'Voorschotfactuur', avoir: 'Creditnota', rappel: 'Betalingsherinnering', bon_sortie: 'Uitgiftebon', feuille_route: 'Draaiboek' },
-  en: { devis: 'Quote', facture: 'Invoice', acompte: 'Deposit invoice', avoir: 'Credit note', rappel: 'Payment reminder', bon_sortie: 'Delivery note', feuille_route: 'Call sheet' },
+  fr: { devis: 'Devis', facture: 'Facture', acompte: "Facture d'acompte", avoir: 'Avoir', rappel: 'Rappel de paiement', bon_sortie: 'Bon de sortie', feuille_route: 'Feuille de route', contrat: 'Contrat de location' },
+  nl: { devis: 'Offerte', facture: 'Factuur', acompte: 'Voorschotfactuur', avoir: 'Creditnota', rappel: 'Betalingsherinnering', bon_sortie: 'Uitgiftebon', feuille_route: 'Draaiboek', contrat: 'Huurcontract' },
+  en: { devis: 'Quote', facture: 'Invoice', acompte: 'Deposit invoice', avoir: 'Credit note', rappel: 'Payment reminder', bon_sortie: 'Delivery note', feuille_route: 'Call sheet', contrat: 'Rental agreement' },
 };
 
 export const VAT_SHORT: Record<Lang, Record<VatRegime, string>> = {

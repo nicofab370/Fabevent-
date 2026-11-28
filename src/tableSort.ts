@@ -129,7 +129,7 @@ function onClick(e: MouseEvent) {
 function onOver(e: MouseEvent) {
   const th = (e.target as HTMLElement | null)?.closest?.('th') as HTMLTableCellElement | null;
   if (!th || th.dataset.sortable) return;
-  if (sortable(th)) { th.dataset.sortable = '1'; if (!th.title) th.title = 'Trier : A → Z, puis Z → A'; }
+  if (sortable(th)) { th.dataset.sortable = '1'; if (!th.title) th.title = 'Trier : A → Z, puis Z → A · clic droit : choisir les colonnes'; }
   else th.dataset.sortable = '0';
 }
 
