@@ -8,6 +8,7 @@ import { db } from '../db';
 import type { Contact, ContactPerson, ContactType, Department, DiscountPart, PostalAddress } from '../types';
 import { DISCOUNT_PARTS } from '../types';
 import { PeppolSearch } from '../components/PeppolSearch';
+import { MailHistory } from './EmailsPage';
 import { deptOf, withPersonIds } from '../places';
 import { CONTACT_TYPES, LANG_LABELS, VAT_REGIME_LABELS, type Lang, type VatRegime } from '../types';
 import { CsvButton, CustomFieldsEditor, exportCsv, TagInput, Tags } from '../components/extra';
@@ -147,6 +148,7 @@ export function ContactForm({ initial, onDone }: { initial?: Draft; onDone: (c?:
           <textarea value={c.autoProjectNote || ''} onChange={(e) => set('autoProjectNote', e.target.value)} placeholder="Ex. : badge d'accès à demander 10 jours avant, livraison par le quai B" />
         </Field>
       )}
+      {c.id && <div className="field full"><MailHistory contactId={c.id} email={c.email} /></div>}
       <div className="form-actions">
         <button type="button" className="secondary" onClick={() => onDone()}>Annuler</button>
         <button type="submit">Enregistrer</button>

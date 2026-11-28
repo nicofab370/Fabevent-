@@ -457,6 +457,8 @@ export interface Task {
   assignee?: string;
   priority?: 'basse' | 'normale' | 'haute';
   doneAt?: string;
+  /** échéance relative au projet : N jours avant (négatif) ou après le début / la fin ; suit les dates du projet */
+  rel?: { days: number; base: 'start' | 'end' };
 }
 
 /** Tâche hors projet (page Tâches). */

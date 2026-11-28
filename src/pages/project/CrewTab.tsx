@@ -161,7 +161,7 @@ export default function CrewTab({ d }: { d: ProjectData }) {
       {cd.dialogs}
       {sendAll && <SendPlanningAll people={assigned} withProv={withProv} items={toSend} mail={planningMail} ics={(p) => ({ name: icsName(p), text: icsText(p) })} onSent={markSent} onClose={() => setSendAll(false)} />}
       {mailPerson && (
-        <EmailModal initial={planningMail(mailPerson)} onClose={() => setMailPerson(null)} kind="planning" onSent={() => markSent(mailPerson)}
+        <EmailModal initial={planningMail(mailPerson)} onClose={() => setMailPerson(null)} kind="planning" meta={{ projectId: project.id, personId: mailPerson.id }} onSent={() => markSent(mailPerson)}
           vars={{ prenom: mailPerson.name.split(' ')[0], projet: project.name, lieu: project.venue, societe: settings.company.name, postes: (() => { const it = toSend(mailPerson); const w = it.some((i) => i.c.sent); return it.map((i) => lineOf(i, w)).join('\n'); })(), dates: fmtRange(project.start, project.end) }}
           prepare={async () => [{ name: icsName(mailPerson), type: 'text/calendar', blob: new Blob([icsText(mailPerson)], { type: 'text/calendar;charset=utf-8' }) }]} />
       )}
@@ -517,7 +517,7 @@ function SendPlanningAll({ people, withProv, items, mail, ics, onSent, onClose }
             try {
               const drafts = sel.map((p) => mail(p));
               const files = sel.map((p) => { const f = ics(p); return { name: f.name, type: 'text/calendar', blob: new Blob([f.text], { type: 'text/calendar;charset=utf-8' }) }; });
-              await sendMail({ to: drafts.map((b) => b.to).filter(Boolean).join(', '), subject: drafts[0].subject, body: drafts.map((b, i) => `— ${sel[i].name} —\n${b.body}`).join('\n\n'), replyTo: replyAddress(settings) }, files);
+              await sendMail({ to: drafts.map((b) => b.to).filter(Boolean).join(', '), subject: drafts[0].subject, body: drafts.map((b, i) => `— ${sel[i].name} —\n${b.body}`).join('\n\n'), replyTo: replyAddress(settings) }, files, { kind: 'planning' });
               for (const p of sel) { await onSent(p); setRes((r) => ({ ...r, [p.id]: 'Envoyé (mail commun)' })); }
             } catch (e) { for (const p of sel) setRes((r) => ({ ...r, [p.id]: (e as Error).message })); }
             setBusy(false);
@@ -526,7 +526,7 @@ function SendPlanningAll({ people, withProv, items, mail, ics, onSent, onClose }
           for (const p of sel) {
             try {
               const f = ics(p);
-              await sendMail({ ...mail(p), replyTo: replyAddress(settings) }, [{ name: f.name, type: 'text/calendar', blob: new Blob([f.text], { type: 'text/calendar;charset=utf-8' }) }]);
+              await sendMail({ ...mail(p), replyTo: replyAddress(settings) }, [{ name: f.name, type: 'text/calendar', blob: new Blob([f.text], { type: 'text/calendar;charset=utf-8' }) }], { kind: 'planning', personId: p.id });
               await onSent(p);
               setRes((r) => ({ ...r, [p.id]: 'Envoyé' }));
             } catch (e) { setRes((r) => ({ ...r, [p.id]: (e as Error).message })); }

@@ -1,3 +1,4 @@
+import { EquipmentExtras } from './EquipmentExtras';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { catalogChanges, resolveCatalogChanges } from '../../catalogChanges';
 import { useEffect, useState } from 'react';
@@ -56,6 +57,7 @@ export default function EquipmentTab({ d }: { d: ProjectData }) {
     <>
       <CatalogChangesBanner d={d} />
       <OptionalAccessories d={d} />
+      <EquipmentExtras d={d} />
       <div className="info" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         <span style={{ flex: 1, minWidth: 260 }}>
           Organise le matériel en <strong>groupes</strong> (par type : son, lumière… ; par emplacement : scène, bar… ; ou par jour).
@@ -443,11 +445,28 @@ export async function addEquipmentToSub(sp: Subproject, equipment: Equipment[], 
   const eqMap = new Map(equipment.map((e) => [e.id, e]));
   let order = existing.length;
   const t = nowIso();
-  for (const [eqId, n] of Object.entries(items)) {
+  let subGroups = [...(sp.groups || [])];
+  for (const [eqId, n0] of Object.entries(items)) {
+    let n = n0;
     if (!n) continue;
     const eq = eqMap.get(eqId);
     if (!eq) continue;
-    const same = existing.find((l) => l.equipmentId === eqId && !l.parentLineId && !l.optional && (l.groupId || undefined) === groupId);
+    // article de surface (écran LED, moquette…) : la quantité est la surface demandée (m²)
+    let surfaceRemark: string | undefined;
+    if (eq.isSurface && typeof window !== 'undefined') {
+      const a = window.prompt(`${eq.name} : dimensions en mètres (largeur × hauteur), ex. 6 x 3,5`, '');
+      const m = a?.replace(/,/g, '.').match(/([\d.]+)\s*[x×*]\s*([\d.]+)/i);
+      if (m) { const area = Math.round(parseFloat(m[1]) * parseFloat(m[2]) * 100) / 100; n = n * area; surfaceRemark = `${m[1]} × ${m[2]} m = ${area} m²`; }
+    }
+    // groupe par défaut de l'article (Son, Lumière…) : créé dans le sous-projet s'il n'existe pas
+    let gid = groupId;
+    if (!gid && eq.defaultGroup?.trim()) {
+      const name = eq.defaultGroup.trim();
+      let g = subGroups.find((x) => x.name.trim().toLowerCase() === name.toLowerCase());
+      if (!g) { g = { id: uid(), name, periodIds: [] }; subGroups = [...subGroups, g]; await patch(db.subprojects, sp.id, { groups: subGroups }); }
+      gid = g.id;
+    }
+    const same = eq.isSurface ? undefined : existing.find((l) => l.equipmentId === eqId && !l.parentLineId && !l.optional && (l.groupId || undefined) === gid);
     let lineId: string;
     let total: number;
     if (same) {
@@ -457,7 +476,7 @@ export async function addEquipmentToSub(sp: Subproject, equipment: Equipment[], 
     } else {
       total = n;
       lineId = uid();
-      await db.lines.put({ id: lineId, createdAt: t, updatedAt: t, projectId: sp.projectId, subprojectId: sp.id, groupId, equipmentId: eqId, name: eq.name, qty: n, unitPrice: eq.dailyPrice, catalogPrice: eq.dailyPrice, discount, order: order++ });
+      await db.lines.put({ id: lineId, createdAt: t, updatedAt: t, projectId: sp.projectId, subprojectId: sp.id, groupId: gid, equipmentId: eqId, name: eq.name, qty: n, unitPrice: eq.dailyPrice, catalogPrice: eq.dailyPrice, discount, order: order++, remark: surfaceRemark });
     }
     // contenu du kit (lignes enfants scannables une à une) + accessoires automatiques ; les facultatifs sont proposés après
     // kit fixe : son contenu n'est détaillé (pour le vérifier à la sortie et au retour) que si demandé sur le kit
@@ -470,7 +489,7 @@ export async function addEquipmentToSub(sp: Subproject, equipment: Equipment[], 
       if (!acc) continue;
       const child = existing.find((l) => l.parentLineId === lineId && l.equipmentId === a.equipmentId);
       if (child) await save(db.lines, { ...child, qty: a.qty * total });
-      else await db.lines.put({ id: uid(), createdAt: t, updatedAt: t, projectId: sp.projectId, subprojectId: sp.id, groupId, equipmentId: acc.id, name: acc.name, qty: a.qty * total, unitPrice: a.free ? 0 : acc.dailyPrice, catalogPrice: a.free ? undefined : acc.dailyPrice, discount: 0, order: order++, parentLineId: lineId, kitPart: a.part || undefined });
+      else await db.lines.put({ id: uid(), createdAt: t, updatedAt: t, projectId: sp.projectId, subprojectId: sp.id, groupId: gid, equipmentId: acc.id, name: acc.name, qty: a.qty * total, unitPrice: a.free ? 0 : acc.dailyPrice, catalogPrice: a.free ? undefined : acc.dailyPrice, discount: 0, order: order++, parentLineId: lineId, kitPart: a.part || undefined });
     }
   }
   if (asks.length) accessoryAsks.dispatchEvent(new CustomEvent<AccessoryAsk[]>('ask', { detail: asks }));
@@ -502,7 +521,7 @@ function EquipmentPicker({ sp, groupId, initialQ = '', depot, depots = [], disco
   for (const l of existing) if (l.equipmentId && !l.parentLineId) inProject.set(l.equipmentId, (inProject.get(l.equipmentId) || 0) + l.qty);
   const tags = Array.from(new Set(equipment.flatMap((e) => e.tags || []))).sort();
   const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  const base = equipment.filter((e) => !e.archived && !e.accessoryOnly && inDepot(e, where, depots, res) && words.every((w) => [e.name, e.brand, e.model, e.summary, e.code, e.barcode, ...(e.extraCodes || []), e.categoryId && catName.get(e.categoryId), ...(e.tags || [])].join(' ').toLowerCase().includes(w)));
+  const base = equipment.filter((e) => !e.archived && !e.accessoryOnly && !e.hideInPicker && inDepot(e, where, depots, res) && words.every((w) => [e.name, e.brand, e.model, e.summary, e.code, e.barcode, ...(e.extraCodes || []), e.categoryId && catName.get(e.categoryId), ...(e.tags || [])].join(' ').toLowerCase().includes(w)));
   const list = base
     .filter((e) => inCategory(cats, e.categoryId, cat) && (!tag || e.tags?.includes(tag)) && (!onlyAvail || (avail.get(e.id) || 0) > 0))
     .sort((a, b) => sort === 'dispo' ? (avail.get(b.id) || 0) - (avail.get(a.id) || 0) : sort === 'prix' ? a.dailyPrice - b.dailyPrice : a.name.localeCompare(b.name));

@@ -4,9 +4,10 @@ import { db } from './db';
 import { useOverdue } from './pages/Overdue';
 import { upcomingShortages, useConsumablesToBuy } from './pages/Shortages';
 import { RESERVING } from './types';
+import { allTasks } from './tasks';
 import { inspectionsDue, toLocalInput } from './utils';
 
-interface Alerts { penuries: number; enRetard: number; controles: number; postes: number }
+interface Alerts { penuries: number; enRetard: number; controles: number; postes: number; taches: number; bons: number }
 
 /**
  * Compteurs d'alertes pour les badges du menu :
@@ -26,5 +27,9 @@ export function useAlerts(): Alerts {
   const subOk = new Set(av.subs.filter((s) => RESERVING.includes(s.status)).map((s) => s.id));
   const postes = crew.filter((c) => !c.personId && subOk.has(c.subprojectId)).length;
   const controles = inspectionsDue(av.equipment, av.units, inspections).filter((d) => d.due <= in30).length;
-  return { penuries, enRetard, controles, postes };
+  const freeTasks = useLiveQuery(() => db.tasks.toArray(), []) || [];
+  const today = now.slice(0, 10);
+  const taches = allTasks(projects, freeTasks).filter((r) => !r.task.done && r.due && r.due < today).length;
+  const bons = useLiveQuery(() => db.purchaseOrders.where('status').equals('a_approuver').count(), []) || 0;
+  return { penuries, enRetard, controles, postes, taches, bons };
 }

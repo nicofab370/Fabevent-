@@ -1,3 +1,4 @@
+import { inPreset, PeriodFilter } from '../components/PeriodFilter';
 import { ContactField } from '../components/ContactField';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
@@ -113,6 +114,8 @@ export default function Projects() {
   const contacts = useLiveQuery(() => db.contacts.toArray(), []) || [];
   const [q, setQ] = useState(() => new URLSearchParams(window.location.hash.split('?')[1] || '').get('q') || '');
   const [status, setStatus] = useState('');
+  const [period, setPeriod] = useState('');
+  const [manager, setManager] = useState('');
   const [searchParams, setSearchParams] = useSearchParams();
   // ?date=AAAA-MM-JJ (clic sur un jour du planning) : nouveau projet pré-rempli à cette date
   const dateParam = searchParams.get('date');
@@ -128,6 +131,8 @@ export default function Projects() {
   const filtered = projects.filter((p) =>
     !!p.isTemplate === showTemplates &&
     (!status || p.status === status) &&
+    (!manager || p.manager === manager) &&
+    inPreset(period, p.start, p.end) &&
     (!tag || p.tags?.includes(tag)) &&
     listFields.every((f) => !fieldFilter[f.id] || customText(f, p.custom?.[f.id]) === fieldFilter[f.id]) &&
     [p.number, p.name, p.venue, p.clientId && cMap.get(p.clientId), ...(p.tags || [])].join(' ').toLowerCase().includes(q.toLowerCase()));
@@ -152,6 +157,13 @@ export default function Projects() {
             <option value="">Tous statuts</option>
             {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
+          <PeriodFilter value={period} onChange={setPeriod} />
+          {projects.some((p) => p.manager) && (
+            <select value={manager} onChange={(e) => setManager(e.target.value)} aria-label="Chargé de projet">
+              <option value="">Tous les chargés de projet</option>
+              {Array.from(new Set(projects.map((p) => p.manager).filter((m): m is string => !!m))).sort().map((m) => <option key={m}>{m}</option>)}
+            </select>
+          )}
           {listFields.map((f) => {
             const values = f.type === 'liste' ? f.choices || [] : Array.from(new Set(projects.map((p) => customText(f, p.custom?.[f.id])).filter(Boolean))).sort();
             return values.length ? (

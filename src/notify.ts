@@ -13,6 +13,7 @@ import { projectedStock, type StockUse } from './stock';
 import { RESERVING } from './types';
 import type { Doc, NotifKind, Notification } from './types';
 import { DOC_LABELS, NOTIF_LABELS } from './types';
+import { dueOf } from './tasks';
 import { fmtDate, uid } from './utils';
 
 export async function notify(kind: NotifKind, key: string, text: string, link?: string, title = NOTIF_LABELS[kind]): Promise<Notification | null> {
@@ -104,7 +105,7 @@ export async function checkNotifications(now = new Date()) {
     // tâches en retard (projets et page Tâches)
     for (const p of await db.projects.toArray()) {
       if (p.isTemplate || p.status === 'annule') continue;
-      for (const t of p.tasks || []) if (!t.done && t.due && t.due.slice(0, 10) < today)
+      for (const t of p.tasks || []) if (!t.done && (dueOf(t, p) || '9') < today)
         await notify('tache', `tache:${p.id}:${t.id}`, `Tâche en retard (${p.name}) : ${t.text}`, '/projets/' + p.id);
     }
     for (const t of await db.tasks.toArray()) if (!t.done && t.due && t.due.slice(0, 10) < today)

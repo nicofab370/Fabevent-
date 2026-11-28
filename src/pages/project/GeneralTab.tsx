@@ -6,6 +6,8 @@ import { Empty, Field, Modal } from '../../components/ui';
 import { DEFAULT_PROJECT_TYPES, db } from '../../db';
 import { createDocument } from '../../documents';
 import type { Contact, DocType, Project, ProjectNote, ProjectStatus, Task, VatRegime } from '../../types';
+import { dueOf, relLabel } from '../../tasks';
+import { MailHistory } from '../EmailsPage';
 import { CONFIRMED, LANG_LABELS, STATUS_LABELS, VENUE_INFO_LABELS, type VenueInfo, VAT_REGIME_LABELS, type Lang } from '../../types';
 import { CustomFieldsEditor, TagInput } from '../../components/extra';
 import { blockPeriod, fmtDate, fmtRange, patch, save, sortPeriods, uid, usageDays } from '../../utils';
@@ -22,7 +24,7 @@ import { money } from '../../utils';
 import { Icon } from '../../components/Icon';
 
 /** Champ texte enregistré à la sortie du champ (pas à chaque frappe). */
-function LazyInput({ value, onSave, ...rest }: { value?: string; onSave: (v: string) => void; placeholder?: string; type?: string; required?: boolean }) {
+function LazyInput({ value, onSave, ...rest }: { value?: string; onSave: (v: string) => void; placeholder?: string; type?: string; required?: boolean; list?: string }) {
   const [v, setV] = useState(value || '');
   useEffect(() => setV(value || ''), [value]);
   return <input value={v} onChange={(e) => setV(e.target.value)} onBlur={() => v !== (value || '') && onSave(v)} {...rest} />;
@@ -118,6 +120,7 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
                 </select>
               </Field>
             )}
+            <Field label="Chargé de projet"><ManagerInput project={project} /></Field>
             <Field label="Référence externe (n° de commande client)" full><LazyInput value={project.externalRef} onSave={(v) => upd({ externalRef: v || undefined })} /></Field>
             <Field label="Langue des documents">
               <select value={project.language || ''} onChange={(e) => upd({ language: (e.target.value || undefined) as Lang | undefined })}>
@@ -255,6 +258,7 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
 
       <div className="grid">
         <Tasks project={project} />
+        <MailHistory projectId={project.id} />
         <div className="card">
           <h2>Notes</h2>
           <Notes project={project} />
@@ -308,7 +312,7 @@ function NoteList({ project }: { project: Project }) {
               <LazyInput value={n.title} onSave={(title) => upd({ title })} placeholder="Titre (ex. Accès au site)" />
               <button className="ghost" onClick={() => set(list.filter((_, j) => j !== i))} aria-label="Supprimer la note"><Icon name="x" /></button>
             </div>
-            <LazyText value={n.text} onSave={(text) => upd({ text })} />
+            <LazyText value={n.text} onSave={(text) => { upd({ text }); if (!n.text && text.trim()) void import('../../notify').then(({ notify }) => notify('note', `note:${project.id}:${n.id}`, `${project.number} ${project.name} : ${n.title || 'note'} — ${text.slice(0, 120)}`, '/projets/' + project.id)); }} />
             <div className="muted" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 12 }}>
               Imprimer sur :
               {NOTE_DOCS.map(([t, label]) => (
@@ -333,6 +337,11 @@ function LazyText({ value, onSave }: { value?: string; onSave: (v: string) => vo
 function Tasks({ project }: { project: Project }) {
   const [text, setText] = useState('');
   const [due, setDue] = useState('');
+  const [relDays, setRelDays] = useState('');
+  const [relBase, setRelBase] = useState<'start' | 'end'>('start');
+  const [assignee, setAssignee] = useState('');
+  const [priority, setPriority] = useState<Task['priority']>('normale');
+  const names = useNames();
   const tasks = project.tasks || [];
   const setTasks = (t: Task[]) => patch(db.projects, project.id, { tasks: t });
   const today = new Date().toISOString().slice(0, 10);
@@ -340,26 +349,43 @@ function Tasks({ project }: { project: Project }) {
     <div className="card">
       <h2>Tâches ({tasks.filter((t) => !t.done).length} à faire)</h2>
       {tasks.length === 0 && <p className="muted">Aucune tâche.</p>}
-      {[...tasks].sort((a, b) => Number(a.done) - Number(b.done) || (a.due || '9').localeCompare(b.due || '9')).map((t) => (
-        <div key={t.id} className={'task' + (t.done ? ' done' : '')}>
-          <input type="checkbox" checked={t.done} aria-label={`Tâche terminée : ${t.text}`} title="Marquer la tâche comme terminée" onChange={(e) => setTasks(tasks.map((x) => (x.id === t.id ? { ...x, done: e.target.checked } : x)))} />
-          <span style={{ flex: 1 }}>{t.text}</span>
-          {t.due && <span className={!t.done && t.due < today ? 'avail ko' : 'muted'} style={{ fontSize: 12 }}>{fmtDate(t.due, false)}</span>}
-          <button className="ghost" onClick={() => setTasks(tasks.filter((x) => x.id !== t.id))} aria-label="Supprimer"><Icon name="x" /></button>
-        </div>
-      ))}
-      <form className="toolbar" style={{ marginTop: 8, marginBottom: 0 }} onSubmit={(e) => {
+      {[...tasks].sort((a, b) => Number(a.done) - Number(b.done) || (dueOf(a, project) || '9').localeCompare(dueOf(b, project) || '9')).map((t) => {
+        const d = dueOf(t, project);
+        return (
+          <div key={t.id} className={'task' + (t.done ? ' done' : '') + (t.priority === 'haute' ? ' prio-high' : '')}>
+            <input type="checkbox" checked={t.done} aria-label={`Tâche terminée : ${t.text}`} title="Marquer la tâche comme terminée" onChange={(e) => setTasks(tasks.map((x) => (x.id === t.id ? { ...x, done: e.target.checked, doneAt: e.target.checked ? new Date().toISOString() : undefined } : x)))} />
+            <span style={{ flex: 1 }}>{t.priority === 'haute' && <strong className="avail ko">! </strong>}{t.text}{t.assignee && <span className="muted"> · {t.assignee}</span>}</span>
+            {d && <span className={!t.done && d < today ? 'avail ko' : 'muted'} style={{ fontSize: 12 }} title={relLabel(t)}>{fmtDate(d, false)}</span>}
+            <button className="ghost" onClick={() => setTasks(tasks.filter((x) => x.id !== t.id))} aria-label="Supprimer"><Icon name="x" /></button>
+          </div>
+        );
+      })}
+      <form className="toolbar task-form" style={{ marginTop: 8, marginBottom: 0 }} onSubmit={(e) => {
         e.preventDefault();
         if (!text.trim()) return;
-        setTasks([...tasks, { id: uid(), text: text.trim(), done: false, due: due || undefined }]);
-        setText(''); setDue('');
+        const rd = relDays.trim() ? parseInt(relDays, 10) : NaN;
+        setTasks([...tasks, { id: uid(), text: text.trim(), done: false, due: !isNaN(rd) ? undefined : due || undefined, rel: !isNaN(rd) ? { days: rd, base: relBase } : undefined, assignee: assignee.trim() || undefined, priority: priority === 'normale' ? undefined : priority }]);
+        setText(''); setDue(''); setRelDays('');
       }}>
         <input placeholder="Nouvelle tâche (ex. Envoyer plan de feu)" value={text} onChange={(e) => setText(e.target.value)} />
-        <input type="date" value={due} onChange={(e) => setDue(e.target.value)} style={{ width: 150 }} />
+        <input type="date" value={due} onChange={(e) => setDue(e.target.value)} style={{ width: 150 }} aria-label="Échéance" disabled={!!relDays.trim()} />
+        <span className="muted">ou</span>
+        <input inputMode="numeric" value={relDays} onChange={(e) => setRelDays(e.target.value.replace(/[^-\d]/g, ''))} placeholder="-3" title="Jours avant (négatif) ou après" aria-label="Jours avant ou après" style={{ width: 60 }} />
+        <select value={relBase} onChange={(e) => setRelBase(e.target.value as 'start' | 'end')} aria-label="Par rapport à" style={{ width: 'auto' }}><option value="start">j. / début</option><option value="end">j. / fin</option></select>
+        <input list="task-names" value={assignee} onChange={(e) => setAssignee(e.target.value)} placeholder="Pour (tout le monde)" aria-label="Personne chargée" style={{ width: 150 }} />
+        <datalist id="task-names">{names.map((n) => <option key={n} value={n} />)}</datalist>
+        <select value={priority} onChange={(e) => setPriority(e.target.value as Task['priority'])} aria-label="Priorité" style={{ width: 'auto' }}><option value="basse">Basse</option><option value="normale">Normale</option><option value="haute">Haute</option></select>
         <button className="small" type="submit">+</button>
       </form>
     </div>
   );
+}
+
+/** Noms proposés pour une tâche ou le chargé de projet : utilisateurs et équipe interne. */
+export function useNames(): string[] {
+  const users = useLiveQuery(() => db.users.toArray(), []) || [];
+  const people = useLiveQuery(() => db.people.toArray(), []) || [];
+  return Array.from(new Set([...users.map((u) => u.name), ...people.filter((p) => !p.external && !p.pending).map((p) => p.name)].filter(Boolean))).sort((a, b) => a.localeCompare(b, 'fr'));
 }
 
 /** Ajoute des fichiers au projet (bouton ou glisser-déposer sur la page). Renvoie le nombre ajoutés. */
@@ -438,5 +464,15 @@ function Distance({ d, from, to, fromLabel }: { d: ProjectData; from: string; to
         sur {settings.defaultTrips ?? 2} aller(s)-retour(s) par défaut (réglable par véhicule dans « Équipe & transport »).
       </p>
     </div>
+  );
+}
+
+function ManagerInput({ project }: { project: Project }) {
+  const names = useNames();
+  return (
+    <>
+      <LazyInput value={project.manager} list="manager-names" onSave={(v) => patch(db.projects, project.id, { manager: v.trim() || undefined })} />
+      <datalist id="manager-names">{names.map((n) => <option key={n} value={n} />)}</datalist>
+    </>
   );
 }

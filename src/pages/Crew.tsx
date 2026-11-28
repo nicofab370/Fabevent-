@@ -11,6 +11,7 @@ import { syncEnabled, syncNow } from '../sync';
 import { FileViewer } from '../components/FileViewer';
 import { Icon } from '../components/Icon';
 import { PlanningSend } from './PlanningSend';
+import { MailHistory } from './EmailsPage';
 
 type Draft = Partial<Person> & { name: string; dailyRate: number; external: boolean };
 
@@ -412,6 +413,7 @@ function PersonHistory({ person, onClose }: { person: Person; onClose: () => voi
   return (
     <Modal title={`Historique — ${person.name}`} onClose={onClose} wide>
       <p className="muted">{list.length} poste(s) · {new Set(list.map((c) => c.projectId)).size} projet(s) · {unav.length} indisponibilité(s)</p>
+      <MailHistory personId={person.id} email={person.email} />
       {list.length === 0 ? <Empty>Aucune mission.</Empty> : (
         <table className="list">
           <thead><tr><th>Dates</th><th>Projet</th><th>Fonction</th><th /></tr></thead>

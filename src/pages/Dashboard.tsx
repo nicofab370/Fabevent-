@@ -1,4 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
+import { useState, type ReactNode } from 'react';
+import { allTasks } from '../tasks';
+import type { Doc } from '../types';
 import { Link, useNavigate } from 'react-router-dom';
 import { Empty, PageHead, StatusBadge } from '../components/ui';
 import { currentWorkspace, db, switchWorkspace } from '../db';
@@ -10,8 +13,129 @@ import { shortageLabel, upcomingShortages } from './Shortages';
 import { fmtDate, fmtRange, inspectionsDue, money, toLocalInput } from '../utils';
 import { Icon } from '../components/Icon';
 
+type WidgetId = 'stats' | 'manques' | 'prestations' | 'documents' | 'finances' | 'revenus' | 'agenda' | 'taches' | 'notifications';
+const WIDGET_LABELS: Record<WidgetId, string> = {
+  stats: 'Chiffres clés', manques: 'Manques de matériel', prestations: 'Prochaines prestations', documents: 'Derniers documents',
+  finances: 'Factures en attente et devis en suspens', revenus: 'Chiffre d\'affaires par mois', agenda: 'Mon agenda (aujourd\'hui, demain)',
+  taches: 'Tâches à faire', notifications: 'Dernières notifications',
+};
+interface Board { name: string; widgets: WidgetId[] }
+const DEFAULT_BOARDS: Board[] = [
+  { name: 'Mon tableau de bord', widgets: ['stats', 'manques', 'agenda', 'taches', 'prestations', 'documents'] },
+  { name: 'Mes finances', widgets: ['finances', 'revenus', 'documents'] },
+];
+const boardsKey = () => 'fab.dashboards.' + currentWorkspace();
+function loadBoards(): Board[] {
+  try { const v = JSON.parse(localStorage.getItem(boardsKey()) || 'null'); if (Array.isArray(v) && v.length) return v; } catch { /* sans stockage */ }
+  return DEFAULT_BOARDS;
+}
+
+function FinanceWidget() {
+  const nav = useNavigate();
+  const docs = useLiveQuery(() => db.docs.toArray(), []) || [];
+  const [days, setDays] = useState(30);
+  const since = new Date(Date.now() - days * 86400000).toISOString();
+  const unpaid = docs.filter((d) => (d.type === 'facture' || d.type === 'acompte') && d.status !== 'paye' && d.status !== 'brouillon');
+  const due = (d: Doc) => d.snapshot.totalTTC - (d.snapshot.deposits || []).reduce((a, x) => a + x.ttc, 0) - (d.payments || []).reduce((a, x) => a + x.amount, 0);
+  const quotes = docs.filter((d) => d.type === 'devis' && d.status === 'envoye' && d.createdAt >= since);
+  return (
+    <div className="card">
+      <h2>Finances <select value={days} onChange={(e) => setDays(Number(e.target.value))} aria-label="Période des devis" style={{ width: 'auto', fontSize: 13 }}><option value={7}>7 jours</option><option value={30}>30 jours</option><option value={90}>90 jours</option><option value={365}>1 an</option></select></h2>
+      <div className="stats">
+        <div className="stat click" onClick={() => nav('/comptabilite')}><b>{money(unpaid.reduce((a, d) => a + due(d), 0))}</b><span>{unpaid.length} facture(s) en attente de paiement</span></div>
+        <div className="stat"><b>{money(quotes.reduce((a, d) => a + d.snapshot.totalHT, 0))}</b><span>{quotes.length} devis en suspens (HT)</span></div>
+      </div>
+      {quotes.length > 0 && <table className="list"><tbody>{quotes.slice(0, 6).map((d) => <tr key={d.id} className="click" onClick={() => nav('/documents/' + d.id)}><td>{d.number}</td><td>{d.snapshot.project.name}</td><td className="n">{money(d.snapshot.totalHT)}</td></tr>)}</tbody></table>}
+    </div>
+  );
+}
+
+function RevenueWidget() {
+  const docs = useLiveQuery(() => db.docs.where('type').anyOf('facture', 'acompte', 'avoir').toArray(), []) || [];
+  const months = Array.from({ length: 12 }, (_, i) => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 11 + i); return d.toISOString().slice(0, 7); });
+  const by = new Map(months.map((m) => [m, 0]));
+  for (const d of docs) { const m = d.snapshot.issuedAt.slice(0, 7); if (by.has(m)) by.set(m, by.get(m)! + (d.type === 'avoir' ? -Math.abs(d.snapshot.totalHT) : d.snapshot.totalHT)); }
+  const max = Math.max(1, ...by.values());
+  return (
+    <div className="card">
+      <h2>Chiffre d'affaires facturé (HT, 12 mois)</h2>
+      <div className="rev-bars" role="img" aria-label="Chiffre d'affaires par mois">
+        {months.map((m) => (
+          <div key={m} className="rev-bar" title={`${m} : ${money(by.get(m)!)}`}>
+            <span style={{ height: `${Math.max(2, (by.get(m)! / max) * 100)}%` }} />
+            <small>{m.slice(5)}</small>
+          </div>
+        ))}
+      </div>
+      <p className="muted" style={{ marginBottom: 0 }}>Total : {money([...by.values()].reduce((a, x) => a + x, 0))}</p>
+    </div>
+  );
+}
+
+function AgendaWidget() {
+  const nav = useNavigate();
+  const [day, setDay] = useState<0 | 1>(0);
+  const crew = useLiveQuery(() => db.crew.toArray(), []) || [];
+  const appts = useLiveQuery(() => db.appointments.toArray(), []) || [];
+  const projects = useLiveQuery(() => db.projects.toArray(), []) || [];
+  const pMap = new Map(projects.map((p) => [p.id, p]));
+  const d = new Date(Date.now() + day * 86400000);
+  const key = toLocalInput(d).slice(0, 10);
+  const posts = crew.filter((c) => c.start.slice(0, 10) <= key && c.end.slice(0, 10) >= key);
+  const byProject = new Map<string, number>();
+  for (const c of posts) byProject.set(c.projectId, (byProject.get(c.projectId) || 0) + 1);
+  const meetings = appts.filter((a) => a.start.slice(0, 10) <= key && a.end.slice(0, 10) >= key);
+  return (
+    <div className="card">
+      <h2>Agenda <span className="tabs inline"><button className={day === 0 ? 'on' : ''} onClick={() => setDay(0)}>Aujourd'hui</button><button className={day === 1 ? 'on' : ''} onClick={() => setDay(1)}>Demain</button></span></h2>
+      {!byProject.size && !meetings.length ? <Empty>Rien de prévu.</Empty> : (
+        <table className="list"><tbody>
+          {[...byProject].map(([pid, n]) => <tr key={pid} className="click" onClick={() => nav('/projets/' + pid)}><td><strong>{pMap.get(pid)?.name}</strong></td><td>{n} poste(s)</td></tr>)}
+          {meetings.map((a) => <tr key={a.id}><td>{a.title}</td><td>{fmtRange(a.start, a.end)}</td></tr>)}
+        </tbody></table>
+      )}
+    </div>
+  );
+}
+
+function TasksWidget() {
+  const nav = useNavigate();
+  const projects = useLiveQuery(() => db.projects.toArray(), []) || [];
+  const free = useLiveQuery(() => db.tasks.toArray(), []) || [];
+  const today = new Date().toISOString().slice(0, 10);
+  const rows = allTasks(projects, free).filter((r) => !r.task.done).sort((a, b) => (a.due || '9').localeCompare(b.due || '9')).slice(0, 8);
+  return (
+    <div className="card">
+      <h2>Tâches <button className="secondary small" onClick={() => nav('/taches')}>Tout voir</button></h2>
+      {!rows.length ? <Empty>Aucune tâche à faire.</Empty> : (
+        <table className="list"><tbody>{rows.map((r) => (
+          <tr key={(r.project?.id || '') + r.task.id} className="click" onClick={() => nav(r.project ? '/projets/' + r.project.id : '/taches')}>
+            <td>{r.task.text}<div className="muted">{r.project?.name}{r.task.assignee ? ` · ${r.task.assignee}` : ''}</div></td>
+            <td className={r.due && r.due < today ? 'avail ko' : 'muted'}>{r.due ? fmtDate(r.due, false) : ''}</td>
+          </tr>
+        ))}</tbody></table>
+      )}
+    </div>
+  );
+}
+
+function NotifWidget() {
+  const nav = useNavigate();
+  const list = useLiveQuery(() => db.notifications.orderBy('createdAt').reverse().limit(6).toArray(), []) || [];
+  return (
+    <div className="card">
+      <h2>Notifications <button className="secondary small" onClick={() => nav('/notifications')}>Tout voir</button></h2>
+      {!list.length ? <Empty>Aucune notification.</Empty> : <ul className="notif-list">{list.map((n) => <li key={n.id} className={'notif' + (n.read ? '' : ' unread')}><button type="button" className="notif-open" onClick={() => n.link && nav(n.link)}><strong>{n.title}</strong><span className="notif-text">{n.text}</span></button></li>)}</ul>}
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const nav = useNavigate();
+  const [boards, setBoards] = useState<Board[]>(loadBoards);
+  const [active, setActive] = useState(0);
+  const [editing, setEditing] = useState(false);
+  const saveBoards = (b: Board[]) => { setBoards(b); try { localStorage.setItem(boardsKey(), JSON.stringify(b)); } catch { /* sans stockage */ } };
   const projects = useLiveQuery(() => db.projects.toArray(), []) || [];
   const subs = useLiveQuery(() => db.subprojects.toArray(), []) || [];
   const av = useAvailability();
@@ -40,11 +164,8 @@ export default function Dashboard() {
   const unstaffed = crew.filter((c) => !c.personId && c.end >= now && sMap.get(c.subprojectId)?.status !== 'annule');
   const pendingQuotes = projects.filter((p) => !p.isTemplate && ['demande', 'brouillon', 'option'].includes(p.status)).length;
 
-  return (
-    <>
-      <PageHead title="Tableau de bord">
-        <button onClick={() => nav('/projets')}>Projets</button>
-      </PageHead>
+  const widgets: Record<WidgetId, () => ReactNode> = {
+    stats: () => (
       <div className="stats">
         <div className="stat"><b>{upcoming.length}</b><span>prestations dans les 30 j</span></div>
         <div className="stat"><b>{pendingQuotes}</b><span>demandes et devis en attente</span></div>
@@ -57,6 +178,8 @@ export default function Dashboard() {
         <div className="stat" onClick={() => nav('/souslocations')} style={{ cursor: 'pointer' }}><b>{pendingSubrentals}</b><span>sous-locations à confirmer</span></div>
       </div>
 
+    ),
+    manques: () => (<>
       {conflicts.length > 0 && (
         <div className="card">
           <h2><Icon name="warning" />Manques de matériel <button className="secondary small" onClick={() => nav('/penuries')}>Tout voir</button></h2>
@@ -76,7 +199,8 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="grid">
+    </>),
+    prestations: () => (
         <div className="card">
           <h2>Prochaines prestations</h2>
           {upcoming.length === 0 ? <Empty>Rien de prévu dans les 30 prochains jours.</Empty> : (
@@ -93,6 +217,8 @@ export default function Dashboard() {
             </table>
           )}
         </div>
+    ),
+    documents: () => (
         <div className="card">
           <h2>Derniers documents</h2>
           {docs.length === 0 ? <Empty>Aucun document.</Empty> : (
@@ -109,6 +235,51 @@ export default function Dashboard() {
             </table>
           )}
         </div>
+    ),
+    finances: () => <FinanceWidget />,
+    revenus: () => <RevenueWidget />,
+    agenda: () => <AgendaWidget />,
+    taches: () => <TasksWidget />,
+    notifications: () => <NotifWidget />,
+  };
+  const board = boards[active] || boards[0];
+  const move = (i: number, dir: -1 | 1) => { const w = [...board.widgets]; const j = i + dir; if (j < 0 || j >= w.length) return; [w[i], w[j]] = [w[j], w[i]]; saveBoards(boards.map((b, k) => (k === active ? { ...b, widgets: w } : b))); };
+  return (
+    <>
+      <PageHead title="Tableau de bord">
+        <button className="secondary" onClick={() => setEditing(!editing)}>{editing ? 'Terminer' : 'Ajuster la mise en page'}</button>
+        <button onClick={() => nav('/projets')}>Projets</button>
+      </PageHead>
+      <div className="tabs" role="tablist">
+        {boards.map((b, i) => <button key={i} role="tab" className={i === active ? 'on' : ''} onClick={() => setActive(i)}>{b.name}</button>)}
+        <button className="ghost small" onClick={() => { const name = prompt('Nom du tableau de bord :', 'Nouveau tableau de bord')?.trim(); if (name) { saveBoards([...boards, { name, widgets: ['stats'] }]); setActive(boards.length); } }}>+ Nouveau tableau de bord</button>
+      </div>
+      {editing && (
+        <div className="card dash-edit">
+          <h2>Widgets de « {board.name} »</h2>
+          <ul className="dash-list">
+            {board.widgets.map((w, i) => (
+              <li key={w}><strong>{WIDGET_LABELS[w]}</strong>
+                <button type="button" className="ghost small" aria-label={`Monter ${WIDGET_LABELS[w]}`} disabled={i === 0} onClick={() => move(i, -1)}><Icon name="arrow-up" /></button>
+                <button type="button" className="ghost small" aria-label={`Descendre ${WIDGET_LABELS[w]}`} disabled={i === board.widgets.length - 1} onClick={() => move(i, 1)}><Icon name="arrow-down" /></button>
+                <button type="button" className="ghost small" onClick={() => saveBoards(boards.map((b, k) => (k === active ? { ...b, widgets: b.widgets.filter((x) => x !== w) } : b)))}>Retirer</button>
+              </li>
+            ))}
+          </ul>
+          <div className="chips">
+            {(Object.keys(WIDGET_LABELS) as WidgetId[]).filter((w) => !board.widgets.includes(w)).map((w) => (
+              <button key={w} type="button" className="secondary small" onClick={() => saveBoards(boards.map((b, k) => (k === active ? { ...b, widgets: [...b.widgets, w] } : b)))}>+ {WIDGET_LABELS[w]}</button>
+            ))}
+          </div>
+          <div className="toolbar" style={{ marginTop: 8 }}>
+            <button type="button" className="ghost small" onClick={() => { const name = prompt('Nouveau nom :', board.name)?.trim(); if (name) saveBoards(boards.map((b, k) => (k === active ? { ...b, name } : b))); }}>Renommer</button>
+            {boards.length > 1 && <button type="button" className="ghost small" onClick={() => { if (confirm(`Supprimer « ${board.name} » ?`)) { saveBoards(boards.filter((_, k) => k !== active)); setActive(0); } }}>Supprimer ce tableau de bord</button>}
+            <button type="button" className="ghost small" onClick={() => { saveBoards(DEFAULT_BOARDS); setActive(0); }}>Revenir aux tableaux par défaut</button>
+          </div>
+        </div>
+      )}
+      <div className="dash-widgets">
+        {board.widgets.map((w) => <div key={w} className={'dash-w w-' + w}>{widgets[w]?.()}</div>)}
       </div>
       {projects.length === 0 && currentWorkspace() !== DEMO_WORKSPACE && (
         <div className="card" style={{ borderColor: '#7c3aed' }}>

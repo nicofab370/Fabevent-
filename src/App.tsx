@@ -48,6 +48,9 @@ import { UndoButton } from './components/UndoButton';
 import NotificationsPage, { NotificationBell } from './components/Notifications';
 import { checkNotifications } from './notify';
 import { QuickAvailability } from './components/QuickAvailability';
+import TasksPage from './pages/TasksPage';
+import EmailsPage from './pages/EmailsPage';
+import PurchaseOrders from './pages/PurchaseOrders';
 
 const NAV: [string, string, IconName][] = [
   ['/', 'Tableau de bord', 'grid'],
@@ -64,7 +67,10 @@ const NAV: [string, string, IconName][] = [
   ['/equipe', 'Équipe', 'user'],
   ['/attribution', 'Attribution', 'user-check'],
   ['/vehicules', 'Véhicules', 'truck'],
+  ['/taches', 'Tâches', 'checklist'],
   ['/comptabilite', 'Export comptable', 'receipt'],
+  ['/bons-de-commande', 'Bons de commande', 'file'],
+  ['/emails', 'Emails envoyés', 'mail'],
   ['/rapports', 'Rapports', 'chart'],
   ['/import', 'Import', 'upload'],
   ['/modeles', 'Modèles de documents', 'file'],
@@ -97,6 +103,8 @@ export default function App() {
     '/maintenance': [alerts.controles, 'contrôles périodiques à faire dans les 30 jours'],
     '/equipe': [alerts.postes, 'postes prévus sans technicien'],
     '/attribution': [alerts.postes, 'postes prévus sans technicien'],
+    '/taches': [alerts.taches, 'tâches en retard'],
+    '/bons-de-commande': [alerts.bons, 'bons de commande à approuver'],
   };
   // devis accepté en ligne avec des options choisies : les lignes passent en « non optionnelles » (facturées), une seule fois
   const pendingOpts = useLiveQuery(() => db.docs.filter((d) => d.type === 'devis' && d.status === 'accepte' && (d.acceptedOptions || []).length > 0 && !d.optionsApplied).toArray(), []) || [];
@@ -189,6 +197,9 @@ export default function App() {
           <Route path="/import" element={<ImportPage />} />
           <Route path="/parametres" element={<SettingsPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
+          <Route path="/taches" element={<TasksPage />} />
+          <Route path="/emails" element={<EmailsPage />} />
+          <Route path="/bons-de-commande" element={<PurchaseOrders />} />
           <Route path="*" element={<p>Page introuvable.</p>} />
         </Routes>
       </main>

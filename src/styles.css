@@ -1031,3 +1031,15 @@ table.list tr.limiting td:first-child, table.list tr.kit-child.limiting td:nth-c
 .set-section[open] > summary { margin-bottom: 8px; }
 .set-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
 .set-row > input:not([type=checkbox]):not([type=date]) { flex: 1; min-width: 140px; }
+.dash-widgets { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 12px; align-items: start; }
+.dash-w.w-stats, .dash-w.w-manques, .dash-w.w-revenus { grid-column: 1 / -1; }
+.dash-w > .card, .dash-w > .stats { margin: 0; }
+.dash-list { list-style: none; padding: 0; margin: 0 0 8px; }
+.dash-list li { display: flex; gap: 6px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--border); }
+.dash-list li strong { flex: 1; }
+.rev-bars { display: flex; align-items: flex-end; gap: 6px; height: 160px; padding-top: 6px; }
+.rev-bar { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
+.rev-bar span { width: 100%; max-width: 34px; background: var(--accent); border-radius: 4px 4px 0 0; }
+.rev-bar small { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.tabs.inline { display: inline-flex; margin-left: 8px; vertical-align: middle; }
+.tabs.inline button { font-size: 12px; padding: 2px 8px; }
