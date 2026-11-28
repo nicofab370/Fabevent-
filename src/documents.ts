@@ -338,7 +338,8 @@ export async function createDocument(projectId: string, type: DocType, opts: Doc
   } else {
     // série de numéros du type de projet (devis, factures), sinon la numérotation habituelle
     const st0 = await getSettings();
-    const seriesId = st0.projectTypes?.find((t) => t.name === project?.typeName)?.seriesId;
+    const typeName = (await db.projects.get(projectId))?.typeName;
+    const seriesId = st0.projectTypes?.find((t) => t.name === typeName)?.seriesId;
     const sr = seriesId ? st0.numberSeries?.find((x) => x.id === seriesId) : undefined;
     const kind = type === 'devis' ? 'devis' : type === 'contrat' ? 'contrat' : INVOICE_TYPES.includes(type) ? 'facture' : '';
     number = (sr && kind && sr.types.includes(kind as 'devis' | 'facture' | 'contrat') ? await nextSeriesNumber(sr.id) : null) || await nextNumber(PREFIX[type]);

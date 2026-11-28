@@ -151,7 +151,7 @@ ctx = await newContext();
 await step('Démo : chargement et tableau de bord', async () => {
   await openDemo();
   const stats = await page.locator('.stats').first().innerText();
-  expect(/1\s*factures échues/.test(stats), 'une facture échue attendue');
+  expect(/1\s*factures échues/.test(stats), 'une facture échue attendue, reçu : ' + stats);
   expect(stats.includes('documents du personnel à renouveler'), 'alerte document du personnel attendue');
 });
 
@@ -3730,6 +3730,80 @@ await step('Rendez-vous : relié à un projet, avec un coût interne compté dan
   expect(await page.locator('table.list tr', { hasText: 'Rendez-vous' }).count(), 'ligne « Rendez-vous » dans le détail des coûts');
   await go('planning');
   expect(((await page.locator('a.ev.appt', { hasText: 'Réunion de production' }).first().getAttribute('title')) || '').includes('Festival des Lumières'), 'projet indiqué au planning');
+});
+
+/* ---------- fonctions reprises de Rentman (v68) ---------- */
+await step('Notifications : facture échue dans la cloche, tout marquer comme lu', async () => {
+  await resetDemo();
+  await go('');
+  await page.waitForTimeout(4500); // première vérification 3 s après le démarrage
+  await page.locator('.sidebar .bell-btn').click();
+  await page.waitForSelector('.bell-pop');
+  expect((await page.locator('.bell-pop').innerText()).includes('Facture échue'), 'facture échue notifiée');
+  await page.click('.bell-pop button:has-text("Tout marquer comme lu")');
+  await page.waitForTimeout(300);
+  expect(await page.locator('.sidebar .bell-btn .nav-badge').count() === 0, 'plus de non lues');
+});
+
+await step('Avertissement sur un contact : affiché dans le projet', async () => {
+  await go('contacts');
+  await page.locator('table.list tr', { hasText: 'Mariage Dupont-Lemaire' }).locator('a, strong').first().click();
+  await page.locator('.modal .field', { hasText: 'Avertissement' }).locator('textarea').fill('Exiger un acompte');
+  await page.click('.modal button[type=submit]');
+  await page.waitForTimeout(300);
+  await openProject('Mariage Dupont-Lemaire');
+  expect((await page.locator('.warn-banner').first().innerText()).includes('Exiger un acompte'), 'bandeau d\'avertissement');
+});
+
+await step('Tâches : tâche relative au projet et tâche libre dans la page Tâches', async () => {
+  await openProject('Mariage Dupont-Lemaire');
+  await page.fill('.task-form input[placeholder^="Nouvelle tâche"]', 'Demander les badges');
+  await page.fill('.task-form input[aria-label="Jours avant ou après"]', '-3');
+  await page.click('.task-form button[type=submit]');
+  await page.waitForTimeout(300);
+  await go('taches');
+  await page.fill('input[aria-label="Nouvelle tâche"]', 'Renouveler l\'assurance');
+  await page.click('button:has-text("+ Ajouter")');
+  await page.waitForTimeout(300);
+  const t = await inPage('table.list').innerText();
+  expect(t.includes('Demander les badges') && t.includes('Renouveler'), 'les deux tâches listées');
+});
+
+await step('Bon de commande : créé, approuvé, montant dépassé → nouvelle approbation', async () => {
+  await go('bons-de-commande');
+  await page.click('button:has-text("+ Nouveau bon de commande")');
+  await page.waitForSelector('.modal');
+  await page.fill('.modal input[aria-label="Désignation"]', 'Moquette');
+  await page.locator('.modal input[aria-label="Prix unitaire"]').fill('200');
+  await page.click('.modal button:has-text("Approuver")');
+  await page.waitForTimeout(300);
+  expect((await page.locator('.modal').innerText()).includes('approuvé pour'), 'approuvé');
+  await page.locator('.modal input[aria-label="Quantité"]').fill('2');
+  await page.waitForTimeout(200);
+  expect((await page.locator('.modal').innerText()).includes('dépasse le montant approuvé'), 'dépassement signalé');
+  await page.click('.modal button:text-is("Enregistrer")');
+  await page.waitForTimeout(300);
+  expect((await inPage('table.list').innerText()).includes('À approuver'), 'repasse à approuver');
+});
+
+await step('Disponibilité rapide : article et période → quantité libre', async () => {
+  await page.locator('.sidebar button[aria-label="Vérifier la disponibilité d\'un article"]').click();
+  await page.waitForSelector('.modal');
+  await page.locator('.modal input').first().fill('a');
+  await page.locator('.modal .pick-list button').first().click();
+  await page.waitForSelector('.modal .avail-big');
+  expect(/disponible|Aucun|Manque/.test(await page.locator('.modal .avail-big').innerText()), 'résultat affiché');
+  await page.keyboard.press('Escape');
+});
+
+await step('Tableau de bord : tableau « Mes finances » et widget ajouté', async () => {
+  await go('');
+  await page.click('.tabs button:has-text("Mes finances")');
+  expect((await page.locator('.dash-widgets').innerText()).includes('Chiffre d'), 'chiffre d\'affaires');
+  await page.click('button:has-text("Ajuster la mise en page")');
+  await page.click('.dash-edit button:has-text("+ Tâches à faire")');
+  await page.waitForTimeout(200);
+  expect((await page.locator('.dash-widgets').innerText()).includes('Tâches'), 'widget tâches ajouté');
 });
 
 await ctx.close();

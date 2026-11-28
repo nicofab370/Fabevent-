@@ -16,7 +16,7 @@ const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--stric
 await new Promise((r) => setTimeout(r, 2500));
 const browser = await chromium.launch();
 
-const routes = ['', 'projets', 'planning', 'materiel', 'entrepot', 'penuries', 'souslocations', 'transferts', 'maintenance', 'contacts', 'lieux', 'equipe',
+const routes = ['', 'notifications', 'taches', 'bons-de-commande', 'emails', 'projets', 'planning', 'materiel', 'entrepot', 'penuries', 'souslocations', 'transferts', 'maintenance', 'contacts', 'lieux', 'equipe',
   'attribution', 'vehicules', 'comptabilite', 'rapports', 'import', 'modeles', 'modeles?onglet=mails', 'parametres', 'etiquettes', 'inventaire', 'checklists'];
 const projectTabs = ['Général', 'Planning', 'Équipement', 'Équipe & transport', 'Sous-locations & commandes', 'Coûts supplémentaires', 'Finances & documents', 'Registre'];
 

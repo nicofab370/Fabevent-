@@ -61,8 +61,8 @@ export function ContactForm({ initial, onDone }: { initial?: Draft; onDone: (c?:
       <Field label="Nom"><input value={c.lastName || ''} onChange={(e) => set('lastName', e.target.value)} /></Field>
       <Field label="Email"><input type="email" value={c.email || ''} onChange={(e) => set('email', e.target.value)} /></Field>
       <Field label="Téléphone"><input value={c.phone || ''} onChange={(e) => set('phone', e.target.value)} /></Field>
-      <Field label="Email 2"><input type="email" value={c.email2 || ''} onChange={(e) => set('email2', e.target.value)} /></Field>
-      <Field label="Téléphone 2"><input value={c.phone2 || ''} onChange={(e) => set('phone2', e.target.value)} /></Field>
+      <Field label="Autre adresse mail"><input type="email" value={c.email2 || ''} onChange={(e) => set('email2', e.target.value)} /></Field>
+      <Field label="Autre n° de tél."><input value={c.phone2 || ''} onChange={(e) => set('phone2', e.target.value)} /></Field>
       <Field label="Site internet"><input value={c.website || ''} onChange={(e) => set('website', e.target.value)} placeholder="https://…" /></Field>
       <Field label="Adresse" full><input value={c.address || ''} onChange={(e) => set('address', e.target.value)} /></Field>
       <Field label="Code postal"><input value={c.postalCode || ''} onChange={(e) => set('postalCode', e.target.value)} /></Field>
