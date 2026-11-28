@@ -4,6 +4,8 @@
  * (à déposer à côté de sync.php). Le navigateur ne peut pas interroger VIES directement (CORS) : ce script relaie.
  *
  *   GET ?vat=BE0417497106  → {ok, valid, name, address}   (session FabEvent requise : pas de relais ouvert à tous)
+ *   GET ?spec=Shure SM58   → fiche technique trouvée sur le web : {results: [{source, url, title, weight, dims, power, price, images}]}
+ *   GET ?img=<url>         → image d'un résultat, relayée (le navigateur ne peut pas la lire directement chez un autre site)
  */
 ini_set('display_errors', '0');
 require __DIR__ . '/_fabevent.php';
@@ -12,6 +14,15 @@ header('X-Content-Type-Options: nosniff');
 header('X-Robots-Tag: noindex, nofollow');
 
 fe_require(fe_ws($_GET['ws'] ?? '') ?: null);
+
+if (isset($_GET['spec']) || isset($_GET['img'])) {
+    require __DIR__ . '/_specs.php';
+    if (isset($_GET['img'])) fe_image((string)$_GET['img']);
+    $q = trim(mb_substr((string)$_GET['spec'], 0, 160));
+    if ($q === '') fe_json(400, ['error' => 'q', 'detail' => 'Indique la marque et le modèle.']);
+    @set_time_limit(40);
+    fe_json(200, ['ok' => true] + fe_specs($q));
+}
 
 $vat = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', (string)($_GET['vat'] ?? '')));
 if (!preg_match('/^([A-Z]{2})([0-9A-Z]{2,12})$/', $vat, $m)) fe_json(400, ['error' => 'bad_vat', 'detail' => 'N° de TVA incomplet (ex. BE0417497106).']);

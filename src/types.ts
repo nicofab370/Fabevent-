@@ -236,6 +236,10 @@ export interface Equipment extends Base {
   dailyPrice: number;
   replacementValue?: number;
   weight?: number;
+  /** dimensions hors tout (cm) : longueur, largeur, hauteur ; le volume en est déduit */
+  dims?: { l: number; w: number; h: number };
+  /** consommation électrique maximale (W) */
+  power?: number;
   isKit: boolean;
   kitItems: KitItem[];
   /**

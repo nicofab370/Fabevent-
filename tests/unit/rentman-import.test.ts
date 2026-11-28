@@ -22,16 +22,29 @@ describe('import Rentman → FabEvent', () => {
     expect(one('categories', 'rm-f-2').parentId).toBe('rm-f-1');
     expect(one('categories', 'rm-f-3').parentId).toBe('rm-f-1'); // Son › Micros › Sans fil → Son › Sans fil
   });
+  it('stock : un champ « quantity » à 0 ne masque pas le stock actuel ; sinon mouvements de stock', () => {
+    expect(one('equipment', 'rm-e-500').quantity).toBe(12);
+    expect(one('equipment', 'rm-e-503').quantity).toBe(42);
+    expect(one('lines', 'rm-l-600').qty).toBe(4);
+  });
   it('matériel : kit, vente, unités numérotées (quantité = unités)', () => {
     expect(one('equipment', 'rm-e-502')).toMatchObject({ isKit: true, kitItems: [{ equipmentId: 'rm-e-500', qty: 2 }] });
     expect(one('equipment', 'rm-e-503').kind).toBe('vente');
-    expect(one('equipment', 'rm-e-501')).toMatchObject({ trackSerials: true, quantity: 2, weight: 20 });
+    expect(one('equipment', 'rm-e-501')).toMatchObject({ trackSerials: true, quantity: 2, weight: 20, dims: { l: 43, w: 37, h: 54 } });
     expect(one('units', 'rm-u-901').status).toBe('hs');
   });
   it('projet : client, lieu, interlocuteur, dates locales, statut des sous-projets', () => {
     expect(one('projects', 'rm-p-300')).toMatchObject({ number: '2026-041', clientId: 'rm-c-10', venueId: 'rm-c-11', venue: 'Salle La Boverie', contactPersonId: 'rm-cp-100', externalRef: 'BC-77', start: '2026-06-21T14:00', end: '2026-06-21T23:30', status: 'confirme' });
     expect(one('subprojects', 'rm-s-310')).toMatchObject({ status: 'confirme', start: '2026-06-21T14:00', prepStart: '2026-06-21T08:00', returnEnd: '2026-06-22T02:00', groups: [{ id: 'rm-g-400', name: 'Son', periodIds: [] }] });
     expect(one('subprojects', 'rm-s-311').status).toBe('annule');
+  });
+  it('planning : blocs de planning → créneaux (montage, prestation, démontage), postes rattachés à leur créneau', () => {
+    const sp = one('subprojects', 'rm-s-310');
+    expect(sp.periods.map((p: { name: string; kind: string; start: string }) => [p.name, p.kind, p.start])).toEqual([
+      ['Montage', 'montage', '2026-06-21T08:00'], ['Show', 'prestation', '2026-06-21T14:00'], ['Démontage', 'demontage', '2026-06-21T23:30'],
+    ]);
+    expect(sp).toMatchObject({ start: '2026-06-21T14:00', end: '2026-06-21T23:30', prepStart: '2026-06-21T08:00', returnEnd: '2026-06-22T02:00' });
+    expect(data.crew.filter((c: { function: string }) => c.function === 'Ingé son').every((c: { periodId?: string }) => c.periodId === 'rm-pg-2')).toBe(true);
   });
   it('lignes : groupe, remise en %, contenu de kit, option, remarque entrepôt', () => {
     expect(one('lines', 'rm-l-600')).toMatchObject({ subprojectId: 'rm-s-310', groupId: 'rm-g-400', qty: 4, unitPrice: 45, discount: 10, internalRemark: 'Prendre les housses' });
@@ -74,8 +87,15 @@ describe('import Rentman → FabEvent', () => {
       [950, 'rm-p-300', undefined, undefined], [951, undefined, undefined, 'rm-e-504'], [952, '', 'rm-p-70', undefined],
     ]);
   });
+  it('équipe refusée à la clé (403) : techniciens repris des postes avec leur nom, toujours placés', () => {
+    const rm = { ...RENTMAN, crewmembers: [], projectcrew: [{ id: 710, function: '/projectfunctions/700', crewmember: '/crew/70', displayname: 'Karim B.' }] };
+    const r = mapRentman(rm, '2026-01-01T00:00:00.000Z');
+    expect(r.data.people).toEqual([expect.objectContaining({ id: 'rm-p-70', name: 'Karim B.' })]);
+    expect(r.data.crew.find((c: { personId?: string }) => c.personId)?.personId).toBe('rm-p-70');
+    expect(r.report.warnings.some((w: string) => w.includes('nom seulement'))).toBe(true);
+  });
   it('rapport : comptes, rien d’inventé', () => {
     expect(report.counts).toMatchObject({ projects: 1, subprojects: 2, lines: 4, crew: 2, costs: 1, docs: 2, files: 2, photos: 1 });
-    expect(report.warnings).toEqual([]);
+    expect(report.warnings).toEqual(['1 article(s) : stock calculé à partir des mouvements de stock', '1 article(s) sans aucune quantité dans Rentman (stock à 0)']);
   });
 });

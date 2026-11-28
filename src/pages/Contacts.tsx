@@ -12,6 +12,7 @@ import { CsvButton, CustomFieldsEditor, exportCsv, TagInput, Tags } from '../com
 import { suggestRegime } from '../payment';
 import { save, uid } from '../utils';
 import { Icon } from '../components/Icon';
+import { BulkBar, BulkSet, SelectAllTh, SelectTd, useSelection } from '../components/Selection';
 
 type Draft = Partial<Contact> & { type: ContactType; company: string };
 
@@ -113,13 +114,14 @@ export default function Contacts() {
     const d = (c.departments || []).find((x) => x.name.toLowerCase().includes(q.toLowerCase()));
     return d ? `→ service ${d.name}` : '';
   };
-  const csv = () => exportCsv('contacts.csv', ['Société / nom', 'Type', 'Prénom', 'Nom', 'Email', 'Téléphone', 'Adresse', 'CP', 'Ville', 'Pays', 'N° TVA', 'Peppol', 'Étiquettes'],
-    filtered.map((c) => [c.company, CONTACT_TYPES[c.type], c.firstName, c.lastName, c.email, c.phone, c.address, c.postalCode, c.city, c.country, c.vatNumber, c.peppolId, (c.tags || []).join(', ')]));
+  const sel = useSelection(filtered.map((c) => c.id));
+  const csv = (list = filtered) => exportCsv('contacts.csv', ['Société / nom', 'Type', 'Prénom', 'Nom', 'Email', 'Téléphone', 'Adresse', 'CP', 'Ville', 'Pays', 'N° TVA', 'Peppol', 'Étiquettes'],
+    list.map((c) => [c.company, CONTACT_TYPES[c.type], c.firstName, c.lastName, c.email, c.phone, c.address, c.postalCode, c.city, c.country, c.vatNumber, c.peppolId, (c.tags || []).join(', ')]));
 
   return (
     <>
       <PageHead title="Contacts">
-        <CsvButton onClick={csv} />
+        <CsvButton onClick={() => csv()} />
         <button onClick={() => setEdit({ type: 'client', company: '' })}>+ Nouveau contact</button>
       </PageHead>
       <div className="card">
@@ -136,13 +138,21 @@ export default function Contacts() {
             </select>
           )}
         </div>
+        <BulkBar sel={sel} noun="contact(s)">
+          <BulkSet label="Changer le type" options={Object.entries(CONTACT_TYPES)} onApply={async (t) => {
+            for (const id of sel.ids) await db.contacts.update(id, { type: t as ContactType, updatedAt: new Date().toISOString() });
+          }} />
+          <button className="secondary small" onClick={() => csv(filtered.filter((c) => sel.has(c.id)))}>Exporter (CSV)</button>
+          <button className="danger small" onClick={() => deleteContacts(sel.ids).then((n) => n && sel.clear())}>Supprimer</button>
+        </BulkBar>
         {filtered.length === 0 ? <Empty>Aucun contact.</Empty> : (
           <div className="table-wrap">
             <table className="list">
-              <thead><tr><th>Nom</th><th>Type</th><th>Contact</th><th>Email</th><th>Téléphone</th><th>Ville</th></tr></thead>
+              <thead><tr><SelectAllTh sel={sel} /><th>Nom</th><th>Type</th><th>Contact</th><th>Email</th><th>Téléphone</th><th>Ville</th></tr></thead>
               <tbody>
                 {filtered.map((c) => (
                   <tr key={c.id} className="click" onClick={() => (c.type === 'lieu' ? nav('/lieux/' + c.id) : setEdit(c))}>
+                    <SelectTd sel={sel} id={c.id} label={c.company} />
                     <td><strong>{c.company}</strong> <Tags tags={c.tags} />{matchOf(c) && <div className="muted" style={{ fontSize: 12 }}>{matchOf(c)}</div>}</td>
                     <td><span className="badge">{CONTACT_TYPES[c.type]}</span></td>
                     <td>{[c.firstName, c.lastName].filter(Boolean).join(' ')}{c.persons?.length ? <span className="muted"> +{c.persons.length} interlocuteur(s)</span> : null}{c.departments?.length ? <span className="muted"> · {c.departments.length} service(s)</span> : null}</td>
@@ -248,4 +258,22 @@ function PeopleEditor({ c, setC }: { c: Draft; setC: (c: Draft) => void }) {
       )}
     </div>
   );
+}
+
+/**
+ * Suppression de plusieurs contacts (clients, fournisseurs, lieux) : ceux qui servent encore
+ * (client ou lieu d'un projet, fournisseur d'une sous-location, société d'un technicien) sont gardés.
+ * Renvoie le nombre de contacts supprimés.
+ */
+export async function deleteContacts(ids: string[]): Promise<number> {
+  const set = new Set(ids);
+  const [projects, subrentals, people, costs] = await Promise.all([db.projects.toArray(), db.subrentals.toArray(), db.people.toArray(), db.costs.toArray()]);
+  const used = new Set([
+    ...projects.flatMap((p) => [p.clientId, p.venueId]), ...subrentals.map((s) => s.supplierId), ...people.map((p) => p.contactId), ...costs.map((c) => c.supplierId),
+  ].filter((x): x is string => !!x && set.has(x)));
+  const ok = ids.filter((id) => !used.has(id));
+  if (!ok.length) { alert(`Les ${ids.length} contact(s) sélectionnés servent encore (projets, sous-locations, équipe) : rien n'est supprimé.`); return 0; }
+  if (!confirm(`Supprimer ${ok.length} contact(s) ?` + (used.size ? `\n${used.size} contact(s) encore utilisés dans des projets, sous-locations ou l'équipe sont gardés.` : ''))) return 0;
+  await db.contacts.bulkDelete(ok);
+  return ok.length;
 }

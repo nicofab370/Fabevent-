@@ -5,6 +5,7 @@ import { appBaseUrl, db } from '../db';
 import type { Person, ProjectFile, Unavailability } from '../types';
 import { buildIcs, crewWindow, download, fmtRange, money, save, toLocalInput, uid } from '../utils';
 import { CsvButton, exportCsv } from '../components/extra';
+import { BulkBar, BulkSet, SelectAllTh, SelectTd, useSelection } from '../components/Selection';
 import { agendaLink, mySheetLink, newToken, signupLink } from '../mailer';
 import { syncEnabled, syncNow } from '../sync';
 import { FileViewer } from '../components/FileViewer';
@@ -58,12 +59,16 @@ export default function Crew() {
     download(`agenda-${person.name.replace(/\s+/g, '-')}.ics`, buildIcs(`FabEvent — ${person.name}`, events), 'text/calendar;charset=utf-8');
   };
 
+  const sel = useSelection(people.map((p) => p.id));
+  const csv = (list = people) => exportCsv('equipe.csv', ['Nom', 'Fonction', 'Statut', 'Société', 'Téléphone', 'Email', 'Coût / jour', 'Coût / heure'],
+    list.map((p) => [p.name, p.role, p.external ? 'Sous-traitant' : 'Interne', companies.find((c) => c.id === p.contactId)?.company, p.phone, p.email, p.costRate, p.hourlyCost]));
+  const roles = Array.from(new Set(everyone.flatMap((p) => [p.role, ...(p.skills || [])]).filter((x): x is string => !!x))).sort((a, b) => a.localeCompare(b, 'fr'));
+
   return (
     <>
       <PageHead title="Équipe & sous-traitants">
         <input placeholder="Rechercher une personne…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Rechercher une personne" />
-        <CsvButton onClick={() => exportCsv('equipe.csv', ['Nom', 'Fonction', 'Statut', 'Société', 'Téléphone', 'Email', 'Coût / jour', 'Coût / heure'],
-          people.map((p) => [p.name, p.role, p.external ? 'Sous-traitant' : 'Interne', companies.find((c) => c.id === p.contactId)?.company, p.phone, p.email, p.costRate, p.hourlyCost]))} />
+        <CsvButton onClick={() => csv()} />
         <button onClick={() => setEdit({ name: '', dailyRate: 0, external: false })}>+ Nouvelle personne</button>
       </PageHead>
       {sheetMsg && <div className="info">{sheetMsg}</div>}
@@ -121,15 +126,30 @@ export default function Crew() {
           ) : <button className="small" onClick={async () => { const s2 = await db.settings.get('main'); if (s2) await db.settings.put({ ...s2, signupKey: newToken(24) }); }}>Ouvrir le formulaire d'inscription</button>}
       </div>
       <div className="card">
+        <BulkBar sel={sel} noun="personne(s)">
+          {roles.length > 0 && <BulkSet label="Changer la fonction" options={roles.map((r) => [r, r])} onApply={async (role) => {
+            for (const id of sel.ids) await db.people.update(id, { role, updatedAt: new Date().toISOString() });
+          }} />}
+          <BulkSet label="Changer le statut" options={[['interne', 'Interne'], ['externe', 'Sous-traitant']]} onApply={async (v) => {
+            for (const id of sel.ids) await db.people.update(id, { external: v === 'externe', updatedAt: new Date().toISOString() });
+          }} />
+          <button className="secondary small" onClick={() => csv(people.filter((p) => sel.has(p.id)))}>Exporter (CSV)</button>
+          <button className="danger small" onClick={async () => {
+            if (!confirm(`Supprimer ${sel.size} personne(s) ? Leurs postes resteront « à pourvoir ».`)) return;
+            for (const id of sel.ids) { await db.crew.where({ personId: id }).modify({ personId: undefined }); await db.people.delete(id); }
+            sel.clear();
+          }}>Supprimer</button>
+        </BulkBar>
         {people.length === 0 ? <Empty>Ajoute tes techniciens (salariés, intermittents, sous-traitants).</Empty> : (
           <div className="table-wrap">
             <table className="list">
-              <thead><tr><th>Nom</th><th>Fonction</th><th>Statut</th><th>Téléphone</th><th className="n">Coût/j</th><th className="n">Coût/h</th><th>Prochaines missions</th><th /></tr></thead>
+              <thead><tr><SelectAllTh sel={sel} /><th>Nom</th><th>Fonction</th><th>Statut</th><th>Téléphone</th><th className="n">Coût/j</th><th className="n">Coût/h</th><th>Prochaines missions</th><th /></tr></thead>
               <tbody>
                 {people.map((p) => {
                   const next = assignmentsOf(p.id).filter((c) => c.end >= nowS);
                   return (
                     <tr key={p.id}>
+                      <SelectTd sel={sel} id={p.id} label={p.name} />
                       <td><a href="#" onClick={(e) => { e.preventDefault(); setEdit(p); }}><strong>{p.name}</strong></a></td>
                       <td>{p.role}{p.skills?.filter((x) => x !== p.role).length ? <div className="muted" style={{ fontSize: 11 }}>{p.skills.filter((x) => x !== p.role).join(', ')}</div> : null}</td>
                       <td><span className="badge">{p.external ? 'Sous-traitant' : 'Interne'}</span>{p.contactId && <div className="muted" style={{ fontSize: 11 }}>{companies.find((c) => c.id === p.contactId)?.company}</div>}</td>

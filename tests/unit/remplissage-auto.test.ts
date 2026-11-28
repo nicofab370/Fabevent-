@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyPlace, applyVat, fillFromSimilar, parseViesAddress, placeFromNominatim, similarEquipment, specSearchUrl, splitVat } from '../../src/lookup';
+import { applyPlace, applyVat, fillFromSimilar, parseViesAddress, placeFromNominatim, similarEquipment, specChoices, specQuery, specSearchUrl, splitVat } from '../../src/lookup';
 import type { Equipment } from '../../src/types';
 
 describe('remplissage automatique : n° de TVA (VIES)', () => {
@@ -57,5 +57,18 @@ describe('remplissage automatique : équipement', () => {
   });
   it('recherche de la fiche technique', () => {
     expect(specSearchUrl({ brand: 'Shure', model: 'SM58' })).toContain(encodeURIComponent('Shure SM58 poids'));
+  });
+  it('fiche technique sur internet : valeurs regroupées par sources, prix en euros seulement', () => {
+    expect(specQuery({ brand: 'Shure', model: 'SM58', name: 'Shure SM58 micro' })).toBe('Shure SM58');
+    expect(specQuery({ name: 'Kit Régie Vidéo Datavideo' })).toBe('Kit Régie Vidéo Datavideo');
+    const c = specChoices([
+      { source: 'a.be', url: 'https://a.be', weight: 0.3, price: { amount: 99, currency: 'EUR' }, images: ['https://a.be/1.jpg'] },
+      { source: 'b.com', url: 'https://b.com', weight: 0.33 },
+      { source: 'c.de', url: 'https://c.de', weight: 0.33, dims: { l: 16.2, w: 5.1, h: 5.1 }, price: { amount: 120, currency: 'USD' } },
+    ]);
+    expect(c.weight.map((x) => [x.label, x.sources.length])).toEqual([['0,33 kg', 2], ['0,3 kg', 1]]);
+    expect(c.replacementValue.map((x) => x.value)).toEqual([99]);
+    expect(c.dims[0].label).toContain('16,2 × 5,1 × 5,1 cm');
+    expect(c.photo).toHaveLength(1);
   });
 });

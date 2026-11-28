@@ -61,7 +61,20 @@ export function mergeRentmanFiles(list: RentmanFile[]): RentmanFile {
   return files.length ? { ...main, data: { ...main.data, files } } : main;
 }
 
-export interface ImportResult { table: Label; added: number; updated: number; kept: number }
+export interface ImportResult { table: Label; added: number; updated: number; kept: number; /** fiches déjà là, dont des champs vides ont été remplis */ filled?: number }
+
+const isEmpty = (v: unknown) => v == null || v === '' || v === 0 || (Array.isArray(v) && v.length === 0);
+/** Fiche déjà importée, sans mise à jour demandée : seuls ses champs vides (ou à 0) reçoivent la valeur de Rentman. */
+export function fillEmpty(cur: Record<string, unknown>, r: Record<string, unknown>): Record<string, unknown> | null {
+  let changed = false;
+  const out = { ...cur };
+  for (const [k, v] of Object.entries(r)) {
+    if (k === 'id' || k === 'createdAt' || k === 'updatedAt' || isEmpty(v) || !isEmpty(cur[k])) continue;
+    out[k] = v;
+    changed = true;
+  }
+  return changed ? out : null;
+}
 
 const fromBase64 = (b64: string, type: string) => {
   const bin = atob(b64);
@@ -92,15 +105,19 @@ export async function importRentman(file: RentmanFile, opts: { update: boolean }
       const table = db.table(t);
       const existing = await table.bulkGet(rows.map((r) => r.id));
       const toPut: { id: string }[] = [];
-      let added = 0, updated = 0, kept = 0;
+      let added = 0, updated = 0, kept = 0, filled = 0;
       rows.forEach((r, i) => {
         const cur = existing[i] as Record<string, unknown> | undefined;
         if (!cur) { toPut.push(r); added++; }
         else if (opts.update) { toPut.push({ ...cur, ...r }); updated++; }
-        else kept++;
+        else {
+          const f = fillEmpty(cur, r as unknown as Record<string, unknown>);
+          if (f) { toPut.push(f as { id: string }); filled++; }
+          kept++;
+        }
       });
       for (let i = 0; i < toPut.length; i += 500) await table.bulkPut(toPut.slice(i, i + 500));
-      out.push({ table: t, added, updated, kept });
+      out.push({ table: t, added, updated, kept, filled });
     }
 
     // types de projet et dépôts : ajoutés aux paramètres s'ils n'y sont pas (même nom = gardé)

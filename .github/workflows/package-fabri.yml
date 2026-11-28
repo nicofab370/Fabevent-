@@ -27,7 +27,7 @@ jobs:
           mkdir -p paquet/fabevent/api
           cp -r dist/. paquet/fabevent/
           cp server/sync.php paquet/fabevent/api/sync.php
-          cp server/_fabevent.php server/auth.php server/mail.php server/public.php server/oauth.php server/lookup.php server/diag.php server/mail-config.example.php server/fabevent-config.example.php server/api-htaccess.example paquet/fabevent/api/
+          cp server/_fabevent.php server/auth.php server/mail.php server/public.php server/oauth.php server/lookup.php server/_specs.php server/diag.php server/mail-config.example.php server/fabevent-config.example.php server/api-htaccess.example paquet/fabevent/api/
           cp docs/deploiement-fabri.md paquet/LISEZMOI.md
       - uses: actions/upload-artifact@v4
         with:

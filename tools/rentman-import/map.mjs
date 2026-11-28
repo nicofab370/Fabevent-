@@ -20,6 +20,8 @@ export const refId = (v) => {
   return m ? Number(m[1]) : null;
 };
 const pick = (o, ...keys) => { for (const k of keys) { const v = o?.[k]; if (v !== undefined && v !== null && v !== '') return v; } return undefined; };
+/** plus grande valeur numérique parmi plusieurs champs (un champ à 0 ne masque pas les suivants) */
+const maxOf = (o, ...keys) => Math.max(0, ...keys.map((k) => num(o?.[k])));
 const num = (v, d = 0) => { const n = typeof v === 'string' ? parseFloat(v.replace(',', '.')) : Number(v); return Number.isFinite(n) ? n : d; };
 const str = (v) => (v == null ? undefined : String(v).trim() || undefined);
 /** date Rentman (« 2026-06-01T08:00:00+02:00 ») → heure locale FabEvent « 2026-06-01T08:00 » */
@@ -41,6 +43,15 @@ export function mapStatus(name) {
   if (/concept|brouillon|draft/.test(n)) return 'brouillon';
   return 'demande';
 }
+/** Bloc de planning Rentman (son nom) → type de créneau FabEvent. */
+export function periodKind(name) {
+  const n = String(name || '').toLowerCase();
+  if (/d[ée]montage|afbouw|break ?down|tear ?down|abbau|load ?out|get ?out|d[ée]charg/.test(n)) return 'demontage';
+  if (/montage|opbouw|build ?up|set ?up|aufbau|load ?in|get ?in|install|charg/.test(n)) return 'montage';
+  if (/show|event|[ée]v[ée]nement|prestation|concert|spectacle|repr[ée]sentation|voorstelling|uitvoering|op locatie|jour j|live/.test(n)) return 'prestation';
+  return 'autre';
+}
+
 const STATUS_RANK = { annule: 0, demande: 1, brouillon: 2, option: 3, confirme: 4, en_cours: 5, execute: 6, termine: 7 };
 
 /** Remise Rentman : fraction (0,15) ou pourcentage (15) → pourcentage. */
@@ -118,17 +129,31 @@ export function mapRentman(rm, now = new Date().toISOString()) {
   }
   const unitsOf = new Map();
   for (const u of rm.serialnumbers || []) { const e = refId(u.equipment); if (e) unitsOf.set(e, (unitsOf.get(e) || 0) + 1); }
+  // stock calculé à partir des mouvements de stock (achats, pertes, corrections…), si la fiche de l'article n'en donne pas
+  const moved = new Map();
+  for (const m of rm.stockmovements || []) { const e = refId(m.equipment); if (e) moved.set(e, (moved.get(e) || 0) + num(pick(m, 'amount', 'quantity', 'quantity_change', 'change', 'mutation'))); }
+  const QTY = ['current_quantity', 'current_quantity_excl_cases', 'quantity', 'quantity_total', 'stock', 'stock_quantity', 'total_quantity', 'total_stock', 'stock_total', 'in_stock', 'quantity_in_stock', 'amount'];
+  let fromMoves = 0, zero = 0;
   const equipment = (rm.equipment || []).map((e) => {
     const kit = kitItems.get(e.id);
     const sale = /sale|verkoop|vente/i.test(String(pick(e, 'rental_sales', 'type') || ''));
     return {
       id: id('e', e.id), ...base(e), name: str(pick(e, 'displayname', 'name')) || `Article ${e.id}`, code: str(e.code),
       categoryId: refId(e.folder) ? id('f', refId(e.folder)) : undefined,
-      quantity: unitsOf.get(e.id) || Math.max(0, Math.round(num(pick(e, 'quantity', 'current_quantity', 'quantity_total')))),
+      quantity: (() => {
+        const q = unitsOf.get(e.id) || Math.round(maxOf(e, ...QTY)); // numéroté : une unité par numéro de série
+        if (q) return q;
+        const m = Math.max(0, Math.round(moved.get(e.id) || 0));
+        if (m) fromMoves++; else if (!kit?.length) zero++;
+        return m;
+      })(),
       dailyPrice: num(pick(e, 'price', 'rental_price', 'unit_price')),
       costPrice: num(pick(e, 'purchase_price')) || undefined,
       replacementValue: num(pick(e, 'new_price', 'replacement_value', 'value')) || undefined,
       weight: num(pick(e, 'weight')) || undefined,
+      // dimensions (cm) et consommation (W), si renseignées dans Rentman
+      dims: (() => { const d = { l: num(pick(e, 'length', 'depth')), w: num(e.width), h: num(e.height) }; return d.l && d.w && d.h ? d : undefined; })(),
+      power: num(pick(e, 'power', 'power_consumption', 'wattage')) || undefined,
       kind: sale ? 'vente' : undefined,
       isKit: !!kit?.length, kitItems: kit || [], accessories: accOf.get(e.id),
       trackSerials: unitsOf.has(e.id) || undefined,
@@ -140,6 +165,8 @@ export function mapRentman(rm, now = new Date().toISOString()) {
     };
   });
   const eqName = new Map(equipment.map((e) => [e.id, e.name]));
+  if (fromMoves) warn(`${fromMoves} article(s) : stock calculé à partir des mouvements de stock`);
+  if (zero) warn(`${zero} article(s) sans aucune quantité dans Rentman (stock à 0)`);
   const units = (rm.serialnumbers || []).filter((u) => refId(u.equipment)).map((u, i) => ({
     id: id('u', u.id), ...base(u), equipmentId: id('e', refId(u.equipment)), number: num(u.ref) || undefined,
     serial: str(pick(u, 'serial', 'ref')) || `RM-${u.id}`, barcode: str(Array.isArray(u.qrcodes) ? u.qrcodes[0] : u.qrcodes),
@@ -147,8 +174,22 @@ export function mapRentman(rm, now = new Date().toISOString()) {
   })).map(({ _i, ...u }) => u);
 
   /* ---------- équipe, véhicules ---------- */
+  // équipe non lue (clé API sans accès au personnel) : techniciens repris des postes, rendez-vous et disponibilités, avec leur nom seulement
+  if (!(rm.crewmembers || []).length) {
+    const seen = new Map();
+    for (const c of [...(rm.projectcrew || []), ...(rm.appointmentcrew || []), ...(rm.crewavailability || [])]) {
+      const pid = refId(pick(c, 'crewmember', 'crew', 'member'));
+      if (!pid) continue;
+      const name = str(pick(c, 'crewmember_name', 'crew_name', 'name_crewmember', 'displayname'));
+      if (!seen.has(pid) || (name && !seen.get(pid).displayname)) seen.set(pid, { id: pid, displayname: name, remark: "Repris d'un poste Rentman : la clé API n'a pas accès à la fiche de l'équipe (coordonnées à compléter)." });
+    }
+    if (seen.size) {
+      rm = { ...rm, crewmembers: [...seen.values()] };
+      warn(`${seen.size} technicien(s) repris des postes, avec leur nom seulement : la clé API n'a pas accès à l'équipe`);
+    }
+  }
   const people = (rm.crewmembers || []).map((p) => ({
-    id: id('p', p.id), ...base(p), name: str(pick(p, 'displayname')) || [p.firstname, p.lastname].filter(Boolean).join(' ') || `Personne ${p.id}`,
+    id: id('p', p.id), ...base(p), name: str(pick(p, 'displayname')) || [p.firstname, p.lastname].filter(Boolean).join(' ') || `Technicien Rentman ${p.id}`,
     email: str(pick(p, 'email', 'email_1')), phone: str(pick(p, 'phone', 'mobilephone', 'phone_1')), city: str(pick(p, 'city', 'visit_city', 'street_city')),
     role: str(pick(p, 'function', 'job_title', 'jobtitle')), vatNumber: str(pick(p, 'vat_code', 'vat_number')),
     notes: str([pick(p, 'remark', 'notes'), [pick(p, 'street'), pick(p, 'number', 'housenumber')].filter(Boolean).join(' '), pick(p, 'postalcode', 'zipcode')].filter(Boolean).join(' · ')),
@@ -222,6 +263,37 @@ export function mapRentman(rm, now = new Date().toISOString()) {
   });
   const firstSubOf = new Map(subprojects.map((s) => [s.projectId, s.id]).reverse());
 
+  /* ---------- planning : blocs de planning du personnel (montage, show, démontage…) → créneaux du sous-projet ---------- */
+  const subById = new Map(subprojects.map((s) => [s.id, s]));
+  const groupPeriod = new Map();
+  for (const g of rm.projectfunctiongroups || []) {
+    const sp = refId(g.subproject), pid = refId(g.project);
+    const sub = subById.get(sp ? id('s', sp) : pid ? firstSubOf.get(id('p', pid)) : undefined);
+    const start = localTime(pick(g, 'planperiod_start', 'usageperiod_start', 'start')), end = localTime(pick(g, 'planperiod_end', 'usageperiod_end', 'end'));
+    if (!sub || !start || !end) continue;
+    const name = str(pick(g, 'name', 'displayname')) || 'Créneau';
+    const period = { id: id('pg', g.id), name, kind: periodKind(name), start, end };
+    (sub.periods ||= []).push(period);
+    groupPeriod.set(g.id, period.id);
+  }
+  for (const sub of subprojects) {
+    if (!sub.periods?.length) continue;
+    // période d'utilisation de Rentman gardée comme prestation si aucun bloc n'en est une ; préparation et retour gardés aussi
+    if (!sub.periods.some((p) => p.kind === 'prestation')) sub.periods.push({ id: `${sub.id}-usage`, name: 'Prestation', kind: 'prestation', start: sub.start, end: sub.end });
+    // préparation et retour de Rentman : seulement ce qui dépasse les blocs de planning
+    const first = sub.periods.reduce((a, p) => (p.start < a ? p.start : a), sub.periods[0].start);
+    const last = sub.periods.reduce((a, p) => (p.end > a ? p.end : a), sub.periods[0].end);
+    if (sub.prepStart && sub.prepStart < first) sub.periods.push({ id: `${sub.id}-prep`, name: 'Préparation', kind: 'autre', start: sub.prepStart, end: first });
+    if (sub.returnEnd && sub.returnEnd > last) sub.periods.push({ id: `${sub.id}-retour`, name: 'Retour', kind: 'autre', start: last, end: sub.returnEnd });
+    // comme FabEvent : dates du sous-projet déduites des créneaux (prestations = utilisation, le reste = préparation / retour)
+    const ps = sub.periods.filter((p) => p.end > p.start).sort((a, b) => a.start.localeCompare(b.start));
+    const used = ps.filter((p) => p.kind === 'prestation');
+    const allStart = ps[0].start, allEnd = ps.reduce((a, p) => (p.end > a ? p.end : a), ps[0].end);
+    sub.periods = ps;
+    sub.start = used[0].start; sub.end = used.reduce((a, p) => (p.end > a ? p.end : a), used[0].end);
+    sub.prepStart = allStart < sub.start ? allStart : undefined; sub.returnEnd = allEnd > sub.end ? allEnd : undefined;
+  }
+
   /* ---------- lignes de matériel ---------- */
   const peq = rm.projectequipment || [];
   const kitIds = new Set(equipment.filter((e) => e.isKit).map((e) => e.id));
@@ -239,7 +311,7 @@ export function mapRentman(rm, now = new Date().toISOString()) {
     return {
       id: id('l', l.id), ...base(l), projectId, subprojectId, equipmentId,
       name: str(l.name) || (equipmentId ? eqName.get(equipmentId) : undefined) || 'Article',
-      qty: num(pick(l, 'quantity_total', 'quantity'), 1), unitPrice: num(pick(l, 'unit_price', 'price')), catalogPrice: undefined,
+      qty: maxOf(l, 'quantity_total', 'quantity', 'quantity_planned'), unitPrice: num(pick(l, 'unit_price', 'price')), catalogPrice: undefined,
       discount: pct(pick(l, 'discount')), factor: factor > 0 ? factor : undefined,
       groupId: gid ? id('g', gid) : undefined, order: num(l.order, i),
       optional: !!l.is_option || undefined, parentLineId: parent ? id('l', parent) : undefined,
@@ -259,14 +331,15 @@ export function mapRentman(rm, now = new Date().toISOString()) {
     if (!subprojectId) { warn(`Poste ${f.id} sans sous-projet : ignoré`); continue; }
     const projectId = pid ? id('p', pid) : subprojects.find((s) => s.id === subprojectId)?.projectId;
     const sub = subprojects.find((s) => s.id === subprojectId);
-    const start = localTime(pick(f, 'usageperiod_start', 'planperiod_start')) || sub?.start, end = localTime(pick(f, 'usageperiod_end', 'planperiod_end')) || sub?.end;
+    const gp = sub?.periods?.find((p) => p.id === groupPeriod.get(refId(pick(f, 'group', 'functiongroup', 'function_group'))));
+    const start = localTime(pick(f, 'planperiod_start', 'usageperiod_start')) || gp?.start || sub?.start, end = localTime(pick(f, 'planperiod_end', 'usageperiod_end')) || gp?.end || sub?.end;
     const assigned = crewByFn.get(f.id) || [];
     const n = Math.max(1, num(f.quantity, 1), assigned.length);
     const rate = num(pick(f, 'price', 'unit_price', 'price_per_unit'));
     for (let k = 0; k < n; k++) {
       const a = assigned[k];
       crew.push({
-        id: id('cr', `${f.id}-${k}`), ...base(f), projectId, subprojectId, personId: a && refId(a.crewmember) ? id('p', refId(a.crewmember)) : undefined,
+        id: id('cr', `${f.id}-${k}`), ...base(f), projectId, subprojectId, periodId: groupPeriod.get(refId(pick(f, 'group', 'functiongroup', 'function_group'))), personId: a && refId(pick(a, 'crewmember', 'crew', 'member')) ? id('p', refId(pick(a, 'crewmember', 'crew', 'member'))) : undefined,
         function: str(f.name) || 'Poste', start: localTime(pick(a || {}, 'planperiod_start', 'usageperiod_start')) || start, end: localTime(pick(a || {}, 'planperiod_end', 'usageperiod_end')) || end,
         rate, billable: rate > 0, cost: num(pick(a || {}, 'cost', 'purchase_cost', 'costs', 'cost_rate')) || undefined,
         notes: str(pick(a || {}, 'remark')) || str(pick(f, 'remark')),
@@ -313,7 +386,7 @@ export function mapRentman(rm, now = new Date().toISOString()) {
     const e = refId(l.equipment);
     srLines.set(sr, [...(srLines.get(sr) || []), {
       equipmentId: e ? id('e', e) : undefined, name: str(pick(l, 'name', 'displayname')) || (e ? eqName.get(id('e', e)) : undefined) || 'Article',
-      qty: num(pick(l, 'quantity_total', 'quantity'), 1), cost: num(pick(l, 'unit_price', 'price', 'purchase_price')),
+      qty: maxOf(l, 'quantity_total', 'quantity', 'quantity_planned'), cost: num(pick(l, 'unit_price', 'price', 'purchase_price')),
       _proj: lineProj.get(refId(pick(l, 'project_equipment', 'projectequipment', 'linked_equipment'))),
     }]);
   }
@@ -353,7 +426,7 @@ export function mapRentman(rm, now = new Date().toISOString()) {
 
   /* ---------- indisponibilités de l'équipe ---------- */
   const unavailability = (rm.crewavailability || []).map((a) => {
-    const p = refId(a.crewmember);
+    const p = refId(pick(a, 'crewmember', 'crew', 'member'));
     const st = String(pick(a, 'status', 'availability', 'type') ?? '').toLowerCase();
     // seules les périodes « indisponible » (une disponibilité déclarée n'en est pas une)
     if (!p || (/avail|beschikbaar|dispon/.test(st) && !/un|niet|indis|non/.test(st))) return null;
@@ -364,7 +437,7 @@ export function mapRentman(rm, now = new Date().toISOString()) {
 
   /* ---------- rendez-vous ---------- */
   const apptCrew = new Map();
-  for (const c of rm.appointmentcrew || []) { const ap = refId(c.appointment), p = refId(c.crewmember); if (ap && p) apptCrew.set(ap, [...(apptCrew.get(ap) || []), id('p', p)]); }
+  for (const c of rm.appointmentcrew || []) { const ap = refId(c.appointment), p = refId(pick(c, 'crewmember', 'crew', 'member')); if (ap && p) apptCrew.set(ap, [...(apptCrew.get(ap) || []), id('p', p)]); }
   const appointments = (rm.appointments || []).map((a) => {
     const start = localTime(pick(a, 'start', 'planperiod_start'));
     if (!start) return null;
@@ -414,7 +487,7 @@ export function mapRentman(rm, now = new Date().toISOString()) {
     const meta = { fileId: f.id, url, name: str(pick(f, 'name', 'displayname', 'filename')) || `fichier-${f.id}`, type: str(pick(f, 'type', 'mime_type', 'mimetype')) || 'application/octet-stream', size: num(f.size), createdAt: localIso(f.created) || now };
     if (photoOf.has(f.id)) files.push({ ...meta, photoOf: photoOf.get(f.id) });
     else if (t === 'projects' || t === 'subprojects') { const pid = t === 'projects' ? rid : subProj.get(rid); if (pid) files.push({ ...meta, projectId: id('p', pid) }); else otherFiles++; }
-    else if (t === 'crewmembers') files.push({ ...meta, projectId: '', personId: id('p', rid) });
+    else if (t === 'crewmembers' || t === 'crew') files.push({ ...meta, projectId: '', personId: id('p', rid) });
     else if (t === 'equipment' && !photoOf.size) files.push({ ...meta, photoOf: id('e', rid) });
     else otherFiles++;
   }
@@ -430,6 +503,8 @@ export function mapRentman(rm, now = new Date().toISOString()) {
   if (missEq) warn(`${missEq} ligne(s) de matériel pointent vers un article absent de l'export (gardées comme lignes libres)`);
   for (const l of lines) if (l.equipmentId && !eqIds.has(l.equipmentId)) l.equipmentId = undefined;
   for (const p of projects) { if (p.clientId && !cIds.has(p.clientId)) p.clientId = undefined; if (p.venueId && !cIds.has(p.venueId)) p.venueId = undefined; }
+  const lost = crew.filter((c) => c.personId && !pIds.has(c.personId)).length;
+  if (lost) warn(`${lost} poste(s) avec un technicien absent de l'export (équipe non lue avec cette clé ?) : gardés sans technicien`);
   for (const c of crew) if (c.personId && !pIds.has(c.personId)) c.personId = undefined;
   for (const x of [...costs, ...subrentals, ...repairs]) if (x.supplierId && !cIds.has(x.supplierId)) x.supplierId = undefined;
   for (const sr of subrentals) for (const l of sr.lines) if (l.equipmentId && !eqIds.has(l.equipmentId)) l.equipmentId = undefined;

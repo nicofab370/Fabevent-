@@ -17,7 +17,7 @@ import { EquipmentChooser } from '../components/EquipmentChooser';
 import { categoryLabel, inCategory, mainCategories } from '../categories';
 import { composeName, splitName } from '../equipmentName';
 import { useUser } from '../auth';
-import { fillFromSimilar, similarEquipment, specSearchUrl } from '../lookup';
+import { dimsLabel, fillFromSimilar, searchSpecs, similarEquipment, specChoices, specImageUrl, specQuery, specSearchUrl, volumeL, type SpecChoice, type SpecField, type SpecHit } from '../lookup';
 import { canEditEquipment, canEditPrices } from '../roles';
 
 type Draft = Omit<Equipment, 'id' | 'createdAt' | 'updatedAt'> & Partial<Equipment>;
@@ -163,6 +163,18 @@ export function EquipmentForm({ initial, onDone, onPrint }: { initial?: Draft; o
       <Field label="Contrôle périodique tous les (mois, 0 = aucun)"><NumInput value={e.inspectionMonths || 0} step="1" min={0} onChange={(n) => set('inspectionMonths', n)} /></Field>
       <Field label="Valeur de remplacement (€)"><NumInput value={e.replacementValue || 0} onChange={(n) => set('replacementValue', n)} /></Field>
       <Field label="Poids unitaire (kg)"><NumInput value={e.weight || 0} onChange={(n) => set('weight', n)} /></Field>
+      <Field label={`Dimensions L × l × H (cm)${e.dims && volumeL(e.dims) ? ` — ${String(Math.round(volumeL(e.dims) * 10) / 10).replace('.', ',')} L` : ''}`}>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          {(['l', 'w', 'h'] as const).map((k, i) => (
+            <Fragment key={k}>
+              {i > 0 && <span className="muted">×</span>}
+              <NumInput className="w-qty" value={e.dims?.[k] || 0} aria-label={['Longueur', 'Largeur', 'Hauteur'][i] + ' (cm)'}
+                onChange={(n) => { const d = { l: 0, w: 0, h: 0, ...e.dims, [k]: n }; set('dims', d.l || d.w || d.h ? d : undefined); }} />
+            </Fragment>
+          ))}
+        </div>
+      </Field>
+      <Field label="Consommation électrique max. (W)"><NumInput value={e.power || 0} step="1" min={0} onChange={(n) => set('power', n || undefined)} aria-label="Consommation (W)" /></Field>
       <Field label="Emplacement dépôt"><input value={e.location || ''} onChange={(x) => set('location', x.target.value)} placeholder="ex. Rack A3" /></Field>
       <Field label="Type d'article" full>
         <select value={!e.isKit ? '' : e.kitType === 'fixe' ? 'fixe' : 'virtuel'} aria-label="Type d'article"
@@ -325,13 +337,13 @@ export default function EquipmentList() {
     [e.name, e.brand, e.model, e.summary, e.code, e.barcode, ...(e.tags || [])].join(' ').toLowerCase().includes(q.toLowerCase()));
   const toggle = (id: string) => { const n = new Set(selected); if (n.has(id)) n.delete(id); else n.add(id); setSelected(n); };
 
-  const csv = () => exportCsv('materiel.csv', ['Désignation', 'Marque', 'Modèle', 'Description courte', 'Référence', 'Catégorie', 'Type', 'Stock', 'Prix HT', "Valeur de remplacement", 'Poids', 'Code-barres', 'Emplacement', 'Étiquettes', 'Archivé'],
-    filtered.map((e) => [e.name, e.brand, e.model, e.summary, e.code, e.categoryId ? catName.get(e.categoryId) : '', e.isKit ? (isFixedKit(e) ? 'kit fixe' : 'kit') : e.kind || 'location', e.quantity, e.dailyPrice, e.replacementValue, e.weight, e.barcode, e.location, (e.tags || []).join(', '), e.archived ? 'oui' : '']));
+  const csv = (list = filtered) => exportCsv('materiel.csv', ['Désignation', 'Marque', 'Modèle', 'Description courte', 'Référence', 'Catégorie', 'Type', 'Stock', 'Prix HT', "Valeur de remplacement", 'Poids', 'Code-barres', 'Emplacement', 'Étiquettes', 'Archivé'],
+    list.map((e) => [e.name, e.brand, e.model, e.summary, e.code, e.categoryId ? catName.get(e.categoryId) : '', e.isKit ? (isFixedKit(e) ? 'kit fixe' : 'kit') : e.kind || 'location', e.quantity, e.dailyPrice, e.replacementValue, e.weight, e.barcode, e.location, (e.tags || []).join(', '), e.archived ? 'oui' : '']));
 
   return (
     <>
       <PageHead title="Matériel">
-        <CsvButton onClick={csv} />
+        <CsvButton onClick={() => csv()} />
         <button className="secondary" onClick={() => nav('/etiquettes')}>Étiquettes QR</button>
         <button className="secondary" onClick={() => nav('/inventaire')}>Inventaire</button>
         <button className="secondary" onClick={() => setShowCats(true)}>Catégories</button>
@@ -370,6 +382,24 @@ export default function EquipmentList() {
           <div className="info bulk-bar">
             <strong>{selected.size} article(s) sélectionné(s)</strong>
             {canEditPrices(me) && <button className="small" onClick={() => setBulk(true)}>Modifier en groupe…</button>}
+            <button className="secondary small" onClick={() => csv(filtered.filter((e) => selected.has(e.id)))}>Exporter (CSV)</button>
+            <button className="secondary small" title="Masqués des listes et des choix ; l'historique est conservé" onClick={async () => {
+              const ids = [...selected];
+              const archive = !ids.every((id) => equipment.find((e) => e.id === id)?.archived);
+              for (const id of ids) await db.equipment.update(id, { archived: archive || undefined, updatedAt: new Date().toISOString() });
+              setSelected(new Set());
+            }}>{[...selected].every((id) => equipment.find((e) => e.id === id)?.archived) ? 'Désarchiver' : 'Archiver'}</button>
+            {canEditPrices(me) && <button className="danger small" onClick={async () => {
+              const ids = [...selected];
+              const usedIds = new Set((await db.lines.where('equipmentId').anyOf(ids).toArray()).map((l) => l.equipmentId!));
+              const inKits = new Set(equipment.flatMap((e) => [...e.kitItems.map((k) => k.equipmentId), ...(e.accessories || []).map((a) => a.equipmentId)]).filter((id) => selected.has(id)));
+              const ok = ids.filter((id) => !usedIds.has(id) && !inKits.has(id));
+              const keptMsg = ids.length - ok.length ? `\n${ids.length - ok.length} article(s) utilisés dans des projets, des kits ou comme accessoires sont gardés (archive-les plutôt).` : '';
+              if (!ok.length) { alert(`Les ${ids.length} article(s) sélectionnés sont utilisés dans des projets, des kits ou comme accessoires : archive-les plutôt.`); return; }
+              if (!confirm(`Supprimer ${ok.length} article(s) et leurs unités numérotées ?` + keptMsg)) return;
+              for (const id of ok) { await db.units.where({ equipmentId: id }).delete(); await db.equipment.delete(id); }
+              setSelected(new Set());
+            }}>Supprimer</button>}
             <button className="secondary small" onClick={() => setSelected(new Set())}>Désélectionner</button>
           </div>
         )}
@@ -627,7 +657,96 @@ function BulkEdit({ ids, onClose }: { ids: string[]; onClose: (done: boolean) =>
 const FIELD_LABELS: Record<string, string> = {
   brand: 'marque', summary: 'description', weight: 'poids', replacementValue: 'valeur de remplacement', dailyPrice: 'prix / jour',
   costPrice: 'coût d’achat', inspectionMonths: 'contrôle périodique', categoryId: 'catégorie', photo: 'photo', notes: 'notes', contents: 'contenu fourni',
+  dims: 'dimensions', power: 'consommation',
 };
+const SPEC_LABELS: Record<SpecField, string> = { weight: 'Poids', dims: 'Dimensions (volume)', power: 'Consommation', replacementValue: 'Prix neuf (valeur de remplacement)', photo: 'Photo' };
+
+/**
+ * Fiche technique cherchée sur internet (par le serveur FabEvent) : pour chaque champ, les valeurs trouvées avec leurs sources.
+ * Rien n'est rempli sans ton choix ; par défaut, la valeur la plus citée pour les champs encore vides.
+ */
+function SpecSearchModal({ e, onApply, onClose }: { e: Draft; onApply: (e: Draft, filled: string[]) => void; onClose: () => void }) {
+  const [q, setQ] = useState(specQuery(e));
+  const [state, setState] = useState<{ busy: boolean; err?: string; hits?: SpecHit[]; searched?: number }>({ busy: false });
+  const [pick, setPick] = useState<Partial<Record<SpecField, number>>>({});
+  const [applying, setApplying] = useState(false);
+  const choices = state.hits ? specChoices(state.hits) : null;
+  const current: Record<SpecField, string> = {
+    weight: e.weight ? `${e.weight} kg` : '', dims: e.dims ? dimsLabel(e.dims) : '', power: e.power ? `${e.power} W` : '',
+    replacementValue: e.replacementValue ? `${money(e.replacementValue)} €` : '', photo: e.photo ? 'photo actuelle' : '',
+  };
+  const run = async () => {
+    setState({ busy: true });
+    try {
+      const r = await searchSpecs(q);
+      const c = specChoices(r.results);
+      // par défaut : la valeur la plus citée, seulement pour les champs vides
+      setPick(Object.fromEntries((Object.keys(c) as SpecField[]).filter((f) => c[f].length && !current[f] && f !== 'photo').map((f) => [f, 0])));
+      setState({ busy: false, hits: r.results, searched: r.searched });
+    } catch (x) { setState({ busy: false, err: (x as Error).message }); }
+  };
+  const apply = async () => {
+    if (!choices) return;
+    setApplying(true);
+    const out: Draft = { ...e };
+    const filled: string[] = [];
+    try {
+      for (const f of Object.keys(pick) as SpecField[]) {
+        const i = pick[f];
+        if (i == null || i < 0) continue;
+        const c: SpecChoice = choices[f][i];
+        if (f === 'photo') {
+          try {
+            const blob = await (await fetch(specImageUrl(String(c.value)), { credentials: 'include' })).blob();
+            if (!blob.type.startsWith('image/')) throw new Error();
+            out.photo = await resizeImage(new File([blob], 'photo', { type: blob.type }));
+          } catch { alert('Cette photo n’a pas pu être récupérée : choisis-en une autre.'); continue; }
+        } else (out as Record<string, unknown>)[f] = c.value;
+        filled.push(SPEC_LABELS[f].toLowerCase());
+      }
+      onApply(out, filled);
+    } finally { setApplying(false); }
+  };
+  return (
+    <Modal title="Fiche technique sur internet" onClose={onClose} wide>
+      <div className="spec-search">
+        <input value={q} onChange={(x) => setQ(x.target.value)} aria-label="Recherche" placeholder="Marque et modèle"
+          onKeyDown={(x) => { if (x.key === 'Enter') { x.preventDefault(); if (q.trim() && !state.busy) run(); } }} />
+        <button type="button" disabled={state.busy || !q.trim()} onClick={run}>{state.busy ? 'Recherche…' : state.hits ? 'Relancer' : 'Chercher'}</button>
+      </div>
+      {state.err && <p className="avail ko">{state.err}</p>}
+      {!state.hits && !state.busy && !state.err && <p className="muted">FabEvent cherche « {q} » sur le web, lit les pages trouvées (fabricant, revendeurs) et te propose ce qu'il y trouve. Rien n'est rempli sans ton choix.</p>}
+      {state.busy && <p className="muted">Lecture des pages trouvées… (quelques secondes)</p>}
+      {choices && (state.hits!.length === 0
+        ? <p className="muted">Rien d'exploitable trouvé dans les {state.searched} page(s) lues. Essaie une autre formulation (marque + référence exacte), ou ouvre la recherche Google.</p>
+        : (
+          <div className="spec-choices">
+            {(Object.keys(SPEC_LABELS) as SpecField[]).map((f) => !!choices[f].length && (
+              <fieldset key={f} className="spec-field">
+                <legend>{SPEC_LABELS[f]}</legend>
+                <label className="check-row"><input type="radio" name={f} checked={pick[f] == null || pick[f]! < 0} onChange={() => setPick({ ...pick, [f]: -1 })} />{current[f] ? `Garder : ${current[f]}` : 'Ne pas remplir'}</label>
+                <div className={f === 'photo' ? 'spec-photos' : undefined}>
+                  {choices[f].map((c, i) => (
+                    <label key={i} className={f === 'photo' ? 'spec-photo' : 'check-row'}>
+                      <input type="radio" name={f} checked={pick[f] === i} onChange={() => setPick({ ...pick, [f]: i })} aria-label={f === 'photo' ? `Photo ${i + 1}` : c.label} />
+                      {f === 'photo' ? <img src={specImageUrl(String(c.value))} alt="" loading="lazy" /> : <strong>{c.label}</strong>}
+                      <small className="muted">{c.sources.map((s, k) => <Fragment key={s.url}>{k > 0 && ', '}<a href={s.url} target="_blank" rel="noreferrer">{s.source}</a></Fragment>)}</small>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            ))}
+            <p className="muted">Valeurs lues telles quelles sur ces pages : vérifie-les (version du modèle, poids avec ou sans flight case…).</p>
+          </div>
+        ))}
+      <div className="form-actions">
+        <a className="button-link secondary" href={specSearchUrl({ ...e, name: q, brand: undefined, model: undefined })} target="_blank" rel="noreferrer" style={{ marginRight: 'auto' }}>Ouvrir la recherche Google</a>
+        <button type="button" className="secondary" onClick={onClose}>Fermer</button>
+        {choices && <button type="button" disabled={applying || !Object.values(pick).some((i) => i != null && i >= 0)} onClick={apply}>{applying ? 'Application…' : 'Remplir la fiche'}</button>}
+      </div>
+    </Modal>
+  );
+}
 
 /**
  * Compléter un article : reprendre les infos d'un article semblable du catalogue (même marque et modèle),
@@ -635,6 +754,7 @@ const FIELD_LABELS: Record<string, string> = {
  */
 function EquipmentLookup({ e, all, onFill }: { e: Draft; all: Equipment[]; onFill: (e: Draft) => void }) {
   const [msg, setMsg] = useState('');
+  const [web, setWeb] = useState(false);
   if (!(e.model || e.name)?.trim()) return null;
   const src = similarEquipment(e, all)[0];
   const preview = src ? fillFromSimilar(e, src).filled : [];
@@ -647,11 +767,12 @@ function EquipmentLookup({ e, all, onFill }: { e: Draft; all: Equipment[]; onFil
             <Icon name="copy" />Reprendre de « {src.name} »
           </button>
         )}
-        <a className="button-link secondary small" href={specSearchUrl(e)} target="_blank" rel="noreferrer" title="Recherche web : poids, dimensions, consommation (à reporter à la main)">
+        <button type="button" className="secondary small" onClick={() => setWeb(true)} title="Cherche sur internet le poids, les dimensions, la consommation, le prix neuf et des photos, et te les propose">
           <Icon name="search" />Chercher la fiche technique
-        </a>
+        </button>
       </div>
       {msg && <p className="avail ok" style={{ margin: '4px 0 0' }}>{msg}</p>}
+      {web && <SpecSearchModal e={e} onClose={() => setWeb(false)} onApply={(v, filled) => { setWeb(false); onFill(v); setMsg(filled.length ? `Rempli depuis internet : ${filled.join(', ')}. À vérifier.` : ''); }} />}
     </div>
   );
 }

@@ -12,6 +12,11 @@ import { ContactForm } from './Contacts';
 import { ContactPicker } from '../components/ContactPicker';
 import { CsvButton, customText, exportCsv, Tags } from '../components/extra';
 import { Icon } from '../components/Icon';
+import { BulkBar, BulkSet, SelectAllTh, SelectTd, useSelection } from '../components/Selection';
+import { deleteProject } from '../utils';
+import { setProjectStatus } from './project/status';
+import type { ProjectData } from './project/shared';
+import { INVOICE_TYPES } from '../types';
 
 type Draft = Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'number'> & Partial<Project>;
 
@@ -118,13 +123,15 @@ export default function Projects() {
     (!tag || p.tags?.includes(tag)) &&
     listFields.every((f) => !fieldFilter[f.id] || customText(f, p.custom?.[f.id]) === fieldFilter[f.id]) &&
     [p.number, p.name, p.venue, p.clientId && cMap.get(p.clientId), ...(p.tags || [])].join(' ').toLowerCase().includes(q.toLowerCase()));
-  const csv = () => exportCsv('projets.csv', ['Numéro', 'Projet', 'Type', 'Client', 'Début', 'Fin', 'Lieu', 'Statut', 'Référence client', 'Étiquettes'],
-    filtered.map((p) => [p.number, p.name, p.typeName, p.clientId ? cMap.get(p.clientId) : '', p.start.replace('T', ' '), p.end.replace('T', ' '), p.venue, STATUS_LABELS[p.status], p.externalRef, (p.tags || []).join(', ')]));
+  const sel = useSelection(filtered.map((p) => p.id));
+  const types = useSettings().projectTypes || DEFAULT_PROJECT_TYPES;
+  const csv = (list = filtered) => exportCsv('projets.csv', ['Numéro', 'Projet', 'Type', 'Client', 'Début', 'Fin', 'Lieu', 'Statut', 'Référence client', 'Étiquettes'],
+    list.map((p) => [p.number, p.name, p.typeName, p.clientId ? cMap.get(p.clientId) : '', p.start.replace('T', ' '), p.end.replace('T', ' '), p.venue, STATUS_LABELS[p.status], p.externalRef, (p.tags || []).join(', ')]));
 
   return (
     <>
       <PageHead title={showTemplates ? 'Modèles de projet' : 'Projets'}>
-        <CsvButton onClick={csv} />
+        <CsvButton onClick={() => csv()} />
         <button className="secondary" onClick={() => setShowTemplates(!showTemplates)}>{showTemplates ? <><Icon name="arrow-left" />Projets</> : `Modèles (${templates.length})`}</button>
         {templates.length > 0 && <button className="secondary" onClick={() => setFromTemplate(true)}>+ À partir d'un modèle</button>}
         <button onClick={() => setCreating(true)}>+ Nouveau projet</button>
@@ -153,13 +160,40 @@ export default function Projects() {
             </select>
           )}
         </div>
+        <BulkBar sel={sel} noun={showTemplates ? 'modèle(s)' : 'projet(s)'}>
+          {!showTemplates && <BulkSet label="Changer le statut" options={Object.entries(STATUS_LABELS)} onApply={async (st) => {
+            if (!confirm(`Passer ${sel.size} projet(s) en « ${STATUS_LABELS[st as ProjectStatus]} » ?`)) return;
+            const eqMap = new Map((await db.equipment.toArray()).map((e) => [e.id, e]));
+            for (const id of sel.ids) {
+              const project = await db.projects.get(id);
+              if (!project) continue;
+              const [subs, lines] = await Promise.all([db.subprojects.where({ projectId: id }).toArray(), db.lines.where({ projectId: id }).toArray()]);
+              await setProjectStatus({ project, subs, lines, eqMap } as unknown as ProjectData, st as ProjectStatus);
+            }
+          }} />}
+          <BulkSet label="Changer le type" options={types.map((t) => [t.name, t.name])} onApply={async (name) => {
+            for (const id of sel.ids) await db.projects.update(id, { typeName: name, updatedAt: new Date().toISOString() });
+          }} />
+          <button className="secondary small" onClick={() => csv(filtered.filter((p) => sel.has(p.id)))}>Exporter (CSV)</button>
+          <button className="danger small" onClick={async () => {
+            const invoiced = new Set((await db.docs.where('projectId').anyOf(sel.ids).toArray()).filter((d) => INVOICE_TYPES.includes(d.type)).map((d) => d.projectId));
+            const ok = sel.ids.filter((id) => !invoiced.has(id));
+            const msg = `Supprimer ${ok.length} projet(s), avec leurs sous-projets, documents et fichiers ?`
+              + (invoiced.size ? `\n${invoiced.size} projet(s) déjà facturé(s) sont gardés (une facture émise ne se supprime pas).` : '');
+            if (!ok.length) { alert(`Les ${invoiced.size} projet(s) sélectionnés sont déjà facturés : ils ne peuvent pas être supprimés.`); return; }
+            if (!confirm(msg)) return;
+            for (const id of ok) await deleteProject(id);
+            sel.clear();
+          }}>Supprimer</button>
+        </BulkBar>
         {filtered.length === 0 ? <Empty>{showTemplates ? 'Aucun modèle.' : 'Aucun projet.'}</Empty> : (
           <div className="table-wrap">
             <table className="list">
-              <thead><tr><th>N°</th><th>Projet</th><th>Type</th><th>Client</th><th>Dates</th><th>Lieu</th>{listFields.map((f) => <th key={f.id}>{f.label}</th>)}<th>Statut</th></tr></thead>
+              <thead><tr><SelectAllTh sel={sel} /><th>N°</th><th>Projet</th><th>Type</th><th>Client</th><th>Dates</th><th>Lieu</th>{listFields.map((f) => <th key={f.id}>{f.label}</th>)}<th>Statut</th></tr></thead>
               <tbody>
                 {filtered.map((p) => (
                   <tr key={p.id} className="click" onClick={() => nav('/projets/' + p.id)}>
+                    <SelectTd sel={sel} id={p.id} label={p.name} />
                     <td className="muted">{p.number}</td>
                     <td><span className="color-dot" style={{ background: p.color || 'var(--border)' }} /><strong>{p.name}</strong> {p.free && <span className="avail ok">offert</span>} <Tags tags={p.tags} /></td>
                     <td className="muted">{p.typeName}</td>

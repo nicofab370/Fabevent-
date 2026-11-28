@@ -29,7 +29,7 @@ if (!TOKEN) {
   process.exit(1);
 }
 
-/** Collections lues (nom FabEvent de la collection → chemin de l'API). */
+/** Collections lues (nom de la collection → chemin de l'API, ou plusieurs chemins essayés dans l'ordre). */
 const COLLECTIONS = {
   statuses: '/statuses',
   contacts: '/contacts',
@@ -38,7 +38,8 @@ const COLLECTIONS = {
   equipment: '/equipment',
   equipmentsetscontent: '/equipmentsetscontent',
   serialnumbers: '/serialnumbers',
-  crewmembers: '/crewmembers',
+  stockmovements: '/stockmovements',
+  crewmembers: ['/crew', '/crewmembers'],
   vehicles: '/vehicles',
   accessories: '/accessories',
   projecttypes: '/projecttypes',
@@ -47,6 +48,7 @@ const COLLECTIONS = {
   subprojects: '/subprojects',
   projectequipmentgroup: '/projectequipmentgroup',
   projectequipment: '/projectequipment',
+  projectfunctiongroups: '/projectfunctiongroups',
   projectfunctions: '/projectfunctions',
   projectcrew: '/projectcrew',
   projectvehicles: '/projectvehicles',
@@ -54,7 +56,7 @@ const COLLECTIONS = {
   subrentals: '/subrentals',
   subrentalequipment: '/subrentalequipment',
   repairs: '/repairs',
-  crewavailability: '/crewavailability',
+  crewavailability: ['/crewavailability', '/crewavailabilities'],
   appointments: '/appointments',
   appointmentcrew: '/appointmentcrew',
   quotes: '/quotes',
@@ -95,15 +97,32 @@ async function all(path) {
 const rm = {};
 const skipped = [];
 console.log(`Lecture de Rentman (${API})…`);
-for (const [name, path] of Object.entries(COLLECTIONS)) {
+for (const [name, paths] of Object.entries(COLLECTIONS)) {
   try {
-    const { rows, skipped: why } = await all(path);
-    rm[name] = rows;
-    if (why) { skipped.push(`${path} (${why})`); console.log(`  ${path} : non accessible (${why}), ignoré`); }
+    let res;
+    const tried = [];
+    for (const path of [paths].flat()) { res = await all(path); if (!res.skipped) break; tried.push(`${path} (${res.skipped})`); }
+    rm[name] = res.rows;
+    if (res.skipped) {
+      // 404 sur une adresse de repli : on ne garde que les refus utiles (403 = droits de la clé)
+      const why = tried.filter((t) => !t.endsWith('(404)')).join(', ') || tried.join(', ');
+      skipped.push(why);
+      console.log(`  ${why} : non accessible, ignoré`);
+    }
   } catch (e) {
     console.error(`\n${e.message}`);
     process.exit(1);
   }
+}
+
+/* diagnostic (noms de champs seulement, aucune donnée) : quels champs de quantité Rentman renvoie, et combien ne sont pas à 0 */
+for (const [name, list] of [['equipment', rm.equipment], ['stockmovements', rm.stockmovements], ['serialnumbers', rm.serialnumbers], ['projectequipment', rm.projectequipment]]) {
+  const seen = {};
+  for (const row of list || []) for (const [k, v] of Object.entries(row)) if (/quant|stock|amount|count|number|mutation|change|total/i.test(k) && !/price|cost|value|_id$|^id$/i.test(k) && (typeof v === 'number' || /^-?\d+([.,]\d+)?$/.test(String(v)))) {
+    seen[k] ??= [0, 0]; seen[k][0]++; if (Number(String(v).replace(',', '.')) !== 0) seen[k][1]++;
+  }
+  const txt = Object.entries(seen).map(([k, [n, nz]]) => `${k} (${nz}/${n} non nuls)`).join(', ');
+  console.log(`Champs de quantité de /${name} (${(list || []).length} fiches) : ${txt || 'aucun'}`);
 }
 
 const { data, files, report } = mapRentman(rm);
@@ -152,5 +171,9 @@ console.log(`\nFichier écrit : ${OUT}`);
 for (const p of parts) console.log(`Fichiers joints : ${p}`);
 for (const [k, n] of Object.entries(report.counts)) console.log(`  ${k.padEnd(20)} ${n}`);
 if (skipped.length) console.log(`Collections non accessibles avec cette clé : ${skipped.join(', ')}`);
+if (skipped.some((x) => /crew.*\(403\)/.test(x))) console.log(
+  "\nL'équipe est refusée à cette clé (403) : dans Rentman, la clé API a les droits de l'utilisateur qui l'a créée.\n"
+  + "Crée la clé avec un compte administrateur (ou donne à ce compte le droit de voir le personnel), puis relance l'export.\n"
+  + 'En attendant, les techniciens des postes sont repris avec leur nom seulement (sans coordonnées).');
 for (const w of report.warnings) console.log(`  ! ${w}`);
 console.log(`\nDans FabEvent : Paramètres → « Importer depuis Rentman » → choisir ${parts.length ? 'ces fichiers ensemble' : 'ce fichier'}.`);

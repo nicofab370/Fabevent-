@@ -586,7 +586,7 @@ function RentmanImportCard() {
           {!!missingParts && <p className="avail ko">Les {missingParts} paquet(s) de fichiers (« -fichiers-1.json »…) n'ont pas été choisis : les documents et photos ne seront pas importés. Tu pourras les importer ensuite.</p>}
           {!!file.report?.skipped?.length && <p className="muted">Non accessible avec la clé utilisée : {file.report.skipped.join(', ')}.</p>}
           {!!file.report?.warnings?.length && <details><summary className="muted">{file.report.warnings.length} remarque(s)</summary><ul className="muted">{file.report.warnings.map((w) => <li key={w}>{w}</li>)}</ul></details>}
-          <label className="check-row"><input type="checkbox" checked={update} onChange={(e) => setUpdate(e.target.checked)} /> Mettre à jour les fiches déjà importées (sinon elles sont gardées telles quelles)</label>
+          <label className="check-row"><input type="checkbox" checked={update} onChange={(e) => setUpdate(e.target.checked)} /> Mettre à jour les fiches déjà importées (sinon elles sont gardées : seuls leurs champs vides ou à 0, comme une quantité, sont remplis)</label>
           <div className="form-actions" style={{ justifyContent: 'flex-start' }}>
             <button type="button" disabled={busy} onClick={async () => {
               if (!confirm(`Importer ces données Rentman dans la base « ${currentWorkspace()} » ?`)) return;
@@ -600,7 +600,7 @@ function RentmanImportCard() {
       {done && (
         <div className="info">
           <strong>Import terminé.</strong>
-          <ul style={{ margin: '4px 0 0' }}>{done.map((r) => <li key={r.table}>{RENTMAN_LABELS[r.table]} : {r.added} ajouté(s){r.updated ? `, ${r.updated} mis à jour` : ''}{r.kept ? `, ${r.kept} déjà là (gardé(s))` : ''}</li>)}</ul>
+          <ul style={{ margin: '4px 0 0' }}>{done.map((r) => <li key={r.table}>{RENTMAN_LABELS[r.table]} : {r.added} ajouté(s){r.updated ? `, ${r.updated} mis à jour` : ''}{r.kept ? `, ${r.kept} déjà là (gardé(s)${r.filled ? `, dont ${r.filled} complété(s) là où c'était vide` : ''})` : ''}</li>)}</ul>
         </div>
       )}
     </div>
