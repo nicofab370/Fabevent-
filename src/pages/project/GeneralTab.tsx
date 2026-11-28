@@ -70,6 +70,7 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
   const changeClient = async (clientId?: string) => {
     const c = contacts.find((x) => x.id === clientId);
     await upd({ clientId, contactPerson: undefined, contactPersonId: undefined, departmentId: undefined });
+    if (c?.warning) alert(`Avertissement sur ${c.company} :\n\n${c.warning}`);
     const eqDisc = c?.discounts?.equipment, totDisc = c?.discounts?.total;
     if (c && (eqDisc || totDisc) && confirm(`Appliquer les remises de ${c.company} (matériel ${eqDisc || 0} %, total ${totDisc || 0} %) à ce projet ?`)) {
       const fresh = await db.projects.get(project.id);
@@ -80,8 +81,11 @@ export default function GeneralTab({ d, goTab }: { d: ProjectData; goTab: (t: st
 
   const generate = async (type: DocType) => nav('/documents/' + (await createDocument(project.id, type)).id);
 
+  const venueC = contacts.find((x) => x.id === project.venueId);
   return (
     <>
+      {(() => { const c = contacts.find((x) => x.id === project.clientId); return c?.warning ? <div className="warn-banner" role="alert"><strong>Avertissement sur {c.company} : </strong>{c.warning}</div> : null; })()}
+      {venueC?.warning && <div className="warn-banner" role="alert"><strong>Avertissement sur {venueC.company} : </strong>{venueC.warning}</div>}
       <div className="grid">
         <div className="card">
           <h2>Projet</h2>

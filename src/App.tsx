@@ -44,6 +44,9 @@ import { Icon, type IconName } from './components/Icon';
 import { OpenTabs } from './components/OpenTabs';
 import { useScrollMemory } from './scrollMemory';
 import { UndoButton } from './components/UndoButton';
+import NotificationsPage, { NotificationBell } from './components/Notifications';
+import { checkNotifications } from './notify';
+import { QuickAvailability } from './components/QuickAvailability';
 
 const NAV: [string, string, IconName][] = [
   ['/', 'Tableau de bord', 'grid'],
@@ -101,6 +104,14 @@ export default function App() {
     })();
   }, [pendingOpts]);
   useEffect(() => setMenu(false), [loc.pathname]);
+  // notifications : vérifiées au démarrage puis toutes les heures (devis expirés, factures échues, devis en ligne…)
+  useEffect(() => {
+    if (locked) return;
+    const run = () => { void checkNotifications().catch(() => undefined); };
+    const t0 = setTimeout(run, 3000);
+    const t = setInterval(run, 3600_000);
+    return () => { clearTimeout(t0); clearInterval(t); };
+  }, [locked]);
   useEffect(() => {
     const on = () => setOnline(true), off = () => setOnline(false);
     window.addEventListener('online', on);
@@ -126,6 +137,7 @@ export default function App() {
             </NavLink>
           ))}
         </nav>
+        <div className="side-tools"><NotificationBell /><QuickAvailability /></div>
         <UndoButton />
         <SyncBadge online={online} />
         {me && anyUsers === true && <button className="side-user" onClick={async () => { await serverLogout(); logout(); location.reload(); }} title="Se déconnecter">{me.name} · {ROLE_LABELS[me.role].split(' (')[0]} — se déconnecter</button>}
@@ -135,6 +147,8 @@ export default function App() {
       <div className="topbar">
         <button className="ghost" onClick={() => setMenu(!menu)} aria-label="Menu"><Icon name="menu" /></button>
         <div className="brand">Fab<span>Event</span></div>
+        <QuickAvailability compact />
+        <NotificationBell compact />
         <UndoButton compact />
       </div>
       <main className="main">
@@ -171,6 +185,7 @@ export default function App() {
           <Route path="/inventaire" element={<Inventory />} />
           <Route path="/import" element={<ImportPage />} />
           <Route path="/parametres" element={<SettingsPage />} />
+          <Route path="/notifications" element={<NotificationsPage />} />
           <Route path="*" element={<p>Page introuvable.</p>} />
         </Routes>
       </main>

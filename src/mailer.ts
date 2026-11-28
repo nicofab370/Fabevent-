@@ -1,6 +1,6 @@
 import type { Attachment, MailDraft } from './email';
 import type { MailKind, MailTemplate, Settings } from './types';
-import { currentWorkspace } from './db';
+import { currentWorkspace, db, getSettings } from './db';
 import { syncEnabled, syncNow, syncUrl } from './sync';
 import { uid } from './utils';
 
@@ -73,21 +73,50 @@ async function syncFirst() {
   if (st.status === 'error' || st.status === 'offline') throw new Error('Synchronisation impossible pour l’instant (' + (st.message || 'hors ligne') + ') : réessaie dans un moment.');
 }
 
-/** Envoie le mail par le serveur. Lève une erreur lisible si l'envoi échoue. */
-export async function sendMail(m: MailDraft & { cc?: string; bcc?: string; replyTo?: string }, attachments: Attachment[]): Promise<{ to: string[] }> {
+/** Rattachement d'un mail au registre de communication (projet, document, contact, technicien). */
+export interface MailMeta { kind?: MailKind | string; projectId?: string; docId?: string; contactId?: string; personId?: string }
+
+const INVOICE_KINDS = ['facture', 'acompte', 'avoir', 'rappel'];
+const CREW_KINDS = ['planning', 'dispo', 'confirmation', 'annulation'];
+/** Copies cachées automatiques (Paramètres → Mails) selon le type d'envoi. */
+export function autoBcc(s: Pick<Settings, 'mailBcc'>, kind?: string): string[] {
+  const b = s.mailBcc || {};
+  return splitAddrs([b.all, kind && INVOICE_KINDS.includes(kind) ? b.invoices : '', kind === 'devis' ? b.quotes : '', kind && CREW_KINDS.includes(kind) ? b.crew : ''].filter(Boolean).join(','));
+}
+
+/** Envoie le mail par le serveur. Lève une erreur lisible si l'envoi échoue. Chaque envoi est noté dans le registre des mails. */
+export async function sendMail(m: MailDraft & { cc?: string; bcc?: string; replyTo?: string }, attachments: Attachment[], meta: MailMeta = {}): Promise<{ to: string[] }> {
   const url = serverScript('mail.php');
   if (!url) throw new Error('Pas de serveur FabEvent configuré.');
-  await syncFirst();
-  const r = await fetch(url + '?action=send&ws=' + encodeURIComponent(currentWorkspace()), {
-    method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      to: splitAddrs(m.to), cc: splitAddrs(m.cc || ''), bcc: splitAddrs(m.bcc || ''), replyTo: m.replyTo || '', subject: m.subject, text: m.body,
-      attachments: await Promise.all(attachments.map(async (a) => ({ name: a.name, type: a.type, data: await b64(a.blob) }))),
-    }),
-  });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok || !j.ok) throw new Error(j.detail || (r.status === 401 ? 'Connexion au serveur FabEvent expirée : reconnecte-toi pour envoyer.' : `Envoi refusé (${r.status}).`));
-  return { to: j.to || [] };
+  const s = await getSettings();
+  const bcc = Array.from(new Set([...splitAddrs(m.bcc || ''), ...autoBcc(s, meta.kind)]));
+  const log = (ok: boolean, error?: string) => db.mails.add({
+    id: uid(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), to: splitAddrs(m.to), cc: splitAddrs(m.cc || ''), bcc,
+    subject: m.subject, ok, error, attachments: attachments.map((a) => a.name), ...meta, kind: meta.kind,
+  }).catch(() => undefined);
+  try {
+    await syncFirst();
+    const r = await fetch(url + '?action=send&ws=' + encodeURIComponent(currentWorkspace()), {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to: splitAddrs(m.to), cc: splitAddrs(m.cc || ''), bcc, replyTo: m.replyTo || '', subject: m.subject, text: m.body,
+        attachments: await Promise.all(attachments.map(async (a) => ({ name: a.name, type: a.type, data: await b64(a.blob) }))),
+      }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.detail || (r.status === 401 ? 'Connexion au serveur FabEvent expirée : reconnecte-toi pour envoyer.' : `Envoi refusé (${r.status}).`));
+    await log(true);
+    return { to: j.to || [] };
+  } catch (e) {
+    await log(false, (e as Error).message);
+    throw e;
+  }
+}
+
+/** Signature commune (Paramètres → Mails) ajoutée à la fin d'un message, si elle n'y est pas déjà. */
+export function withSignature(body: string, s: Pick<Settings, 'mailSignature' | 'company'>): string {
+  const sig = (s.mailSignature || '').replace(/\{societe\}/g, s.company.name || '').trim();
+  return sig && !body.includes(sig) ? body.replace(/\s+$/, '') + '\n\n' + sig : body;
 }
 
 /** Jeton secret d'un lien public (impossible à deviner). */
@@ -118,6 +147,7 @@ export const MAIL_KINDS: Record<MailKind, string> = {
 export const MAIL_VARS: Record<string, string> = {
   prenom: 'prénom du destinataire', client: 'client', projet: 'nom du projet', numero: 'n° du document', lieu: 'lieu', adresse: 'adresse du lieu', dates: 'dates du projet',
   montant: 'montant TTC', echeance: 'échéance', societe: 'ta société', lien: 'lien de réponse', postes: 'liste des postes', contact: 'contact sur place',
+  lien_devis: 'lien du devis en ligne', mot_de_passe: 'mot de passe du devis en ligne', formule: 'formule d\'appel (Madame, Monsieur…)',
 };
 
 const SIGN = '\n\nCordialement,\n{societe}';

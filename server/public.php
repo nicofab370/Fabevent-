@@ -6,7 +6,8 @@
  *   ?r=<jeton>   demande de disponibilité : le technicien répond « disponible / pas disponible » (poste par poste)
  *   ?s=<clé>     formulaire d'inscription : un technicien s'ajoute à ta base (fiche « à valider » dans FabEvent)
  *   ?m=<jeton>   « ma fiche » : un technicien déjà dans ta base met à jour ses coordonnées (modifs « à relire » dans FabEvent)
- *   ?d=<jeton>   devis : le client accepte / refuse en ligne (statut « accepté » = projet confirmé)
+ *   ?d=<jeton>   devis : le client accepte / refuse en ligne (statut « accepté » = projet confirmé), ou demande une modification ;
+ *                chaque ouverture est comptée (vues, historique) ; mot de passe facultatif ; devis « hors ligne » = lien coupé
  *   ?cal=<jeton> agenda d'un technicien (abonnement iCal : ses postes, « [Option] » tant que non confirmé)
  *   ?agenda=<jeton> page d'abonnement à cet agenda (Google, iPhone/Mac, Outlook)
  *   ?pw=<jeton>  mot de passe oublié : formulaire de nouveau mot de passe (jeton à usage unique, 2 h,
@@ -504,7 +505,28 @@ if (isset($_GET['d'])) {
     if (!$row) page('Lien invalide', '<h1>Devis introuvable</h1><p class="m">Ce lien n\'est pas (ou plus) actif. Demande un nouveau lien à l\'organisateur.</p>', 404);
     $d = $row['data'];
     if (($d['type'] ?? '') !== 'devis') page('Lien invalide', '<h1>Ce lien ne concerne pas un devis.</h1>', 404);
+    if (!empty($d['publicDisabled'])) page('Devis hors ligne', '<h1>Ce devis n\'est plus en ligne</h1><p class="m">Demande la dernière version à l\'organisateur.</p>', 410);
     $sn = is_array($d['snapshot'] ?? null) ? $d['snapshot'] : [];
+    $set = cal_row($db, $row['space'], 'settings', 'main') ?? [];
+    $hist = function (string $event) use (&$d) { $d['history'] = array_slice(array_merge((array)($d['history'] ?? []), [['at' => now_u(), 'event' => $event, 'by' => 'client']]), -100); };
+    // mot de passe (facultatif) : vérifié une fois, retenu par un cookie propre à ce devis
+    $pw = (string)($d['publicPassword'] ?? '');
+    $ck = 'fq_' . substr(hash('sha256', $tok), 0, 12);
+    $okCookie = hash('sha256', $tok . '|' . $pw);
+    if ($pw !== '' && !hash_equals($okCookie, (string)($_COOKIE[$ck] ?? ''))) {
+        $bad = false;
+        if ($post && isset($_POST['pw'])) {
+            if (hash_equals($pw, trim((string)$_POST['pw']))) {
+                setcookie($ck, $okCookie, ['expires' => time() + 30 * 86400, 'path' => '/', 'secure' => fe_https(), 'httponly' => true, 'samesite' => 'Lax']);
+                header('Location: ' . strtok((string)($_SERVER['REQUEST_URI'] ?? ''), '#'), true, 303);
+                exit;
+            }
+            $bad = true;
+        }
+        page('Devis protégé', '<h1>Devis ' . h((string)($d['number'] ?? '')) . '</h1><div class="c"><form method="post" action="' . $self . '">'
+            . ($bad ? '<div class="msg ko">Mot de passe incorrect.</div>' : '<p class="m">Ce devis est protégé : entre le mot de passe reçu avec le lien.</p>')
+            . '<label for="pw">Mot de passe</label><input id="pw" name="pw" type="password" autocomplete="off" required autofocus><button>Ouvrir le devis</button></form></div>', $bad ? 403 : 200);
+    }
     // ordre des salles choisi dans FabEvent (subOrder) : même ordre ici pour les options
     if (!empty($d['subOrder']) && is_array($d['subOrder']) && is_array($sn['subprojects'] ?? null)) {
         $order = array_values(array_filter(array_map('strval', $d['subOrder'])));
@@ -525,13 +547,29 @@ if (isset($_GET['d'])) {
     $opts = [];
     foreach ((array)($sn['subprojects'] ?? []) as $sp) foreach ((array)($sp['equipment'] ?? []) as $l) if (!empty($l['optional'])) $opts[] = $l;
     $optIds = array_values(array_filter(array_map(fn($l) => (string)($l['optId'] ?? ''), $opts)));
+    // demande de modification envoyée par le client (le devis reste en attente)
+    if ($post && isset($_POST['remark'])) {
+        if (!hash_equals((string)$d['publicToken'], (string)($_POST['t'] ?? ''))) page('Erreur', '<h1>Erreur</h1>', 400);
+        $txt = trim(mb_substr((string)$_POST['remark'], 0, 3000));
+        if ($txt !== '') {
+            $d['clientRemarks'] = array_slice(array_merge((array)($d['clientRemarks'] ?? []), [['at' => now_u(), 'text' => $txt]]), -50);
+            $hist('remarque');
+            put_row($db, $row['space'], 'docs', $row['id'], $d);
+        }
+        page('Merci', $head . '<div class="c"><div class="msg ok">Merci, ta demande est transmise. Tu recevras une nouvelle version du devis.</div></div>');
+    }
+    $expired = !empty($sn['validUntil']) && substr((string)$sn['validUntil'], 0, 10) < gmdate('Y-m-d') && empty($set['quoteAllowExpired']);
     if (in_array((string)($d['status'] ?? ''), ['accepte', 'refuse'], true))
         page('Devis ' . h((string)($d['number'] ?? '')), $head . '<div class="c"><div class="msg ' . ($d['status'] === 'accepte' ? 'ok' : 'ko') . '">Réponse déjà enregistrée : ' . ($d['status'] === 'accepte' ? 'devis accepté' : 'devis refusé') . '.</div></div>');
     if ($post) {
         if (!hash_equals((string)$d['publicToken'], (string)($_POST['t'] ?? ''))) page('Erreur', '<h1>Erreur</h1>', 400);
         $ans = (string)($_POST['answer'] ?? '');
         if (!in_array($ans, ['accepte', 'refuse'], true)) page('Erreur', '<h1>Erreur</h1>', 400);
+        if ($expired) page('Devis expiré', $head . '<div class="c"><div class="msg ko">Ce devis a expiré : demande une nouvelle version à l\'organisateur.</div></div>', 410);
         $d['status'] = $ans;
+        $hist($ans === 'accepte' ? 'accepte' : 'refuse');
+        $com = trim(mb_substr((string)($_POST['comment'] ?? ''), 0, 2000));
+        if ($com !== '') $d['clientRemarks'] = array_merge((array)($d['clientRemarks'] ?? []), [['at' => now_u(), 'text' => $com]]);
         // options retenues par le client (une par groupe au maximum, validées contre le snapshot)
         $accepted = [];
         if ($ans === 'accepte') foreach ((array)($_POST['opt'] ?? []) as $v) { $v = (string)$v; if ($v !== '' && in_array($v, $optIds, true)) $accepted[] = $v; }
@@ -567,6 +605,15 @@ if (isset($_GET['d'])) {
                 : 'Devis refusé, c\'est noté. N\'hésite pas à nous contacter si tu as des questions.')
             . '</div></div>');
     }
+    // ouverture de la page : comptée (vues), la première est notée dans l'historique
+    if (!$post) {
+        $first = empty($d['views']);
+        $d['views'] = array_slice(array_merge((array)($d['views'] ?? []), [['at' => now_u()]]), -200);
+        if ($first) $hist('ouvert');
+        put_row($db, $row['space'], 'docs', $row['id'], $d);
+    }
+    $welcome = trim((string)($set['quoteWelcome'] ?? ''));
+    if ($welcome !== '') $welcome = strtr($welcome, ['{client}' => $client, '{projet}' => $projName, '{numero}' => (string)($d['number'] ?? ''), '{societe}' => (string)($set['company']['name'] ?? '')]);
     $ttc = number_format((float)($sn['totalTTC'] ?? 0), 2, ',', ' ') . ' € TTC';
     $dates = !empty($sn['project']['start']) ? fdate((string)$sn['project']['start']) . ' → ' . fdate((string)($sn['project']['end'] ?? $sn['project']['start'])) : '';
     $valid = !empty($sn['validUntil']) ? fdate((string)$sn['validUntil']) : '';
@@ -594,10 +641,17 @@ if (isset($_GET['d'])) {
         . ($opts ? '<br><span class="m">' . count($opts) . ' option(s) proposée(s) au choix, hors total.</span>' : '') . '</p>'
         . (!empty($sn['note']) ? '<p style="white-space:pre-wrap" class="m">' . h((string)$sn['note']) . '</p>' : '')
         . '</div>'
+        . ($welcome !== '' ? '<div class="c" style="white-space:pre-wrap">' . h($welcome) . '</div>' : '')
+        . ($expired
+            ? '<div class="c"><div class="msg ko">Ce devis a expiré le ' . $valid . ' : demande une nouvelle version à l\'organisateur.</div></div>'
+            : '<form method="post" action="' . $self . '" class="c"><input type="hidden" name="t" value="' . h($tok) . '">'
+              . ($optHtml ? '<div class="c" style="margin-top:0">' . $optHtml . '</div>' : '')
+              . '<label for="comment">Commentaire (facultatif)</label><textarea id="comment" name="comment" maxlength="2000"></textarea>'
+              . '<button class="ok" name="answer" value="accepte">' . ICO_CHECK . 'J\'accepte ce devis</button>'
+              . '<button class="ko" name="answer" value="refuse">' . ICO_X . 'Je refuse ce devis</button></form>')
         . '<form method="post" action="' . $self . '" class="c"><input type="hidden" name="t" value="' . h($tok) . '">'
-        . ($optHtml ? '<div class="c" style="margin-top:0">' . $optHtml . '</div>' : '')
-        . '<button class="ok" name="answer" value="accepte">' . ICO_CHECK . 'J\'accepte ce devis</button>'
-        . '<button class="ko" name="answer" value="refuse">' . ICO_X . 'Je refuse ce devis</button></form>');
+        . '<label for="remark">Demander une modification</label><textarea id="remark" name="remark" maxlength="3000" required placeholder="Ce que tu voudrais changer dans le devis…"></textarea>'
+        . '<button>Envoyer la demande</button></form>');
 }
 
 page('FabEvent', '<h1>Lien incomplet</h1><p class="m">Utilise le lien reçu par email.</p>', 404);

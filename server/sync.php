@@ -25,7 +25,8 @@ function out(int $status, array $data): void { fe_json($status, $data); }
 
 const TABLES = ['contacts', 'categories', 'equipment', 'projects', 'subprojects', 'lines', 'people', 'crew', 'vehicles',
     'vehicleAssignments', 'docs', 'settings', 'units', 'repairs', 'inspections', 'subrentals', 'costs', 'unavailability',
-    'files', 'transfers', 'appointments', 'checklists', 'crewRequests', 'users'];
+    'files', 'transfers', 'appointments', 'checklists', 'crewRequests', 'users',
+    'notifications', 'mails', 'purchaseOrders', 'tasks'];
 
 function ws_of($v): string {
     $w = fe_ws($v);

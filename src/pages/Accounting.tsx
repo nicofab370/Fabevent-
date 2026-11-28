@@ -84,7 +84,7 @@ export default function Accounting() {
         <div className="stat"><b>{money(sum((d) => d.snapshot.totalHT))}</b><span>total HT</span></div>
         <div className="stat"><b>{money(sum((d) => d.snapshot.vat))}</b><span>TVA collectée</span></div>
         <div className="stat"><b>{money(sum((d) => d.snapshot.totalTTC))}</b><span>total TTC</span></div>
-        <div className="stat"><b>{money(list.filter((d) => d.status !== 'paye' && d.type !== 'avoir').reduce((a, d) => a + d.snapshot.totalTTC - (d.snapshot.deposits || []).reduce((x, y) => x + y.ttc, 0), 0))}</b><span>reste à encaisser</span></div>
+        <div className="stat"><b>{money(list.filter((d) => d.status !== 'paye' && d.type !== 'avoir').reduce((a, d) => a + d.snapshot.totalTTC - (d.snapshot.deposits || []).reduce((x, y) => x + y.ttc, 0) - (d.payments || []).reduce((x, y) => x + y.amount, 0), 0))}</b><span>reste à encaisser</span></div>
       </div>
       <div className="card">
         {list.length === 0 ? <Empty>Aucune facture sur cette période.</Empty> : (

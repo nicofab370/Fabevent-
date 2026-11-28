@@ -41,6 +41,13 @@ function ProjectForm({ initial, onDone }: { initial?: Draft; onDone: (p?: Projec
     const client = isNew && p.clientId ? clients.find((c) => c.id === p.clientId) : undefined;
     const saved = await save(db.projects, {
       ...p, number, vatRegime: p.vatRegime ?? client?.vatRegime, discount: p.discount || client?.discounts?.total || 0,
+      // nouveau projet : note automatique, remises par partie, assurance et bon de commande du client
+      ...(client ? {
+        notes: [p.notes, client.autoProjectNote].filter((x) => x?.trim()).join('\n\n') || undefined,
+        partDiscounts: p.partDiscounts || client.partDiscounts,
+        insurancePct: p.insurancePct ?? client.insurancePct,
+        externalRef: p.externalRef || client.purchaseNumber,
+      } : {}),
     } as Project);
     if (isNew) {
       // Un premier sous-projet est créé automatiquement
@@ -62,6 +69,7 @@ function ProjectForm({ initial, onDone }: { initial?: Draft; onDone: (p?: Projec
             onChange={(id) => setP({ ...p, clientId: id, contactPerson: undefined, contactPersonId: undefined, departmentId: undefined })} />
           <button type="button" className="secondary small" onClick={() => setNewClient(true)}>+</button>
         </div>
+        {clients.find((c) => c.id === p.clientId)?.warning && <div className="warn-banner" role="alert" style={{ marginTop: 6 }}><strong>Avertissement : </strong>{clients.find((c) => c.id === p.clientId)!.warning}</div>}
       </Field>
       {(() => {
         const client = clients.find((c) => c.id === p.clientId);

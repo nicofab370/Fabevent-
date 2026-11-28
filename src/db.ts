@@ -1,6 +1,6 @@
 import Dexie, { type Table } from 'dexie';
 import type {
-  CrewRequest,
+  CrewRequest, FreeTask, MailLog, Notification, PurchaseOrder,
   Appointment, Category, FreeChecklist, Contact, CrewAssignment, Doc, DocStyle, Transfer, Equipment, EquipmentLine, Inspection, LogEntry, Person, Project, ProjectCost, ProjectFile, Repair,
   SerialUnit, Settings, Subproject, Subrental, Unavailability, User, Vehicle, VehicleAssignment,
 } from './types';
@@ -95,6 +95,10 @@ class FabDB extends Dexie {
   checklists!: Table<FreeChecklist, string>;
   crewRequests!: Table<CrewRequest, string>;
   users!: Table<User, string>;
+  notifications!: Table<Notification, string>;
+  mails!: Table<MailLog, string>;
+  purchaseOrders!: Table<PurchaseOrder, string>;
+  tasks!: Table<FreeTask, string>;
 
   constructor(name: string) {
     super(name);
@@ -142,6 +146,12 @@ class FabDB extends Dexie {
     this.version(10).stores({
       users: 'id, email, role, active',
     });
+    this.version(11).stores({
+      notifications: 'id, key, kind, createdAt, read',
+      mails: 'id, createdAt, projectId, contactId, personId',
+      purchaseOrders: 'id, number, supplierId, projectId, status',
+      tasks: 'id, due, done',
+    });
     // interlocuteurs identifiés (services du client) : on numérote les fiches existantes
     this.version(7).stores({}).upgrade(async (tx) => {
       await tx.table('contacts').toCollection().modify((c: Contact) => {
@@ -156,6 +166,7 @@ export const db = new FabDB('fabevent_' + currentWorkspace());
 export const TABLES = [
   'contacts', 'categories', 'equipment', 'projects', 'subprojects', 'lines', 'people', 'crew', 'vehicles',
   'vehicleAssignments', 'docs', 'settings', 'units', 'repairs', 'inspections', 'subrentals', 'costs', 'unavailability', 'files', 'log', 'transfers', 'appointments', 'checklists', 'crewRequests', 'users',
+  'notifications', 'mails', 'purchaseOrders', 'tasks',
 ] as const;
 
 /** Identifiant du dépôt principal (ou 'main' s'il n'y a pas de dépôts déclarés). */

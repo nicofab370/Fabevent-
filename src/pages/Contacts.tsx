@@ -5,7 +5,9 @@ import { useState } from 'react';
 import { Empty, Field, Modal, PageHead, NumInput, useSettings } from '../components/ui';
 import { settingsMoments } from '../invoicing';
 import { db } from '../db';
-import type { Contact, ContactPerson, ContactType, Department } from '../types';
+import type { Contact, ContactPerson, ContactType, Department, DiscountPart, PostalAddress } from '../types';
+import { DISCOUNT_PARTS } from '../types';
+import { PeppolSearch } from '../components/PeppolSearch';
 import { deptOf, withPersonIds } from '../places';
 import { CONTACT_TYPES, LANG_LABELS, VAT_REGIME_LABELS, type Lang, type VatRegime } from '../types';
 import { CsvButton, CustomFieldsEditor, exportCsv, TagInput, Tags } from '../components/extra';
@@ -16,9 +18,30 @@ import { BulkBar, BulkSet, SelectAllTh, SelectTd, useSelection } from '../compon
 
 type Draft = Partial<Contact> & { type: ContactType; company: string };
 
+/** Adresse secondaire (postale, facturation) : vide = identique à l'adresse principale. */
+function AddressBlock({ label, value, onChange }: { label: string; value?: PostalAddress; onChange: (v?: PostalAddress) => void }) {
+  const [open, setOpen] = useState(!!value?.address);
+  const v = value || {};
+  const upd = (k: keyof PostalAddress, x: string) => { const n = { ...v, [k]: x || undefined }; onChange(Object.values(n).some(Boolean) ? n : undefined); };
+  return (
+    <Field label={label} full>
+      <label className="check-row"><input type="checkbox" checked={!open} onChange={(e) => { setOpen(!e.target.checked); if (e.target.checked) onChange(undefined); }} /> Identique à l'adresse principale</label>
+      {open && (
+        <div className="addr-grid">
+          <input aria-label={`${label} : rue et numéro`} placeholder="Rue et numéro" value={v.address || ''} onChange={(e) => upd('address', e.target.value)} />
+          <input aria-label={`${label} : code postal`} placeholder="Code postal" value={v.postalCode || ''} onChange={(e) => upd('postalCode', e.target.value)} />
+          <input aria-label={`${label} : ville`} placeholder="Ville" value={v.city || ''} onChange={(e) => upd('city', e.target.value)} />
+          <input aria-label={`${label} : pays`} placeholder="Pays" value={v.country || ''} onChange={(e) => upd('country', e.target.value)} />
+        </div>
+      )}
+    </Field>
+  );
+}
+
 export function ContactForm({ initial, onDone }: { initial?: Draft; onDone: (c?: Contact) => void }) {
   const settings = useSettings();
   const [c, setC] = useState<Draft>(initial || { type: 'client', company: '' });
+  const folders = useLiveQuery(async () => Array.from(new Set((await db.contacts.toArray()).map((x) => x.folder).filter((f): f is string => !!f))).sort(), []) || [];
   const set = (k: keyof Contact, v: string) => setC({ ...c, [k]: v });
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,13 +60,35 @@ export function ContactForm({ initial, onDone }: { initial?: Draft; onDone: (c?:
       <Field label="Nom"><input value={c.lastName || ''} onChange={(e) => set('lastName', e.target.value)} /></Field>
       <Field label="Email"><input type="email" value={c.email || ''} onChange={(e) => set('email', e.target.value)} /></Field>
       <Field label="Téléphone"><input value={c.phone || ''} onChange={(e) => set('phone', e.target.value)} /></Field>
+      <Field label="Email 2"><input type="email" value={c.email2 || ''} onChange={(e) => set('email2', e.target.value)} /></Field>
+      <Field label="Téléphone 2"><input value={c.phone2 || ''} onChange={(e) => set('phone2', e.target.value)} /></Field>
+      <Field label="Site internet"><input value={c.website || ''} onChange={(e) => set('website', e.target.value)} placeholder="https://…" /></Field>
       <Field label="Adresse" full><input value={c.address || ''} onChange={(e) => set('address', e.target.value)} /></Field>
       <Field label="Code postal"><input value={c.postalCode || ''} onChange={(e) => set('postalCode', e.target.value)} /></Field>
       <Field label="Ville"><input value={c.city || ''} onChange={(e) => set('city', e.target.value)} /></Field>
       <Field label="N° TVA"><input value={c.vatNumber || ''} onChange={(e) => set('vatNumber', e.target.value)} /></Field>
       <Field label="N° d'entreprise / SIRET"><input value={c.siret || ''} onChange={(e) => set('siret', e.target.value)} /></Field>
       <Field label="Pays"><input value={c.country || ''} onChange={(e) => set('country', e.target.value)} placeholder="BE, FR…" /></Field>
-      <Field label="Identifiant Peppol"><input value={c.peppolId || ''} onChange={(e) => set('peppolId', e.target.value)} placeholder="0208:0123456789" /></Field>
+      <Field label="Identifiant Peppol">
+        <div style={{ display: 'flex', gap: 6 }}>
+          <input value={c.peppolId || ''} onChange={(e) => set('peppolId', e.target.value)} placeholder="0208:0123456789" />
+          <PeppolSearch c={c} onFound={(id) => set('peppolId', id)} />
+        </div>
+      </Field>
+      <AddressBlock label="Adresse postale" value={c.postalAddress} onChange={(postalAddress) => setC({ ...c, postalAddress })} />
+      <AddressBlock label="Adresse de facturation" value={c.billingAddress} onChange={(billingAddress) => setC({ ...c, billingAddress })} />
+      <Field label="IBAN"><input value={c.iban || ''} onChange={(e) => set('iban', e.target.value)} /></Field>
+      <Field label="BIC"><input value={c.bic || ''} onChange={(e) => set('bic', e.target.value)} /></Field>
+      <Field label="N° en comptabilité"><input value={c.accountingCode || ''} onChange={(e) => set('accountingCode', e.target.value)} /></Field>
+      {c.type === 'client' && <Field label="N° de bon de commande (repris sur ses projets)"><input value={c.purchaseNumber || ''} onChange={(e) => set('purchaseNumber', e.target.value)} /></Field>}
+      {c.type === 'lieu' && (
+        <Field label="Depuis le dépôt">
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <label className="check-row"><NumInput className="w-qty" value={c.distanceKm || 0} onChange={(n) => setC({ ...c, distanceKm: n || undefined })} /> km</label>
+            <label className="check-row"><NumInput className="w-qty" value={c.travelMinutes || 0} onChange={(n) => setC({ ...c, travelMinutes: n || undefined })} /> min de trajet</label>
+          </div>
+        </Field>
+      )}
       {(c.type === 'client' || c.vatRegime) && (
         <>
           <Field label="Régime de TVA par défaut">
@@ -59,7 +104,14 @@ export function ContactForm({ initial, onDone }: { initial?: Draft; onDone: (c?:
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
               <label className="check-row">Matériel <NumInput className="w-qty" value={c.discounts?.equipment || 0} onChange={(n) => setC({ ...c, discounts: { ...c.discounts, equipment: n || undefined } })} /></label>
               <label className="check-row">Total <NumInput className="w-qty" value={c.discounts?.total || 0} onChange={(n) => setC({ ...c, discounts: { ...c.discounts, total: n || undefined } })} /></label>
+              {(Object.keys(DISCOUNT_PARTS) as DiscountPart[]).filter((k) => k !== 'materiel').map((k) => (
+                <label key={k} className="check-row">{DISCOUNT_PARTS[k]} <NumInput className="w-qty" value={c.partDiscounts?.[k] || 0}
+                  onChange={(n) => { const pd = { ...(c.partDiscounts || {}) }; if (n) pd[k] = n; else delete pd[k]; setC({ ...c, partDiscounts: Object.keys(pd).length ? pd : undefined }); }} /></label>
+              ))}
             </div>
+          </Field>
+          <Field label={`Assurance du matériel (%, défaut ${settings.insurancePct || 0} %)`}>
+            <NumInput className="w-qty" value={c.insurancePct ?? 0} onChange={(n) => setC({ ...c, insurancePct: n || undefined })} />
           </Field>
         </>
       )}
@@ -84,7 +136,17 @@ export function ContactForm({ initial, onDone }: { initial?: Draft; onDone: (c?:
       )}
       <Field label="Étiquettes"><TagInput value={c.tags} onChange={(tags) => setC({ ...c, tags })} /></Field>
       <CustomFieldsEditor entity="contact" value={c.custom} onChange={(custom) => setC({ ...c, custom })} />
+      <Field label="Dossier"><input value={c.folder || ''} list="contact-folders" onChange={(e) => set('folder', e.target.value)} placeholder="Clients réguliers, Fournisseurs son…" /></Field>
+      <datalist id="contact-folders">{folders.map((f) => <option key={f} value={f} />)}</datalist>
       <Field label="Notes" full><textarea value={c.notes || ''} onChange={(e) => set('notes', e.target.value)} /></Field>
+      <Field label="Avertissement (affiché en évidence quand on choisit ce contact)" full>
+        <textarea value={c.warning || ''} onChange={(e) => set('warning', e.target.value)} placeholder="Ex. : paie toujours en retard, exiger un acompte" />
+      </Field>
+      {c.type === 'client' && (
+        <Field label="Note ajoutée à chaque nouveau projet de ce client" full>
+          <textarea value={c.autoProjectNote || ''} onChange={(e) => set('autoProjectNote', e.target.value)} placeholder="Ex. : badge d'accès à demander 10 jours avant, livraison par le quai B" />
+        </Field>
+      )}
       <div className="form-actions">
         <button type="button" className="secondary" onClick={() => onDone()}>Annuler</button>
         <button type="submit">Enregistrer</button>
@@ -100,9 +162,12 @@ export default function Contacts() {
   const [type, setType] = useState('');
   const [edit, setEdit] = useState<Draft | null>(null);
   const [tag, setTag] = useState('');
+  const [folder, setFolder] = useState('');
   const allTags = Array.from(new Set(contacts.flatMap((c) => c.tags || []))).sort();
+  const allFolders = Array.from(new Set(contacts.map((c) => c.folder).filter((f): f is string => !!f))).sort();
   const filtered = contacts.filter((c) =>
     (!type || c.type === type) &&
+    (!folder || c.folder === folder) &&
     (!tag || c.tags?.includes(tag)) &&
     [c.company, c.firstName, c.lastName, c.email, c.city, ...(c.tags || []), ...(c.persons || []).flatMap((p) => [p.name, p.email, p.phone]), ...(c.departments || []).map((d) => d.name)]
       .join(' ').toLowerCase().includes(q.toLowerCase()));
@@ -137,8 +202,19 @@ export default function Contacts() {
               {allTags.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           )}
+          {allFolders.length > 0 && (
+            <select value={folder} onChange={(e) => setFolder(e.target.value)} aria-label="Dossier">
+              <option value="">Tous les dossiers</option>
+              {allFolders.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          )}
         </div>
         <BulkBar sel={sel} noun="contact(s)">
+          <BulkSet label="Ranger dans le dossier" options={[...allFolders.map((f) => [f, f] as [string, string]), ['__new', 'Nouveau dossier…'], ['__none', 'Sans dossier']]} onApply={async (f) => {
+            const name = f === '__new' ? prompt('Nom du dossier :')?.trim() : f === '__none' ? '' : f;
+            if (name === undefined || name === null) return;
+            for (const id of sel.ids) await db.contacts.update(id, { folder: name || undefined, updatedAt: new Date().toISOString() });
+          }} />
           <BulkSet label="Changer le type" options={Object.entries(CONTACT_TYPES)} onApply={async (t) => {
             for (const id of sel.ids) await db.contacts.update(id, { type: t as ContactType, updatedAt: new Date().toISOString() });
           }} />
@@ -186,14 +262,22 @@ export default function Contacts() {
  * Services et interlocuteurs d'une société : chaque service a ses coordonnées (qui remplacent celles
  * de la société sur les documents) et ses personnes ; une personne peut changer de service.
  */
+export const DEFAULT_SALUTATIONS = ['Madame', 'Monsieur', 'Madame, Monsieur', 'Cher client'];
+
 function PeopleEditor({ c, setC }: { c: Draft; setC: (c: Draft) => void }) {
+  const settings = useSettings();
+  const salutations = settings.salutations?.length ? settings.salutations : DEFAULT_SALUTATIONS;
   const persons = c.persons || [];
   const depts = c.departments || [];
   const setPersons = (ps: ContactPerson[]) => setC({ ...c, persons: ps });
   const updP = (i: number, k: keyof ContactPerson, v: string) => setPersons(persons.map((y, j) => (j === i ? { ...y, [k]: v || undefined } : y)));
   const updD = (id: string, k: keyof Department, v: string) => setC({ ...c, departments: depts.map((d) => (d.id === id ? { ...d, [k]: v || undefined } : d)) });
   const row = (x: ContactPerson, i: number) => (
-    <div key={x.id || i} className="person-row" style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1.2fr 1fr auto auto', gap: 6, marginBottom: 6 }}>
+    <div key={x.id || i} className="person-row" style={{ display: 'grid', gridTemplateColumns: 'auto 1.2fr 1fr 1.2fr 1fr auto auto', gap: 6, marginBottom: 6 }}>
+      <select title="Formule d'appel" aria-label="Formule d'appel" value={x.title || ''} onChange={(e) => updP(i, 'title', e.target.value)} style={{ width: 'auto' }}>
+        <option value="">Formule</option>
+        {salutations.map((t) => <option key={t} value={t}>{t}</option>)}
+      </select>
       <input placeholder="Nom" value={x.name} onChange={(e) => updP(i, 'name', e.target.value)} />
       <input placeholder="Fonction" value={x.role || ''} onChange={(e) => updP(i, 'role', e.target.value)} />
       <input placeholder="Email" value={x.email || ''} onChange={(e) => updP(i, 'email', e.target.value)} />

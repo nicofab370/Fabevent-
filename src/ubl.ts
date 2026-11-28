@@ -52,9 +52,11 @@ function supplier(c: CompanyInfo) {
   return party({ name: c.name, peppolId: c.peppolId, vatNumber: c.vatNumber, street: c.street, city: c.city, postalCode: c.postalCode, country: countryCode(c.country) });
 }
 function customer(c: Contact | undefined, supplierCountry: string) {
+  // adresse de facturation du client si elle est différente de l'adresse principale
+  const a = c?.billingAddress?.address ? c.billingAddress : c;
   return party({
-    name: c?.company || 'Client', peppolId: c?.peppolId, vatNumber: c?.vatNumber, street: c?.address, city: c?.city,
-    postalCode: c?.postalCode, country: countryCode(c?.country, supplierCountry),
+    name: c?.company || 'Client', peppolId: c?.peppolId, vatNumber: c?.vatNumber, street: a?.address, city: a?.city,
+    postalCode: a?.postalCode, country: countryCode(a?.country || c?.country, supplierCountry),
   });
 }
 
